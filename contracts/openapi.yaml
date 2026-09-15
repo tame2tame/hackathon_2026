@@ -1,0 +1,1600 @@
+openapi: 3.1.0
+info:
+  title: Радар вузов API
+  description: '
+
+    CRM контроля взаимодействия ИТ Школы Ростелекома с вузами.
+
+
+    Все методы `/api/v1` требуют `Authorization: Bearer <access_token>` из Keycloak.
+
+    Ошибки возвращаются в формате `application/problem+json` с полем `code`
+
+    из каталога в ARCHITECTURE.md.
+
+    '
+  version: 0.1.0
+paths:
+  /api/health:
+    get:
+      tags:
+      - system
+      summary: Состояние сервиса и базы данных
+      operationId: health_api_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthOut'
+        '500':
+          description: INTERNAL_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/me:
+    get:
+      tags:
+      - catalogs
+      summary: Профиль текущего пользователя
+      operationId: read_me_api_v1_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/universities:
+    get:
+      tags:
+      - catalogs
+      summary: Вузы со счётчиками взаимодействий и открытых сигналов
+      operationId: read_universities_api_v1_universities_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: search
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          description: Название или регион
+          title: Search
+        description: Название или регион
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Номер страницы, с 1
+          default: 1
+          title: Page
+        description: Номер страницы, с 1
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          description: Размер страницы
+          default: 50
+          title: Page Size
+        description: Размер страницы
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_UniversityOut_'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/universities/{university_id}:
+    get:
+      tags:
+      - catalogs
+      summary: Вуз
+      operationId: read_university_api_v1_universities__university_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: university_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: University Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UniversityOut'
+        '401':
+          description: AUTH_REQUIRED, NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: AUTH_REQUIRED, NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/directions:
+    get:
+      tags:
+      - catalogs
+      summary: ИТ-направления
+      operationId: read_directions_api_v1_directions_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/DirectionRef'
+                type: array
+                title: Response Read Directions Api V1 Directions Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/programs:
+    get:
+      tags:
+      - catalogs
+      summary: ИТ-программы
+      operationId: read_programs_api_v1_programs_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: direction_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: ИТ-направление
+          title: Direction Id
+        description: ИТ-направление
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProgramRef'
+                title: Response Read Programs Api V1 Programs Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/products:
+    get:
+      tags:
+      - catalogs
+      summary: ИТ-продукты
+      operationId: read_products_api_v1_products_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ProductRef'
+                type: array
+                title: Response Read Products Api V1 Products Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/users:
+    get:
+      tags:
+      - catalogs
+      summary: Пользователи для фильтра «ответственный»
+      operationId: read_users_api_v1_users_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/UserOut'
+                type: array
+                title: Response Read Users Api V1 Users Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/workflows/default:
+    get:
+      tags:
+      - workflow
+      summary: Опубликованная версия базового workflow
+      operationId: read_default_workflow_api_v1_workflows_default_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowOut'
+        '401':
+          description: AUTH_REQUIRED, NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: AUTH_REQUIRED, NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/interactions:
+    get:
+      tags:
+      - interactions
+      summary: Взаимодействия с фильтрами
+      operationId: read_interactions_api_v1_interactions_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Номер страницы, с 1
+          default: 1
+          title: Page
+        description: Номер страницы, с 1
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          description: Размер страницы
+          default: 50
+          title: Page Size
+        description: Размер страницы
+      - name: university_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: Вуз
+          title: University Id
+        description: Вуз
+      - name: direction_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: ИТ-направление
+          title: Direction Id
+        description: ИТ-направление
+      - name: program_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: ИТ-программа
+          title: Program Id
+        description: ИТ-программа
+      - name: product_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: ИТ-продукт
+          title: Product Id
+        description: ИТ-продукт
+      - name: owner_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: КАМ
+          title: Owner Id
+        description: КАМ
+      - name: stage_code
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          description: Код текущего этапа
+          title: Stage Code
+        description: Код текущего этапа
+      - name: has_signal
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: Есть открытый сигнал
+          title: Has Signal
+        description: Есть открытый сигнал
+      - name: search
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          description: Вуз, программа или продукт
+          title: Search
+        description: Вуз, программа или продукт
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_InteractionListItem_'
+        '401':
+          description: AUTH_REQUIRED, VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: AUTH_REQUIRED, VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/interactions/{interaction_id}:
+    get:
+      tags:
+      - interactions
+      summary: Карточка взаимодействия
+      description: История, допустимые переходы с требованиями и открытые сигналы.
+      operationId: read_interaction_api_v1_interactions__interaction_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InteractionDetail'
+        '401':
+          description: AUTH_REQUIRED, NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: AUTH_REQUIRED, NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/interactions/{interaction_id}/transitions:
+    post:
+      tags:
+      - interactions
+      summary: Перевести взаимодействие на другой этап
+      operationId: post_transition_api_v1_interactions__interaction_id__transitions_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitionResult'
+        '401':
+          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/signals:
+    get:
+      tags:
+      - radar
+      summary: Открытые сигналы радара
+      description: Сначала высокая серьёзность, затем самые свежие. Учитывает область видимости.
+      operationId: read_signals_api_v1_signals_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Номер страницы, с 1
+          default: 1
+          title: Page
+        description: Номер страницы, с 1
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          description: Размер страницы
+          default: 50
+          title: Page Size
+        description: Размер страницы
+      - name: kind
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/SignalKind'
+          - type: 'null'
+          description: Вид сигнала
+          title: Kind
+        description: Вид сигнала
+      - name: severity
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/Severity'
+          - type: 'null'
+          description: Серьёзность
+          title: Severity
+        description: Серьёзность
+      - name: owner_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: КАМ
+          title: Owner Id
+        description: КАМ
+      - name: university_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: Вуз
+          title: University Id
+        description: Вуз
+      - name: search
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          description: Вуз, программа или продукт
+          title: Search
+        description: Вуз, программа или продукт
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_SignalListItem_'
+        '401':
+          description: AUTH_REQUIRED, VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: AUTH_REQUIRED, VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+components:
+  schemas:
+    AllowedTransitionOut:
+      properties:
+        to_stage:
+          $ref: '#/components/schemas/StageRef'
+        requires_comment:
+          type: boolean
+          title: Requires Comment
+        requires_attachment:
+          type: boolean
+          title: Requires Attachment
+      type: object
+      required:
+      - to_stage
+      - requires_comment
+      - requires_attachment
+      title: AllowedTransitionOut
+    ContractOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        number:
+          type: string
+          title: Number
+        signed_at:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Signed At
+        license_signed_at:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: License Signed At
+        license_valid_until:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: License Valid Until
+        license_term_years:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: License Term Years
+        transfer_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Transfer Status
+      type: object
+      required:
+      - id
+      - number
+      - signed_at
+      - license_signed_at
+      - license_valid_until
+      - license_term_years
+      - transfer_status
+      title: ContractOut
+    DirectionRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        code:
+          type: string
+          title: Code
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - id
+      - code
+      - name
+      title: DirectionRef
+    ErrorCode:
+      type: string
+      enum:
+      - VALIDATION_ERROR
+      - AUTH_REQUIRED
+      - AUTH_FORBIDDEN
+      - NOT_FOUND
+      - INTERACTION_VERSION_CONFLICT
+      - WF_TRANSITION_NOT_ALLOWED
+      - WF_COMMENT_REQUIRED
+      - WF_ATTACHMENT_REQUIRED
+      - FILE_TYPE_NOT_ALLOWED
+      - FILE_TOO_LARGE
+      - IMPORT_MAPPING_INVALID
+      - REPORT_TOO_LARGE
+      - INTEGRATION_UNAVAILABLE
+      - INTERNAL_ERROR
+      title: ErrorCode
+    FieldError:
+      properties:
+        field:
+          type: string
+          title: Field
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - field
+      - message
+      title: FieldError
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthOut:
+      properties:
+        status:
+          type: string
+          const: ok
+          title: Status
+        version:
+          type: string
+          title: Version
+        database:
+          type: string
+          const: ok
+          title: Database
+      type: object
+      required:
+      - status
+      - version
+      - database
+      title: HealthOut
+    InteractionDetail:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        university:
+          $ref: '#/components/schemas/UniversityRef'
+        program:
+          $ref: '#/components/schemas/ProgramRef'
+        product:
+          $ref: '#/components/schemas/ProductRef'
+        owner:
+          $ref: '#/components/schemas/UserRef'
+        stage:
+          $ref: '#/components/schemas/StageRef'
+        stage_entered_at:
+          type: string
+          format: date-time
+          title: Stage Entered At
+        days_on_stage:
+          type: integer
+          title: Days On Stage
+        norm_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Norm Days
+        status:
+          type: string
+          title: Status
+        version:
+          type: integer
+          title: Version
+          description: Передаётся в expected_version при переходе
+        last_activity_at:
+          type: string
+          format: date-time
+          title: Last Activity At
+        open_signals:
+          items:
+            $ref: '#/components/schemas/SignalBrief'
+          type: array
+          title: Open Signals
+        workflow_version_id:
+          type: string
+          format: uuid
+          title: Workflow Version Id
+        contract:
+          anyOf:
+          - $ref: '#/components/schemas/ContractOut'
+          - type: 'null'
+        history:
+          items:
+            $ref: '#/components/schemas/TransitionOut'
+          type: array
+          title: History
+        allowed_transitions:
+          items:
+            $ref: '#/components/schemas/AllowedTransitionOut'
+          type: array
+          title: Allowed Transitions
+        signals:
+          items:
+            $ref: '#/components/schemas/SignalOut'
+          type: array
+          title: Signals
+      type: object
+      required:
+      - id
+      - university
+      - program
+      - product
+      - owner
+      - stage
+      - stage_entered_at
+      - days_on_stage
+      - norm_days
+      - status
+      - version
+      - last_activity_at
+      - open_signals
+      - workflow_version_id
+      - contract
+      - history
+      - allowed_transitions
+      - signals
+      title: InteractionDetail
+    InteractionListItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        university:
+          $ref: '#/components/schemas/UniversityRef'
+        program:
+          $ref: '#/components/schemas/ProgramRef'
+        product:
+          $ref: '#/components/schemas/ProductRef'
+        owner:
+          $ref: '#/components/schemas/UserRef'
+        stage:
+          $ref: '#/components/schemas/StageRef'
+        stage_entered_at:
+          type: string
+          format: date-time
+          title: Stage Entered At
+        days_on_stage:
+          type: integer
+          title: Days On Stage
+        norm_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Norm Days
+        status:
+          type: string
+          title: Status
+        version:
+          type: integer
+          title: Version
+          description: Передаётся в expected_version при переходе
+        last_activity_at:
+          type: string
+          format: date-time
+          title: Last Activity At
+        open_signals:
+          items:
+            $ref: '#/components/schemas/SignalBrief'
+          type: array
+          title: Open Signals
+      type: object
+      required:
+      - id
+      - university
+      - program
+      - product
+      - owner
+      - stage
+      - stage_entered_at
+      - days_on_stage
+      - norm_days
+      - status
+      - version
+      - last_activity_at
+      - open_signals
+      title: InteractionListItem
+    InteractionRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        university:
+          $ref: '#/components/schemas/UniversityRef'
+        program:
+          $ref: '#/components/schemas/ProgramRef'
+        product:
+          $ref: '#/components/schemas/ProductRef'
+        owner:
+          $ref: '#/components/schemas/UserRef'
+      type: object
+      required:
+      - id
+      - university
+      - program
+      - product
+      - owner
+      title: InteractionRef
+    MeOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        full_name:
+          type: string
+          title: Full Name
+        email:
+          type: string
+          title: Email
+        role:
+          $ref: '#/components/schemas/Role'
+        team:
+          anyOf:
+          - $ref: '#/components/schemas/TeamRef'
+          - type: 'null'
+        scope:
+          type: string
+          enum:
+          - own
+          - team
+          - all
+          title: Scope
+      type: object
+      required:
+      - id
+      - full_name
+      - email
+      - role
+      - team
+      - scope
+      title: MeOut
+    Page_InteractionListItem_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/InteractionListItem'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      title: Page[InteractionListItem]
+    Page_SignalListItem_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/SignalListItem'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      title: Page[SignalListItem]
+    Page_UniversityOut_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/UniversityOut'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      title: Page[UniversityOut]
+    Problem:
+      properties:
+        type:
+          type: string
+          title: Type
+          default: about:blank
+        title:
+          type: string
+          title: Title
+        status:
+          type: integer
+          title: Status
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Detail
+        trace_id:
+          type: string
+          title: Trace Id
+        errors:
+          items:
+            $ref: '#/components/schemas/FieldError'
+          type: array
+          title: Errors
+          default: []
+      type: object
+      required:
+      - title
+      - status
+      - code
+      - trace_id
+      title: Problem
+      description: Тело ответа с ошибкой.
+    ProductRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        vendor:
+          $ref: '#/components/schemas/VendorRef'
+      type: object
+      required:
+      - id
+      - name
+      - vendor
+      title: ProductRef
+    ProgramRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        direction:
+          $ref: '#/components/schemas/DirectionRef'
+      type: object
+      required:
+      - id
+      - name
+      - direction
+      title: ProgramRef
+    Role:
+      type: string
+      enum:
+      - kam
+      - manager
+      - admin
+      title: Role
+    Severity:
+      type: string
+      enum:
+      - low
+      - medium
+      - high
+      title: Severity
+    SignalBrief:
+      properties:
+        kind:
+          $ref: '#/components/schemas/SignalKind'
+        severity:
+          $ref: '#/components/schemas/Severity'
+      type: object
+      required:
+      - kind
+      - severity
+      title: SignalBrief
+    SignalKind:
+      type: string
+      enum:
+      - stage_overdue
+      - license_expiring
+      - missing_document
+      - inactivity
+      title: SignalKind
+    SignalListItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          $ref: '#/components/schemas/SignalKind'
+        severity:
+          $ref: '#/components/schemas/Severity'
+        detected_at:
+          type: string
+          format: date-time
+          title: Detected At
+        resolved_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Resolved At
+        message:
+          type: string
+          title: Message
+        evidence:
+          additionalProperties: true
+          type: object
+          title: Evidence
+        interaction:
+          $ref: '#/components/schemas/InteractionRef'
+      type: object
+      required:
+      - id
+      - kind
+      - severity
+      - detected_at
+      - resolved_at
+      - message
+      - evidence
+      - interaction
+      title: SignalListItem
+    SignalOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          $ref: '#/components/schemas/SignalKind'
+        severity:
+          $ref: '#/components/schemas/Severity'
+        detected_at:
+          type: string
+          format: date-time
+          title: Detected At
+        resolved_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Resolved At
+        message:
+          type: string
+          title: Message
+        evidence:
+          additionalProperties: true
+          type: object
+          title: Evidence
+      type: object
+      required:
+      - id
+      - kind
+      - severity
+      - detected_at
+      - resolved_at
+      - message
+      - evidence
+      title: SignalOut
+    StageOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        code:
+          type: string
+          title: Code
+        name:
+          type: string
+          title: Name
+        position:
+          type: integer
+          title: Position
+        kind:
+          type: string
+          title: Kind
+        bulk_allowed:
+          type: boolean
+          title: Bulk Allowed
+        required_document_types:
+          items:
+            type: string
+          type: array
+          title: Required Document Types
+        norm_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Norm Days
+      type: object
+      required:
+      - id
+      - code
+      - name
+      - position
+      - kind
+      - bulk_allowed
+      - required_document_types
+      - norm_days
+      title: StageOut
+    StageRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        code:
+          type: string
+          title: Code
+        name:
+          type: string
+          title: Name
+        position:
+          type: integer
+          title: Position
+      type: object
+      required:
+      - id
+      - code
+      - name
+      - position
+      title: StageRef
+    TeamRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - id
+      - name
+      title: TeamRef
+    TransitionCreate:
+      properties:
+        to_stage_id:
+          type: string
+          format: uuid
+          title: To Stage Id
+        comment:
+          type: string
+          maxLength: 4000
+          title: Comment
+          default: ''
+        expected_version:
+          type: integer
+          minimum: 1.0
+          title: Expected Version
+          description: Версия записи, которую видел пользователь
+        attachment_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 20
+          title: Attachment Ids
+      type: object
+      required:
+      - to_stage_id
+      - expected_version
+      title: TransitionCreate
+    TransitionOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        from_stage:
+          anyOf:
+          - $ref: '#/components/schemas/StageRef'
+          - type: 'null'
+        to_stage:
+          $ref: '#/components/schemas/StageRef'
+        occurred_at:
+          type: string
+          format: date-time
+          title: Occurred At
+        actor:
+          anyOf:
+          - $ref: '#/components/schemas/UserRef'
+          - type: 'null'
+        comment:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Comment
+        source:
+          type: string
+          title: Source
+      type: object
+      required:
+      - id
+      - from_stage
+      - to_stage
+      - occurred_at
+      - actor
+      - comment
+      - source
+      title: TransitionOut
+    TransitionResult:
+      properties:
+        transition:
+          $ref: '#/components/schemas/TransitionOut'
+        interaction:
+          $ref: '#/components/schemas/InteractionDetail'
+      type: object
+      required:
+      - transition
+      - interaction
+      title: TransitionResult
+    TransitionRuleOut:
+      properties:
+        from_stage_id:
+          type: string
+          format: uuid
+          title: From Stage Id
+        to_stage_id:
+          type: string
+          format: uuid
+          title: To Stage Id
+        requires_comment:
+          type: boolean
+          title: Requires Comment
+        requires_attachment:
+          type: boolean
+          title: Requires Attachment
+      type: object
+      required:
+      - from_stage_id
+      - to_stage_id
+      - requires_comment
+      - requires_attachment
+      title: TransitionRuleOut
+    UniversityOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        short_name:
+          type: string
+          title: Short Name
+        region:
+          type: string
+          title: Region
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+        interactions_count:
+          type: integer
+          title: Interactions Count
+        open_signals_count:
+          type: integer
+          title: Open Signals Count
+      type: object
+      required:
+      - id
+      - name
+      - short_name
+      - region
+      - city
+      - interactions_count
+      - open_signals_count
+      title: UniversityOut
+    UniversityRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        short_name:
+          type: string
+          title: Short Name
+        region:
+          type: string
+          title: Region
+      type: object
+      required:
+      - id
+      - name
+      - short_name
+      - region
+      title: UniversityRef
+    UserOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        full_name:
+          type: string
+          title: Full Name
+        email:
+          type: string
+          title: Email
+        role:
+          $ref: '#/components/schemas/Role'
+      type: object
+      required:
+      - id
+      - full_name
+      - email
+      - role
+      title: UserOut
+    UserRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        full_name:
+          type: string
+          title: Full Name
+      type: object
+      required:
+      - id
+      - full_name
+      title: UserRef
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    VendorRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - id
+      - name
+      title: VendorRef
+    WorkflowOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        template_id:
+          type: string
+          format: uuid
+          title: Template Id
+        name:
+          type: string
+          title: Name
+        version_no:
+          type: integer
+          title: Version No
+        stages:
+          items:
+            $ref: '#/components/schemas/StageOut'
+          type: array
+          title: Stages
+        transitions:
+          items:
+            $ref: '#/components/schemas/TransitionRuleOut'
+          type: array
+          title: Transitions
+      type: object
+      required:
+      - id
+      - template_id
+      - name
+      - version_no
+      - stages
+      - transitions
+      title: WorkflowOut
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      description: Access token из Keycloak
+      scheme: bearer

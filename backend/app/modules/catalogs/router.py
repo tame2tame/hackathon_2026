@@ -1,0 +1,85 @@
+import uuid
+from typing import Annotated
+
+from fastapi import APIRouter, Query
+
+from app.core.db import SessionDep
+from app.core.errors import ErrorCode, error_responses
+from app.core.pagination import Page, PageQuery
+from app.core.security import CurrentUserDep
+from app.modules.catalogs.schemas import (
+    DirectionRef,
+    MeOut,
+    ProductRef,
+    ProgramRef,
+    UniversityOut,
+    UserOut,
+)
+from app.modules.catalogs.service import (
+    get_me,
+    get_university,
+    list_directions,
+    list_products,
+    list_programs,
+    list_universities,
+    list_users,
+)
+
+router = APIRouter(prefix="/api/v1", tags=["catalogs"])
+
+AUTH_ERRORS = error_responses(ErrorCode.AUTH_REQUIRED)
+
+
+@router.get("/me", summary="Профиль текущего пользователя", responses=AUTH_ERRORS)
+async def read_me(session: SessionDep, user: CurrentUserDep) -> MeOut:
+    return await get_me(session, user)
+
+
+@router.get(
+    "/universities",
+    summary="Вузы со счётчиками взаимодействий и открытых сигналов",
+    responses=AUTH_ERRORS,
+)
+async def read_universities(
+    session: SessionDep,
+    user: CurrentUserDep,
+    page: PageQuery,
+    search: Annotated[str | None, Query(max_length=100, description="Название или регион")] = None,
+) -> Page[UniversityOut]:
+    query = search.strip() if search and search.strip() else None
+    return await list_universities(session, user, query, page)
+
+
+@router.get(
+    "/universities/{university_id}",
+    summary="Вуз",
+    responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
+)
+async def read_university(
+    university_id: uuid.UUID, session: SessionDep, user: CurrentUserDep
+) -> UniversityOut:
+    return await get_university(session, user, university_id)
+
+
+@router.get("/directions", summary="ИТ-направления", responses=AUTH_ERRORS)
+async def read_directions(session: SessionDep, _user: CurrentUserDep) -> list[DirectionRef]:
+    return await list_directions(session)
+
+
+@router.get("/programs", summary="ИТ-программы", responses=AUTH_ERRORS)
+async def read_programs(
+    session: SessionDep,
+    _user: CurrentUserDep,
+    direction_id: Annotated[list[uuid.UUID] | None, Query(description="ИТ-направление")] = None,
+) -> list[ProgramRef]:
+    return await list_programs(session, direction_id)
+
+
+@router.get("/products", summary="ИТ-продукты", responses=AUTH_ERRORS)
+async def read_products(session: SessionDep, _user: CurrentUserDep) -> list[ProductRef]:
+    return await list_products(session)
+
+
+@router.get("/users", summary="Пользователи для фильтра «ответственный»", responses=AUTH_ERRORS)
+async def read_users(session: SessionDep, user: CurrentUserDep) -> list[UserOut]:
+    return await list_users(session, user)

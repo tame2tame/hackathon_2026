@@ -1,0 +1,91 @@
+{
+  "realm": "radar-vuzov",
+  "displayName": "Радар вузов",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "passwordPolicy": "length(12) and notUsername",
+  "ssoSessionIdleTimeout": 1800,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "kam", "description": "КАМ — менеджер по работе с вузами" },
+      { "name": "manager", "description": "Руководитель КАМов" },
+      { "name": "admin", "description": "Администратор платформы" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "radar-web",
+      "name": "Радар вузов — веб-интерфейс",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://127.0.0.1:5173/*", "http://localhost:5173/*"],
+      "webOrigins": ["http://127.0.0.1:5173", "http://localhost:5173"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://127.0.0.1:5173/*##http://localhost:5173/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-radar-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "radar-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "radar-api",
+      "name": "Радар вузов — API",
+      "enabled": true,
+      "bearerOnly": true,
+      "publicClient": false
+    }
+  ],
+  "users": [
+    {
+      "username": "kam.demo",
+      "email": "anna.smirnova@example.com",
+      "emailVerified": true,
+      "firstName": "Анна",
+      "lastName": "Смирнова",
+      "enabled": true,
+      "realmRoles": ["kam"],
+      "credentials": [{ "type": "password", "value": "Local-Kam-2026", "temporary": false }]
+    },
+    {
+      "username": "manager.demo",
+      "email": "roman.kovalev@example.com",
+      "emailVerified": true,
+      "firstName": "Роман",
+      "lastName": "Ковалёв",
+      "enabled": true,
+      "realmRoles": ["manager"],
+      "credentials": [{ "type": "password", "value": "Local-Manager-2026", "temporary": false }]
+    },
+    {
+      "username": "admin.demo",
+      "email": "alina.denisova@example.com",
+      "emailVerified": true,
+      "firstName": "Алина",
+      "lastName": "Денисова",
+      "enabled": true,
+      "realmRoles": ["admin"],
+      "credentials": [{ "type": "password", "value": "Local-Admin-2026", "temporary": false }]
+    }
+  ]
+}

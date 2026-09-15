@@ -1,0 +1,72 @@
+# Локальное окружение «Радара вузов». Пароли здесь — только для разработки на своей машине.
+name: radar-vuzov
+
+services:
+  postgres:
+    # Debian-образ: локаль glibc корректно обрабатывает регистр кириллицы в ILIKE.
+    image: postgres:16
+    environment:
+      POSTGRES_DB: radar
+      POSTGRES_USER: radar
+      POSTGRES_PASSWORD: radar
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radar -d radar"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: radar
+      KC_DB_PASSWORD: radar
+      KC_HOSTNAME: http://127.0.0.1:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./keycloak/realm-radar-vuzov.json:/opt/keycloak/data/import/realm-radar-vuzov.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: ../backend
+    environment:
+      APP_ENV: local
+      AUTH_MODE: keycloak
+      DATABASE_URL: postgresql+asyncpg://radar:radar@postgres:5432/radar
+      CORS_ORIGINS: http://127.0.0.1:5173,http://localhost:5173
+      KEYCLOAK_ISSUER: http://127.0.0.1:8080/realms/radar-vuzov
+      KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/radar-vuzov/protocol/openid-connect/certs
+      KEYCLOAK_AUDIENCE: radar-api
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
