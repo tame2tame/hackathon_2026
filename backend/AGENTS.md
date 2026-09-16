@@ -16,6 +16,7 @@ Python 3.12 · FastAPI · Pydantic v2 · SQLAlchemy 2 (async, asyncpg) · Alembi
 | `make db-up` | Поднимает PostgreSQL и Redis через `infra/docker-compose.yml` |
 | `make migrate` | Применяет миграции (`alembic upgrade head`) |
 | `make seed` | Загружает базовый workflow и демо-данные v0 |
+| `make seed-full` | Полный стенд: 96 вузов, ~350 взаимодействий, год истории, метрики |
 | `make run` | Запускает API с автоперезагрузкой на http://127.0.0.1:8000 |
 | `make lint` | `ruff check` и `ruff format --check` |
 | `make typecheck` | `mypy app` |

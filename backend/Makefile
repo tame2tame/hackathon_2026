@@ -3,7 +3,7 @@ VENV := .venv
 BIN := $(VENV)/bin
 COMPOSE := docker compose -f ../infra/docker-compose.yml
 
-.PHONY: install db-up db-down migrate migration seed run lint format typecheck test check openapi
+.PHONY: install db-up db-down migrate migration seed seed-full run lint format typecheck test check openapi
 
 install:
 	$(PY) -m venv $(VENV)
@@ -24,6 +24,9 @@ migration:
 
 seed:
 	$(BIN)/python -m scripts.seed
+
+seed-full:
+	$(BIN)/python -m scripts.seed --full
 
 run:
 	$(BIN)/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
