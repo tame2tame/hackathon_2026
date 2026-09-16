@@ -12,6 +12,11 @@
 4. [`docs/PLAN.md`](docs/PLAN.md) — порядок работ, сроки, индекс требований.
 5. [`docs/FRONTEND_PAGES.md`](docs/FRONTEND_PAGES.md) — формат страниц.
 
+Справочные документы: [`docs/DATA_PROCESSING.md`](docs/DATA_PROCESSING.md) — как считаются радар,
+нормы, рейтинг и импорт; [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md) — эксплуатация;
+[`docs/DEPLOY.md`](docs/DEPLOY.md) — стенд; [`docs/SECURITY.md`](docs/SECURITY.md) — меры защиты;
+[`docs/LOAD_TEST.md`](docs/LOAD_TEST.md) — нагрузка.
+
 Если документы противоречат друг другу или задаче — остановиться и спросить человека. Не выбирать молча.
 
 ## Потоки и владение

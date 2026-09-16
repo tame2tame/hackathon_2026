@@ -45,6 +45,14 @@ jobs:
         run: python -m scripts.export_openapi --check
       - name: Тесты — миграции вниз и вверх, API, правила радара
         run: pytest
+      - name: Перечень библиотек
+        run: |
+          pip freeze > ../docs/dependencies.txt
+          echo "Библиотек: $(wc -l < ../docs/dependencies.txt)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependencies
+          path: docs/dependencies.txt
 
   image:
     runs-on: ubuntu-latest
