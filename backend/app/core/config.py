@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     keycloak_audience: str = "radar-api"
     # Пустой адрес переводит события в память процесса: так работают тесты и запуск без Redis.
     redis_url: str = "redis://127.0.0.1:6379/0"
+    # Адреса внешних систем; на демо-стенде это моки из backend/mocks.
+    lms_base_url: str = "http://127.0.0.1:8100"
+    site_base_url: str = "http://127.0.0.1:8101"
     # Каталог вложений; в облаке заменяется на S3 за тем же интерфейсом Storage.
     upload_dir: str = "storage/uploads"
     max_upload_mb: int = 25

@@ -16,6 +16,7 @@ COPY pyproject.toml alembic.ini ./
 COPY app ./app
 COPY scripts ./scripts
 COPY migrations ./migrations
+COPY mocks ./mocks
 
 RUN pip install . && useradd --system --uid 10001 radar
 USER radar

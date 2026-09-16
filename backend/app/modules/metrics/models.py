@@ -16,7 +16,8 @@ class ProgramMetric(UUIDPrimaryKey, Timestamps, Base):
 
     __tablename__ = "program_metric"
     __table_args__ = (
-        UniqueConstraint("university_id", "program_id", "period_month", "metric"),
+        # Источник входит в ключ: LMS и сайт считают разные метрики и не затирают друг друга.
+        UniqueConstraint("university_id", "program_id", "period_month", "metric", "source"),
         CheckConstraint("metric IN ('applications', 'students', 'streams')", name="metric"),
         CheckConstraint("source IN ('lms', 'site', 'manual', 'demo')", name="source"),
         CheckConstraint("value >= 0", name="value_not_negative"),

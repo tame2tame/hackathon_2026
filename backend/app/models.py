@@ -15,6 +15,7 @@ from app.modules.catalogs.models import (
     product_direction,
 )
 from app.modules.imports.models import ImportBatch, ImportProfile, ImportRow
+from app.modules.integrations.models import IntegrationSource, SiteApplication, SyncRun
 from app.modules.interactions.models import (
     AssignmentChange,
     Attachment,
@@ -47,6 +48,7 @@ __all__ = [
     "ImportBatch",
     "ImportProfile",
     "ImportRow",
+    "IntegrationSource",
     "Interaction",
     "InteractionContact",
     "InteractionNote",
@@ -56,9 +58,11 @@ __all__ = [
     "ProgramProduct",
     "RadarSignal",
     "ReportJob",
+    "SiteApplication",
     "Stage",
     "StageNorm",
     "StageTransitionRule",
+    "SyncRun",
     "Team",
     "Transition",
     "University",

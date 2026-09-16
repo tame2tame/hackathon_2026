@@ -17,6 +17,7 @@ from app.core.db import get_sessionmaker
 from app.core.roles import Role
 from app.core.security import CurrentUser
 from app.modules.catalogs.models import AppUser
+from app.modules.integrations.service import ensure_sources, sync_all
 from app.modules.interactions.models import Interaction
 from app.modules.radar.service import recompute_signals
 from app.modules.reports.service import run_job
@@ -54,6 +55,14 @@ async def build_report(ctx: dict[str, Any], job_id: str, user_id: str) -> str:
         return job.status
 
 
+async def sync_integrations(ctx: dict[str, Any]) -> int:
+    """Часовая синхронизация LMS и сайта. Отказ одного источника не трогает остальные."""
+    async with get_sessionmaker()() as session:
+        await ensure_sources(session)
+        runs = await sync_all(session, datetime.now(UTC))
+        return sum(1 for run in runs if run.status == "done")
+
+
 async def refresh_norm_suggestions(ctx: dict[str, Any]) -> int:
     """Обновляет подсказки норм: медиану и 80-й перцентиль завершённых этапов."""
     async with get_sessionmaker()() as session:
@@ -63,9 +72,16 @@ async def refresh_norm_suggestions(ctx: dict[str, Any]) -> int:
 
 
 class WorkerSettings:
-    functions: ClassVar[list[Any]] = [recompute_radar, refresh_norm_suggestions, build_report]
+    functions: ClassVar[list[Any]] = [
+        recompute_radar,
+        refresh_norm_suggestions,
+        build_report,
+        sync_integrations,
+    ]
     cron_jobs: ClassVar[list[Any]] = [
         cron(recompute_radar, hour=RADAR_HOUR_UTC, minute=0),
         cron(refresh_norm_suggestions, hour=RADAR_HOUR_UTC, minute=SUGGESTIONS_MINUTE),
+        # Раз в час: свежие метрики LMS и заявки сайта.
+        cron(sync_integrations, minute=5),
     ]
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)

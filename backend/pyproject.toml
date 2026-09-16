@@ -22,6 +22,8 @@ dependencies = [
     # Чтение выгрузок заказчика: openpyxl — xlsx, xlrd — устаревший xls.
     "openpyxl~=3.1",
     "xlrd~=2.0",
+    # Клиент интеграций LMS и сайта; он же используется в тестах API.
+    "httpx~=0.28",
     # Отчёты: xls — xlwt, pdf — fpdf2 (без headless-браузера, см. ADR-013).
     "xlwt~=1.3",
     "fpdf2~=2.8",

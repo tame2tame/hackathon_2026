@@ -1154,6 +1154,236 @@ paths:
                 $ref: '#/components/schemas/Problem'
       security:
       - HTTPBearer: []
+  /api/v1/integrations:
+    get:
+      tags:
+      - integrations
+      summary: Источники LMS и сайта
+      operationId: read_integrations_api_v1_integrations_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/IntegrationSourceOut'
+                type: array
+                title: Response Read Integrations Api V1 Integrations Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/integrations/{source_id}/sync:
+    post:
+      tags:
+      - integrations
+      summary: Синхронизировать источник вручную
+      description: 'Запись в журнале появляется и при отказе источника: там будет код ошибки.'
+      operationId: post_sync_api_v1_integrations__source_id__sync_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: source_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Source Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRunOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/integrations/{source_id}/runs:
+    get:
+      tags:
+      - integrations
+      summary: Журнал запусков источника
+      operationId: read_runs_api_v1_integrations__source_id__runs_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: source_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Source Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SyncRunOut'
+                title: Response Read Runs Api V1 Integrations  Source Id  Runs Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/site-applications:
+    get:
+      tags:
+      - integrations
+      summary: Заявки с сайта
+      description: Без фильтра — все заявки; `match_status=unmatched` — очередь на разбор.
+      operationId: read_applications_api_v1_site_applications_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: match_status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            pattern: ^(matched|unmatched)$
+          - type: 'null'
+          description: Состояние сопоставления
+          title: Match Status
+        description: Состояние сопоставления
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SiteApplicationOut'
+                title: Response Read Applications Api V1 Site Applications Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/site-applications/{application_id}/match:
+    post:
+      tags:
+      - integrations
+      summary: Привязать заявку к взаимодействию
+      operationId: post_match_api_v1_site_applications__application_id__match_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: application_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Application Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationMatch'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteApplicationOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/signals:
     get:
       tags:
@@ -1592,6 +1822,17 @@ components:
       - requires_comment
       - requires_attachment
       title: AllowedTransitionOut
+    ApplicationMatch:
+      properties:
+        interaction_id:
+          type: string
+          format: uuid
+          title: Interaction Id
+          description: Взаимодействие, к которому относится заявка
+      type: object
+      required:
+      - interaction_id
+      title: ApplicationMatch
     ApplyResult:
       properties:
         batch_id:
@@ -2021,6 +2262,46 @@ components:
       - file_kind
       - column_map
       title: ImportProfileOut
+    IntegrationSourceOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          title: Kind
+          description: lms или site
+        name:
+          type: string
+          title: Name
+        base_url:
+          type: string
+          title: Base Url
+        is_mock:
+          type: boolean
+          title: Is Mock
+        schedule_cron:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Schedule Cron
+        last_sync_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Sync At
+      type: object
+      required:
+      - id
+      - kind
+      - name
+      - base_url
+      - is_mock
+      - schedule_cron
+      - last_sync_at
+      title: IntegrationSourceOut
     InteractionDetail:
       properties:
         id:
@@ -2711,6 +2992,57 @@ components:
       - total
       title: SignalSummaryOut
       description: Матрица «КАМ × вид сигнала» для тепловой карты руководителя.
+    SiteApplicationOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        external_id:
+          type: string
+          title: External Id
+        university_name:
+          type: string
+          title: University Name
+        program_name:
+          type: string
+          title: Program Name
+        contact_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Contact Name
+        comment:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Comment
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+        match_status:
+          type: string
+          title: Match Status
+          description: matched или unmatched
+        interaction_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Interaction Id
+      type: object
+      required:
+      - id
+      - external_id
+      - university_name
+      - program_name
+      - contact_name
+      - comment
+      - received_at
+      - match_status
+      - interaction_id
+      title: SiteApplicationOut
     StageNormOut:
       properties:
         stage_code:
@@ -2839,6 +3171,49 @@ components:
       - counts
       - total
       title: SummaryRow
+    SyncRunOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        source_id:
+          type: string
+          format: uuid
+          title: Source Id
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        finished_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Finished At
+        status:
+          type: string
+          title: Status
+          description: running, done или failed
+        stats:
+          additionalProperties: true
+          type: object
+          title: Stats
+        error_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Code
+      type: object
+      required:
+      - id
+      - source_id
+      - started_at
+      - finished_at
+      - status
+      - stats
+      - error_code
+      title: SyncRunOut
     TeamRef:
       properties:
         id:
