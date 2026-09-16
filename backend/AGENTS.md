@@ -1,6 +1,6 @@
 # Бэкенд — правила потока
 
-Дополняет корневой [`AGENTS.md`](../AGENTS.md). Архитектура и модель данных — [`ARCHITECTURE.md`](../ARCHITECTURE.md), порядок задач — [`docs/PLAN.md`](../docs/PLAN.md), раздел «Бэкенд».
+Дополняет корневой [`AGENTS.md`](../AGENTS.md). Архитектура и модель данных — [`ARCHITECTURE.md`](../ARCHITECTURE.md), порядок задач — [`docs/PLAN.md`](../docs/PLAN.md), раздел «Бэкенд», содержание каждой задачи — [`docs/BACKEND_PLAN.md`](../docs/BACKEND_PLAN.md).
 
 ## Стек
 
