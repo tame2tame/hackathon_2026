@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Внутри docker compose ключи берутся по внутреннему адресу, а издатель в токене — внешний.
     keycloak_jwks_url: str = ""
     keycloak_audience: str = "radar-api"
+    # Каталог вложений; в облаке заменяется на S3 за тем же интерфейсом Storage.
+    upload_dir: str = "storage/uploads"
+    max_upload_mb: int = 25
     log_level: str = "INFO"
     version: str = "0.1.0"
 
@@ -28,6 +31,10 @@ class Settings(BaseSettings):
         if self.app_env == "production" and self.auth_mode == "dev":
             raise ValueError("AUTH_MODE=dev запрещён при APP_ENV=production")
         return self
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
 
     @property
     def jwks_url(self) -> str:

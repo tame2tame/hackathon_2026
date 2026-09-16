@@ -19,6 +19,7 @@ from app.core.errors import (
     install_error_handlers,
 )
 from app.core.security import DEV_USER_HEADER
+from app.modules.attachments.router import router as attachments_router
 from app.modules.catalogs.router import router as catalogs_router
 from app.modules.interactions.router import router as interactions_router
 from app.modules.radar.router import router as radar_router
@@ -85,7 +86,13 @@ def create_app() -> FastAPI:
         await session.execute(text("SELECT 1"))
         return HealthOut(status="ok", version=settings.version, database="ok")
 
-    for router in (catalogs_router, workflow_router, interactions_router, radar_router):
+    for router in (
+        catalogs_router,
+        workflow_router,
+        interactions_router,
+        attachments_router,
+        radar_router,
+    ):
         app.include_router(router)
 
     def openapi() -> dict[str, Any]:

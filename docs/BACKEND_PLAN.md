@@ -93,6 +93,7 @@
   - загрузка пересчитывает радар; включаются правила `requires_attachment` для выхода с этапов «Подписание», «Передача материалов», «Обучение преподавателей».
 - **Зависимость:** `python-multipart`.
 - **Готово, когда:** тесты на допустимые типы; exe, переименованный в pdf → `FILE_TYPE_NOT_ALLOWED`; превышение лимита → `FILE_TOO_LARGE`; чужое взаимодействие → 404; загруженный акт закрывает `missing_document`; переход без документа → `WF_ATTACHMENT_REQUIRED`.
+- **Результат 16.09 — выполнено.** В контракте `POST /api/v1/interactions/{id}/attachments` (multipart: `file`, `document_type`), `GET /api/v1/interactions/{id}/attachments`, `GET /api/v1/attachments/{id}/file`. Файлы лежат за интерфейсом `Storage` (`app/core/storage.py`): каталог `UPLOAD_DIR`, ключ `interactions/{id}/{attachment_id}` — замена на S3 не трогает сервис. Тип проверяется по расширению и по сигнатуре: exe с именем `.pdf` → `FILE_TYPE_NOT_ALLOWED`, файл сверх `MAX_UPLOAD_MB` → `FILE_TOO_LARGE`, пустой файл и неизвестный `document_type` → `VALIDATION_ERROR` с указанием поля. Загрузка обновляет активность и закрывает `missing_document`. Выход с этапов «Подписание», «Передача материалов» и «Обучение преподавателей» теперь требует документ (`requires_attachment` в базовом процессе), поэтому групповой переход с них отправляет в карточку. 12 новых тестов, всего 86; ruff, mypy и сверка контракта чистые.
 
 ### B-10. Импорт xls/xlsx — 17–19.09, линия B
 

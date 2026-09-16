@@ -29,3 +29,25 @@ async def user_id(session: AsyncSession, email: str) -> uuid.UUID:
     found = await session.scalar(select(AppUser.id).where(AppUser.email == email))
     assert found is not None
     return found
+
+
+# Минимальный настоящий PDF: важна сигнатура, содержимое роли не играет.
+PDF_BYTES = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
+
+
+async def upload_pdf(
+    client: AsyncClient,
+    email: str,
+    interaction_id: str,
+    document_type: str | None = None,
+    file_name: str = "Договор.pdf",
+) -> dict[str, Any]:
+    response = await client.post(
+        f"/api/v1/interactions/{interaction_id}/attachments",
+        files={"file": (file_name, PDF_BYTES, "application/pdf")},
+        data={"document_type": document_type} if document_type else None,
+        headers=as_user(email),
+    )
+    assert response.status_code == 201, response.text
+    uploaded: dict[str, Any] = response.json()
+    return uploaded

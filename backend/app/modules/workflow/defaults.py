@@ -17,6 +17,9 @@ from app.modules.workflow.models import (
 
 BASE_TEMPLATE_NAME = "Базовый путь взаимодействия"
 
+# Эти этапы закрываются документом: договором, актом передачи, подтверждением обучения.
+DOCUMENT_REQUIRED_EXITS = frozenset({"signing", "materials_transfer", "teacher_training"})
+
 
 @dataclass(frozen=True, slots=True)
 class StageSpec:
@@ -110,6 +113,7 @@ async def ensure_default_workflow(session: AsyncSession) -> WorkflowVersion:
                 version_id=version.id,
                 from_stage_id=stages[from_code].id,
                 to_stage_id=stages[to_code].id,
+                requires_attachment=from_code in DOCUMENT_REQUIRED_EXITS,
             )
         )
     await session.flush()

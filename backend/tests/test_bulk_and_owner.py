@@ -1,16 +1,14 @@
 """Групповой переход и смена ответственного."""
 
-import uuid
 from typing import Any
 
 from httpx import AsyncClient
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.audit.models import AuditLog
 from app.modules.interactions.models import AssignmentChange
-from app.modules.workflow.models import StageTransitionRule
-from tests.api import find, stage_id, user_id
+from tests.api import find, user_id
 from tests.users import ALINA_ADMIN, ANNA_KAM, MIKHAIL_KAM, ROMAN_MANAGER, as_user
 
 BULK_TRANSITIONS = "/api/v1/interactions/bulk-transitions"
@@ -22,16 +20,16 @@ def result_for(body: dict[str, Any], interaction_id: str) -> dict[str, Any]:
 
 
 async def test_bulk_transition_gives_each_record_its_own_result(client: AsyncClient) -> None:
-    signing = await find(client, ANNA_KAM, stage_code="signing")
+    meeting = await find(client, ANNA_KAM, stage_code="meeting")
     classes = await find(client, ANNA_KAM, stage_code="classes")
     foreign = await find(client, MIKHAIL_KAM, search="УрФУ")
 
     response = await client.post(
         BULK_TRANSITIONS,
         json={
-            "interaction_ids": [signing["id"], classes["id"], foreign["id"]],
-            "to_stage_code": "materials_transfer",
-            "comment": "Договоры подписаны",
+            "interaction_ids": [meeting["id"], classes["id"], foreign["id"]],
+            "to_stage_code": "documents_exchange",
+            "comment": "Встречи проведены",
         },
         headers=as_user(ANNA_KAM),
     )
@@ -39,15 +37,15 @@ async def test_bulk_transition_gives_each_record_its_own_result(client: AsyncCli
     assert response.status_code == 200
     body = response.json()
     assert (body["succeeded"], body["failed"]) == (1, 2)
-    assert result_for(body, signing["id"])["version"] == 2
+    assert result_for(body, meeting["id"])["version"] == 2
     # «Ведение занятий» без bulk_allowed и чужая запись — отказы, но не мешают остальным.
     assert result_for(body, classes["id"])["code"] == "WF_TRANSITION_NOT_ALLOWED"
     assert result_for(body, foreign["id"])["code"] == "NOT_FOUND"
 
     card = (
-        await client.get(f"/api/v1/interactions/{signing['id']}", headers=as_user(ANNA_KAM))
+        await client.get(f"/api/v1/interactions/{meeting['id']}", headers=as_user(ANNA_KAM))
     ).json()
-    assert card["stage"]["code"] == "materials_transfer"
+    assert card["stage"]["code"] == "documents_exchange"
     assert card["history"][0]["source"] == "bulk"
 
 
@@ -69,17 +67,9 @@ async def test_bulk_transition_requires_comment(client: AsyncClient) -> None:
     assert body["results"][0]["code"] == "WF_COMMENT_REQUIRED"
 
 
-async def test_bulk_transition_with_required_document_is_sent_to_card(
-    client: AsyncClient, session: AsyncSession
-) -> None:
+async def test_bulk_transition_with_required_document_is_sent_to_card(client: AsyncClient) -> None:
+    # Выход с «Подписания» требует договор, а файл прикладывается только в карточке.
     signing = await find(client, ANNA_KAM, stage_code="signing")
-    target = await stage_id(client, "materials_transfer")
-    await session.execute(
-        update(StageTransitionRule)
-        .where(StageTransitionRule.to_stage_id == uuid.UUID(target))
-        .values(requires_attachment=True)
-    )
-    await session.commit()
 
     response = await client.post(
         BULK_TRANSITIONS,

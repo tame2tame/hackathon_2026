@@ -698,6 +698,149 @@ paths:
                 $ref: '#/components/schemas/Problem'
       security:
       - HTTPBearer: []
+  /api/v1/interactions/{interaction_id}/attachments:
+    post:
+      tags:
+      - attachments
+      summary: Загрузить документ к взаимодействию
+      description: Файл проверяется по расширению и сигнатуре, лимит задаёт `MAX_UPLOAD_MB`. Документ
+        привязывается к текущему этапу и закрывает сигнал «нет документа».
+      operationId: post_attachment_api_v1_interactions__interaction_id__attachments_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_post_attachment_api_v1_interactions__interaction_id__attachments_post'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '415':
+          description: FILE_TYPE_NOT_ALLOWED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '413':
+          description: FILE_TOO_LARGE
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    get:
+      tags:
+      - attachments
+      summary: Документы взаимодействия
+      operationId: read_attachments_api_v1_interactions__interaction_id__attachments_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AttachmentOut'
+                title: Response Read Attachments Api V1 Interactions  Interaction Id  Attachments Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/attachments/{attachment_id}/file:
+    get:
+      tags:
+      - attachments
+      summary: Скачать файл вложения
+      operationId: read_attachment_file_api_v1_attachments__attachment_id__file_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: attachment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Attachment Id
+      responses:
+        '200':
+          description: Файл вложения с исходным именем
+          content:
+            application/octet-stream: {}
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/signals:
     get:
       tags:
@@ -849,6 +992,73 @@ components:
       - requires_comment
       - requires_attachment
       title: AllowedTransitionOut
+    AttachmentOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        file_name:
+          type: string
+          title: File Name
+        mime_type:
+          type: string
+          title: Mime Type
+        size_bytes:
+          type: integer
+          title: Size Bytes
+        document_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+          description: Тип документа этапа, если указан при загрузке
+        sha256:
+          type: string
+          title: Sha256
+          description: 'Контрольная сумма: видно повторную загрузку того же файла'
+        stage_id:
+          type: string
+          format: uuid
+          title: Stage Id
+          description: Этап, на котором файл загружен
+        uploaded_by:
+          type: string
+          format: uuid
+          title: Uploaded By
+        uploaded_at:
+          type: string
+          format: date-time
+          title: Uploaded At
+      type: object
+      required:
+      - id
+      - file_name
+      - mime_type
+      - size_bytes
+      - document_type
+      - sha256
+      - stage_id
+      - uploaded_by
+      - uploaded_at
+      title: AttachmentOut
+    Body_post_attachment_api_v1_interactions__interaction_id__attachments_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Файл документа
+        document_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+          description: Тип документа этапа, например signed_contract
+      type: object
+      required:
+      - file
+      title: Body_post_attachment_api_v1_interactions__interaction_id__attachments_post
     BulkItemResult:
       properties:
         interaction_id:

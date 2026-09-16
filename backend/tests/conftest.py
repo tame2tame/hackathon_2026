@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import tempfile
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,8 +12,12 @@ import pytest
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://radar:radar@127.0.0.1:55432/radar_test"
 )
+# Вложения тестов пишутся во временный каталог, а не в рабочий var/uploads.
+TEST_UPLOAD_DIR = tempfile.mkdtemp(prefix="radar-uploads-")
 # Настройки читаются при первом обращении, поэтому окружение задаётся до импорта приложения.
-os.environ.update(APP_ENV="test", AUTH_MODE="dev", DATABASE_URL=TEST_DATABASE_URL)
+os.environ.update(
+    APP_ENV="test", AUTH_MODE="dev", DATABASE_URL=TEST_DATABASE_URL, UPLOAD_DIR=TEST_UPLOAD_DIR
+)
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402

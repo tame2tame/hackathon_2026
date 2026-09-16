@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from app.modules.audit.models import AuditLog
 from app.modules.interactions.models import Interaction
 from app.modules.workflow.models import Stage
-from tests.api import find, stage_id
+from tests.api import find, stage_id, upload_pdf
 from tests.users import ALINA_ADMIN, ANNA_KAM, MIKHAIL_KAM, ROMAN_MANAGER, as_user
 
 
@@ -80,10 +80,17 @@ async def test_transition_moves_stage_and_closes_overdue(
 ) -> None:
     item = await find(client, ANNA_KAM, stage_code="signing")
     target = await stage_id(client, "materials_transfer")
+    # Выход с «Подписания» закрывается договором, поэтому сначала документ.
+    attachment = await upload_pdf(client, ANNA_KAM, item["id"], "signed_contract")
 
     response = await client.post(
         f"/api/v1/interactions/{item['id']}/transitions",
-        json={"to_stage_id": target, "comment": "Договор подписан", "expected_version": 1},
+        json={
+            "to_stage_id": target,
+            "comment": "Договор подписан",
+            "expected_version": 1,
+            "attachment_ids": [attachment["id"]],
+        },
         headers=as_user(ANNA_KAM),
     )
 

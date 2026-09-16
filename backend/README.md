@@ -36,6 +36,7 @@ curl -H "X-Dev-User: anna.smirnova@example.com" http://127.0.0.1:8000/api/v1/sig
 
 - API: `http://127.0.0.1:8000`; CORS разрешён для `http://127.0.0.1:5173` и `http://localhost:5173`.
 - Keycloak: `http://127.0.0.1:8080`, realm `radar-vuzov`, клиент `radar-web` (публичный, PKCE S256), redirect `http://127.0.0.1:5173/*`, роли в claim `realm_access.roles`.
+- Вложения: `multipart/form-data` с полями `file` и `document_type`; допустимы png, jpg, jpeg, pdf, zip, gz, rar, doc, docx, xls, xlsx в пределах `MAX_UPLOAD_MB` (25 МБ). Файл скачивается по `GET /api/v1/attachments/{id}/file`.
 - Контракт: [`contracts/openapi.yaml`](../contracts/openapi.yaml).
 
 ## Проверки
