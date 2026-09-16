@@ -1768,6 +1768,236 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/analytics/rating:
+    get:
+      tags:
+      - analytics
+      summary: Рейтинг востребованности
+      description: Балл считается по заявкам, обучающимся и потокам с нормированием внутри направления.
+        Вклад каждой метрики возвращается вместе с баллом, а неполные данные помечаются.
+      operationId: read_rating_api_v1_analytics_rating_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: entity
+        in: query
+        required: false
+        schema:
+          enum:
+          - program
+          - university
+          type: string
+          description: Что сравниваем
+          default: program
+          title: Entity
+        description: Что сравниваем
+      - name: period_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Начало периода
+          title: Period From
+        description: Начало периода
+      - name: period_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Конец периода
+          title: Period To
+        description: Конец периода
+      - name: direction_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: ИТ-направление
+          title: Direction Id
+        description: ИТ-направление
+      - name: w_applications
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 100
+            minimum: 0
+          - type: 'null'
+          title: W Applications
+      - name: w_students
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 100
+            minimum: 0
+          - type: 'null'
+          title: W Students
+      - name: w_streams
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 100
+            minimum: 0
+          - type: 'null'
+          title: W Streams
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatingOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/analytics/rating/weights:
+    get:
+      tags:
+      - analytics
+      summary: Веса рейтинга по умолчанию
+      operationId: read_weights_api_v1_analytics_rating_weights_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeightsOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+    put:
+      tags:
+      - analytics
+      summary: Изменить веса рейтинга
+      description: Сумма весов — 100. Меняют руководитель и администратор.
+      operationId: put_weights_api_v1_analytics_rating_weights_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeightsUpdate'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeightsOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/analytics/stats/funnel:
+    get:
+      tags:
+      - analytics
+      summary: Воронка по этапам
+      operationId: read_funnel_api_v1_analytics_stats_funnel_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/analytics/stats/stage-durations:
+    get:
+      tags:
+      - analytics
+      summary: Средняя длительность этапов
+      operationId: read_stage_durations_api_v1_analytics_stats_stage_durations_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/analytics/stats/distribution:
+    get:
+      tags:
+      - analytics
+      summary: Распределение по направлениям
+      operationId: read_distribution_api_v1_analytics_stats_distribution_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
   /api/v1/events:
     get:
       tags:
@@ -2040,6 +2270,34 @@ components:
       - interaction_ids
       - to_stage_code
       title: BulkTransitionRequest
+    ChartOut:
+      properties:
+        title:
+          type: string
+          title: Title
+        labels:
+          items:
+            type: string
+          type: array
+          title: Labels
+        values:
+          items:
+            type: integer
+          type: array
+          title: Values
+        option:
+          additionalProperties: true
+          type: object
+          title: Option
+          description: Готовые настройки ECharts
+      type: object
+      required:
+      - title
+      - labels
+      - values
+      - option
+      title: ChartOut
+      description: 'Данные и настройки ECharts: интерфейс и PDF рисуют график по одному описанию.'
     ContractOut:
       properties:
         id:
@@ -2087,6 +2345,35 @@ components:
       - license_term_years
       - transfer_status
       title: ContractOut
+    ContributionOut:
+      properties:
+        metric:
+          type: string
+          title: Metric
+          description: applications, students или streams
+        weight:
+          type: integer
+          title: Weight
+        value:
+          type: number
+          title: Value
+          description: Значение метрики за период
+        normalized:
+          type: number
+          title: Normalized
+          description: Доля от лучшего в направлении, 0–100
+        contribution:
+          type: number
+          title: Contribution
+          description: Вклад метрики в балл
+      type: object
+      required:
+      - metric
+      - weight
+      - value
+      - normalized
+      - contribution
+      title: ContributionOut
     DirectionRef:
       properties:
         id:
@@ -2697,6 +2984,80 @@ components:
       - name
       - direction
       title: ProgramRef
+    RatingOut:
+      properties:
+        entity:
+          type: string
+          enum:
+          - program
+          - university
+          title: Entity
+        weights:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Weights
+        rows:
+          items:
+            $ref: '#/components/schemas/RatingRowOut'
+          type: array
+          title: Rows
+      type: object
+      required:
+      - entity
+      - weights
+      - rows
+      title: RatingOut
+    RatingRowOut:
+      properties:
+        place:
+          type: integer
+          title: Place
+        place_change:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Place Change
+          description: Насколько поднялась позиция к предыдущему периоду; null — раньше её не было
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        direction_name:
+          type: string
+          title: Direction Name
+        score:
+          type: number
+          title: Score
+        contributions:
+          items:
+            $ref: '#/components/schemas/ContributionOut'
+          type: array
+          title: Contributions
+        complete:
+          type: boolean
+          title: Complete
+          description: Есть ли все три метрики за период
+        missing_metrics:
+          items:
+            type: string
+          type: array
+          title: Missing Metrics
+      type: object
+      required:
+      - place
+      - place_change
+      - id
+      - name
+      - direction_name
+      - score
+      - contributions
+      - complete
+      - missing_metrics
+      title: RatingRowOut
     ReportCreate:
       properties:
         format:
@@ -3461,6 +3822,59 @@ components:
       - id
       - name
       title: VendorRef
+    WeightsOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        w_applications:
+          type: integer
+          title: W Applications
+        w_students:
+          type: integer
+          title: W Students
+        w_streams:
+          type: integer
+          title: W Streams
+        is_default:
+          type: boolean
+          title: Is Default
+      type: object
+      required:
+      - id
+      - name
+      - w_applications
+      - w_students
+      - w_streams
+      - is_default
+      title: WeightsOut
+    WeightsUpdate:
+      properties:
+        w_applications:
+          type: integer
+          maximum: 100.0
+          minimum: 0.0
+          title: W Applications
+        w_students:
+          type: integer
+          maximum: 100.0
+          minimum: 0.0
+          title: W Students
+        w_streams:
+          type: integer
+          maximum: 100.0
+          minimum: 0.0
+          title: W Streams
+      type: object
+      required:
+      - w_applications
+      - w_students
+      - w_streams
+      title: WeightsUpdate
     WorkflowOut:
       properties:
         id:

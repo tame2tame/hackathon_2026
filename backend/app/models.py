@@ -1,6 +1,7 @@
 """Регистрация всех моделей в метаданных — для Alembic и тестов."""
 
 from app.core.db import Base
+from app.modules.analytics.models import RatingWeightSet
 from app.modules.audit.models import AuditLog
 from app.modules.catalogs.models import (
     AppUser,
@@ -57,6 +58,7 @@ __all__ = [
     "ProgramMetric",
     "ProgramProduct",
     "RadarSignal",
+    "RatingWeightSet",
     "ReportJob",
     "SiteApplication",
     "Stage",

@@ -211,6 +211,9 @@ app_setting        key, value jsonb                    -- пороги рада�
 | `GET /api/v1/integrations/{id}/runs` | Журнал запусков с кодами ошибок |
 | `GET /api/v1/site-applications` | Заявки с сайта; `match_status=unmatched` — очередь на разбор |
 | `POST /api/v1/site-applications/{id}/match` | Привязать заявку к взаимодействию |
+| `GET /api/v1/analytics/rating` | Рейтинг: место, балл, вклад каждой метрики, полнота данных |
+| `GET`, `PUT /api/v1/analytics/rating/weights` | Веса по умолчанию; меняют руководитель и админ |
+| `GET /api/v1/analytics/stats/funnel`, `/stage-durations`, `/distribution` | Статистика с настройками ECharts |
 | `GET /api/v1/events` | Поток событий `text/event-stream` |
 | `GET /api/v1/workflows/default/norms` | Нормы этапов с подсказками по истории |
 | `PUT /api/v1/workflows/default/norms/{stage_code}` | Норма вручную |

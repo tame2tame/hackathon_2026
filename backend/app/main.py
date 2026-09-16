@@ -19,6 +19,7 @@ from app.core.errors import (
     install_error_handlers,
 )
 from app.core.security import DEV_USER_HEADER
+from app.modules.analytics.router import router as analytics_router
 from app.modules.attachments.router import router as attachments_router
 from app.modules.catalogs.router import router as catalogs_router
 from app.modules.events.router import router as events_router
@@ -99,6 +100,7 @@ def create_app() -> FastAPI:
         integrations_router,
         radar_router,
         reports_router,
+        analytics_router,
         events_router,
     ):
         app.include_router(router)
