@@ -52,3 +52,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: Сборка образа API
         run: docker build backend
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Полная история нужна gitleaks: секрет мог попасть в давний коммит.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Известные уязвимости в зависимостях
+        run: |
+          pip install pip-audit
+          pip install -e backend
+          pip-audit --strict --desc
+      - name: Секреты в истории
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --redact --verbose --exit-code 1

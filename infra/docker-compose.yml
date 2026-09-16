@@ -99,5 +99,28 @@ services:
     ports:
       - "127.0.0.1:8101:8101"
 
+  # Ежедневный дамп базы. Профиль ops: локальная разработка его не поднимает.
+  # Запуск: docker compose --profile ops up -d backup
+  backup:
+    image: postgres:16
+    profiles: ["ops"]
+    environment:
+      PGHOST: postgres
+      PGUSER: radar
+      PGPASSWORD: radar
+      PGDATABASE: radar
+      BACKUP_DIR: /backups
+      KEEP_DAYS: "7"
+    volumes:
+      - ./backup:/scripts:ro
+      - backups:/backups
+    # Команда списком и без своего entrypoint: иначе `compose run backup sh /scripts/backup.sh`
+    # подставит путь в $0 и скрипт молча не выполнится.
+    command: ["sh", "-c", "while true; do sh /scripts/backup.sh; sleep 86400; done"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres-data:
+  backups:
