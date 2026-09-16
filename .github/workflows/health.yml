@@ -1,0 +1,21 @@
+name: Health
+# Ежечасная проверка стенда: о падении лучше узнать от расписания, чем от жюри.
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Состояние стенда
+        env:
+          PUBLIC_URL: ${{ secrets.PUBLIC_URL }}
+        run: |
+          if [ -z "${PUBLIC_URL}" ]; then
+            echo "Секрет PUBLIC_URL не задан: стенда ещё нет, проверять нечего."
+            exit 0
+          fi
+          sh infra/smoke.sh "${PUBLIC_URL}"
