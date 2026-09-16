@@ -2,7 +2,7 @@
 
 import uuid
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StageRef(BaseModel):
@@ -41,3 +41,21 @@ class WorkflowOut(BaseModel):
     version_no: int
     stages: list[StageOut]
     transitions: list[TransitionRuleOut]
+
+
+class StageNormOut(BaseModel):
+    stage_code: str
+    stage_name: str
+    norm_days: int
+    source: str = Field(description="manual — задана вручную, suggested — принята подсказка")
+    suggested_median_days: int | None = Field(
+        description="Типичный срок этапа по завершённым переходам"
+    )
+    suggested_percentile_days: int | None = Field(
+        description="80-й перцентиль: срок, в который укладывается большинство"
+    )
+    sample_size: int | None = Field(description="Сколько завершённых этапов легло в подсказку")
+
+
+class NormUpdate(BaseModel):
+    norm_days: int = Field(ge=1, le=365, description="Новая норма этапа в днях")

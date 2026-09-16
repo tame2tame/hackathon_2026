@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, ErrorCode, FieldError
+from app.core.events import IMPORT_APPLIED, get_event_bus
 from app.core.security import CurrentUser
 from app.modules.attachments import files
 from app.modules.audit.models import AuditLog
@@ -353,6 +354,7 @@ async def apply_batch(
         )
     )
     await session.commit()
+    await get_event_bus().publish(IMPORT_APPLIED, {"batch_id": str(batch.id), **dict(counter)})
     return ApplyResult(
         batch_id=batch.id,
         created=counter["created"],

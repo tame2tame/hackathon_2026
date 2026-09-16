@@ -51,3 +51,17 @@ class InteractionRef(BaseModel):
 
 class SignalListItem(SignalOut):
     interaction: InteractionRef
+
+
+class SummaryRow(BaseModel):
+    owner: UserRef
+    counts: dict[SignalKind, int] = Field(description="Открытые сигналы по видам")
+    total: int
+
+
+class SignalSummaryOut(BaseModel):
+    """Матрица «КАМ × вид сигнала» для тепловой карты руководителя."""
+
+    kinds: list[SignalKind]
+    rows: list[SummaryRow]
+    total: int

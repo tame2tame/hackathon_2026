@@ -62,8 +62,24 @@ services:
       KEYCLOAK_ISSUER: http://127.0.0.1:8080/realms/radar-vuzov
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/radar-vuzov/protocol/openid-connect/certs
       KEYCLOAK_AUDIENCE: radar-api
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Ночные задачи: полный пересчёт радара и подсказки норм (00:00 UTC — 03:00 МСК).
+  worker:
+    build: ../backend
+    command: ["arq", "app.worker.WorkerSettings"]
+    environment:
+      APP_ENV: local
+      AUTH_MODE: keycloak
+      DATABASE_URL: postgresql+asyncpg://radar:radar@postgres:5432/radar
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy

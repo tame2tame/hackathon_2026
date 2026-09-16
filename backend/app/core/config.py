@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     # Внутри docker compose ключи берутся по внутреннему адресу, а издатель в токене — внешний.
     keycloak_jwks_url: str = ""
     keycloak_audience: str = "radar-api"
+    # Пустой адрес переводит события в память процесса: так работают тесты и запуск без Redis.
+    redis_url: str = "redis://127.0.0.1:6379/0"
     # Каталог вложений; в облаке заменяется на S3 за тем же интерфейсом Storage.
     upload_dir: str = "storage/uploads"
     max_upload_mb: int = 25

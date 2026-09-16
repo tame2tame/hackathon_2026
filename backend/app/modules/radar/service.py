@@ -10,10 +10,12 @@ from sqlalchemy import ColumnElement, and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.core.events import SIGNAL_OPENED, SIGNAL_RESOLVED, get_event_bus
 from app.core.pagination import Page, PageParams
 from app.core.scope import apply_interaction_scope
 from app.core.security import CurrentUser
-from app.modules.catalogs.models import Product, Program, University
+from app.modules.catalogs.models import AppUser, Product, Program, University
+from app.modules.catalogs.schemas import UserRef
 from app.modules.interactions.models import Attachment, Contract, Interaction
 from app.modules.interactions.period import period_condition
 from app.modules.radar.models import RadarSignal
@@ -21,9 +23,16 @@ from app.modules.radar.rules import (
     DEFAULT_THRESHOLDS,
     InteractionState,
     RadarThresholds,
+    SignalKind,
     evaluate_signals,
 )
-from app.modules.radar.schemas import InteractionRef, SignalListItem, SignalOut
+from app.modules.radar.schemas import (
+    InteractionRef,
+    SignalListItem,
+    SignalOut,
+    SignalSummaryOut,
+    SummaryRow,
+)
 from app.modules.workflow.models import Stage, StageNorm, WorkflowVersion
 
 
@@ -109,6 +118,18 @@ async def recompute_signals(
     )
     current = {(signal.interaction_id, signal.kind): signal for signal in open_signals}
 
+    owners = {
+        interaction_id: owner_id
+        for interaction_id, owner_id in (
+            await session.execute(
+                select(Interaction.id, Interaction.owner_user_id).where(
+                    Interaction.id.in_(interaction_ids)
+                )
+            )
+        ).tuples()
+    }
+    bus = get_event_bus()
+
     for interaction_id, state in states.items():
         drafts = {draft.kind.value: draft for draft in evaluate_signals(state, now, thresholds)}
         for kind, draft in drafts.items():
@@ -123,6 +144,15 @@ async def recompute_signals(
                         detected_at=now,
                     )
                 )
+                await bus.publish(
+                    SIGNAL_OPENED,
+                    {
+                        "interaction_id": str(interaction_id),
+                        "kind": kind,
+                        "severity": draft.severity.value,
+                    },
+                    owner_user_id=owners.get(interaction_id),
+                )
             else:
                 signal.severity = draft.severity.value
                 signal.evidence = draft.evidence
@@ -130,6 +160,11 @@ async def recompute_signals(
     # Всё, что осталось открытым без подтверждения правилом, закрывается.
     for signal in current.values():
         signal.resolved_at = now
+        await bus.publish(
+            SIGNAL_RESOLVED,
+            {"interaction_id": str(signal.interaction_id), "kind": signal.kind},
+            owner_user_id=owners.get(signal.interaction_id),
+        )
     await session.flush()
 
 
@@ -151,6 +186,45 @@ async def open_signals_by_interaction(
 
 def _severity_rank() -> ColumnElement[int]:
     return case({"high": 0, "medium": 1, "low": 2}, value=RadarSignal.severity)
+
+
+async def signals_summary(
+    session: AsyncSession, user: CurrentUser, filters: SignalFilters
+) -> SignalSummaryOut:
+    """Сколько открытых сигналов каждого вида у каждого КАМа в области видимости."""
+    stmt = (
+        select(AppUser.id, AppUser.full_name, RadarSignal.kind, func.count())
+        .select_from(RadarSignal)
+        .join(Interaction, Interaction.id == RadarSignal.interaction_id)
+        .join(AppUser, AppUser.id == Interaction.owner_user_id)
+        .where(RadarSignal.resolved_at.is_(None), Interaction.status != "cancelled")
+        .group_by(AppUser.id, AppUser.full_name, RadarSignal.kind)
+    )
+    stmt = apply_interaction_scope(stmt, user)
+    if filters.kind:
+        stmt = stmt.where(RadarSignal.kind.in_(filters.kind))
+    if filters.owner_id:
+        stmt = stmt.where(Interaction.owner_user_id.in_(filters.owner_id))
+    period = period_condition(filters.period_from, filters.period_to)
+    if period is not None:
+        stmt = stmt.where(period)
+
+    rows: dict[uuid.UUID, SummaryRow] = {}
+    for owner_id, full_name, kind, count in (await session.execute(stmt)).tuples():
+        row = rows.setdefault(
+            owner_id,
+            SummaryRow(
+                owner=UserRef(id=owner_id, full_name=full_name),
+                counts=dict.fromkeys(SignalKind, 0),
+                total=0,
+            ),
+        )
+        row.counts[SignalKind(kind)] = count
+        row.total += count
+    ordered = sorted(rows.values(), key=lambda row: (-row.total, row.owner.full_name))
+    return SignalSummaryOut(
+        kinds=list(SignalKind), rows=ordered, total=sum(row.total for row in ordered)
+    )
 
 
 async def list_signals(

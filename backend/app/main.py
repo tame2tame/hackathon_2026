@@ -21,6 +21,7 @@ from app.core.errors import (
 from app.core.security import DEV_USER_HEADER
 from app.modules.attachments.router import router as attachments_router
 from app.modules.catalogs.router import router as catalogs_router
+from app.modules.events.router import router as events_router
 from app.modules.imports.router import router as imports_router
 from app.modules.interactions.router import router as interactions_router
 from app.modules.radar.router import router as radar_router
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
         attachments_router,
         imports_router,
         radar_router,
+        events_router,
     ):
         app.include_router(router)
 

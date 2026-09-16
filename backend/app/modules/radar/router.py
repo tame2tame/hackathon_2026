@@ -9,8 +9,8 @@ from app.core.errors import ErrorCode, error_responses
 from app.core.pagination import Page, PageQuery
 from app.core.security import CurrentUserDep
 from app.modules.radar.rules import Severity, SignalKind
-from app.modules.radar.schemas import SignalListItem
-from app.modules.radar.service import SignalFilters, list_signals
+from app.modules.radar.schemas import SignalListItem, SignalSummaryOut
+from app.modules.radar.service import SignalFilters, list_signals, signals_summary
 
 router = APIRouter(prefix="/api/v1/signals", tags=["radar"])
 
@@ -50,3 +50,17 @@ async def read_signals(
     filters: Annotated[SignalFilters, Depends(_signal_filters)],
 ) -> Page[SignalListItem]:
     return await list_signals(session, user, filters, page)
+
+
+@router.get(
+    "/summary",
+    summary="Матрица «КАМ × вид сигнала»",
+    description="Тепловая карта руководителя: открытые сигналы по видам у каждого КАМа.",
+    responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.VALIDATION_ERROR),
+)
+async def read_signals_summary(
+    session: SessionDep,
+    user: CurrentUserDep,
+    filters: Annotated[SignalFilters, Depends(_signal_filters)],
+) -> SignalSummaryOut:
+    return await signals_summary(session, user, filters)

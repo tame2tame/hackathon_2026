@@ -1,12 +1,17 @@
 """Чтение workflow: версия шаблона, этапы с нормами, разрешённые переходы."""
 
 import uuid
+from collections import defaultdict
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.errors import AppError, ErrorCode
+from app.core.security import CurrentUser
+from app.modules.audit.models import AuditLog
+from app.modules.interactions.models import Transition
+from app.modules.radar.norms import suggest_norm
 from app.modules.workflow.models import (
     Stage,
     StageNorm,
@@ -16,6 +21,7 @@ from app.modules.workflow.models import (
 )
 from app.modules.workflow.schemas import (
     AllowedTransitionOut,
+    StageNormOut,
     StageOut,
     StageRef,
     TransitionRuleOut,
@@ -107,3 +113,144 @@ async def get_transition_rule(
         )
     )
     return rule
+
+
+async def _default_version(session: AsyncSession) -> WorkflowVersion:
+    version = await session.scalar(
+        select(WorkflowVersion)
+        .join(WorkflowTemplate, WorkflowTemplate.id == WorkflowVersion.template_id)
+        .where(WorkflowTemplate.is_default.is_(True), WorkflowVersion.status == "published")
+        .order_by(WorkflowVersion.version_no.desc())
+        .limit(1)
+    )
+    if version is None:
+        raise AppError(ErrorCode.NOT_FOUND, "Базовый workflow не создан: выполните make seed.")
+    return version
+
+
+async def _norm(session: AsyncSession, stage_code: str) -> tuple[StageNorm, Stage]:
+    version = await _default_version(session)
+    stage = await session.scalar(
+        select(Stage).where(Stage.version_id == version.id, Stage.code == stage_code)
+    )
+    norm = await session.scalar(
+        select(StageNorm).where(
+            StageNorm.template_id == version.template_id, StageNorm.stage_code == stage_code
+        )
+    )
+    if stage is None or norm is None:
+        raise AppError(ErrorCode.NOT_FOUND, "Этап не найден или у него нет нормы.")
+    return norm, stage
+
+
+def _norm_out(norm: StageNorm, stage: Stage) -> StageNormOut:
+    return StageNormOut(
+        stage_code=norm.stage_code,
+        stage_name=stage.name,
+        norm_days=norm.norm_days,
+        source=norm.source,
+        suggested_median_days=norm.suggested_median_days,
+        suggested_percentile_days=norm.suggested_percentile_days,
+        sample_size=norm.sample_size,
+    )
+
+
+async def list_norms(session: AsyncSession) -> list[StageNormOut]:
+    version = await _default_version(session)
+    rows = await session.execute(
+        select(StageNorm, Stage)
+        .join(
+            Stage,
+            and_(Stage.version_id == version.id, Stage.code == StageNorm.stage_code),
+        )
+        .where(StageNorm.template_id == version.template_id)
+        .order_by(Stage.position)
+    )
+    return [_norm_out(norm, stage) for norm, stage in rows.tuples()]
+
+
+async def set_norm(
+    session: AsyncSession,
+    user: CurrentUser,
+    stage_code: str,
+    norm_days: int,
+    trace_id: str | None = None,
+) -> StageNormOut:
+    norm, stage = await _norm(session, stage_code)
+    before = {"norm_days": norm.norm_days, "source": norm.source}
+    norm.norm_days = norm_days
+    norm.source = "manual"
+    session.add(
+        AuditLog(
+            actor_user_id=user.id,
+            action="workflow.norm_changed",
+            entity_kind="stage_norm",
+            entity_id=norm.id,
+            before=before,
+            after={"norm_days": norm_days, "source": "manual"},
+            trace_id=trace_id,
+        )
+    )
+    await session.commit()
+    return _norm_out(norm, stage)
+
+
+async def refresh_suggestions(session: AsyncSession) -> int:
+    """Считает подсказки норм по завершённым этапам. Возвращает число обновлённых норм."""
+    version = await _default_version(session)
+    # Длительность этапа — промежуток между переходом на него и следующим переходом.
+    next_at = func.lead(Transition.occurred_at).over(
+        partition_by=Transition.interaction_id, order_by=Transition.occurred_at
+    )
+    rows = await session.execute(
+        select(Stage.code, Transition.occurred_at, next_at.label("next_at"))
+        .join(Stage, Stage.id == Transition.to_stage_id)
+        .where(Stage.version_id == version.id)
+    )
+    durations: dict[str, list[int]] = defaultdict(list)
+    for code, occurred_at, next_occurred in rows.tuples():
+        if next_occurred is not None:
+            durations[code].append((next_occurred - occurred_at).days)
+
+    norms = await session.scalars(
+        select(StageNorm).where(StageNorm.template_id == version.template_id)
+    )
+    updated = 0
+    for norm in norms:
+        suggestion = suggest_norm(durations.get(norm.stage_code, []))
+        if suggestion is None:
+            continue
+        norm.suggested_median_days = suggestion.median_days
+        norm.suggested_percentile_days = suggestion.percentile_days
+        norm.sample_size = suggestion.sample_size
+        updated += 1
+    await session.flush()
+    return updated
+
+
+async def accept_suggestion(
+    session: AsyncSession, user: CurrentUser, stage_code: str, trace_id: str | None = None
+) -> StageNormOut:
+    """Принять подсказку: нормой становится 80-й перцентиль, в который укладывается большинство."""
+    norm, stage = await _norm(session, stage_code)
+    if norm.suggested_percentile_days is None:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Для этого этапа ещё нет подсказки: нужно не меньше пяти завершённых этапов.",
+        )
+    before = {"norm_days": norm.norm_days, "source": norm.source}
+    norm.norm_days = norm.suggested_percentile_days
+    norm.source = "suggested"
+    session.add(
+        AuditLog(
+            actor_user_id=user.id,
+            action="workflow.norm_suggestion_accepted",
+            entity_kind="stage_norm",
+            entity_id=norm.id,
+            before=before,
+            after={"norm_days": norm.norm_days, "source": "suggested"},
+            trace_id=trace_id,
+        )
+    )
+    await session.commit()
+    return _norm_out(norm, stage)

@@ -99,5 +99,7 @@ class StageNorm(UUIDPrimaryKey, Timestamps, Base):
     stage_code: Mapped[str] = mapped_column(String(60))
     norm_days: Mapped[int]
     source: Mapped[str] = mapped_column(String(16), default="manual")
+    # Подсказка по истории: медиана показывает типичный срок, 80-й перцентиль — рабочую норму.
     suggested_median_days: Mapped[int | None]
+    suggested_percentile_days: Mapped[int | None]
     sample_size: Mapped[int | None]

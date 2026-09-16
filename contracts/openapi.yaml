@@ -299,6 +299,135 @@ paths:
                 $ref: '#/components/schemas/Problem'
       security:
       - HTTPBearer: []
+  /api/v1/workflows/default/norms:
+    get:
+      tags:
+      - workflow
+      summary: Нормы этапов с подсказками по истории
+      operationId: read_norms_api_v1_workflows_default_norms_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/StageNormOut'
+                type: array
+                title: Response Read Norms Api V1 Workflows Default Norms Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/workflows/default/norms/{stage_code}:
+    put:
+      tags:
+      - workflow
+      summary: Задать норму этапа вручную
+      operationId: put_norm_api_v1_workflows_default_norms__stage_code__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: stage_code
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stage Code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NormUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageNormOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/workflows/default/norms/{stage_code}/accept-suggestion:
+    post:
+      tags:
+      - workflow
+      summary: Принять подсказку нормы
+      description: Нормой становится 80-й перцентиль завершённых этапов.
+      operationId: post_accept_suggestion_api_v1_workflows_default_norms__stage_code__accept_suggestion_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: stage_code
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stage Code
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageNormOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/interactions:
     get:
       tags:
@@ -1158,6 +1287,154 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/signals/summary:
+    get:
+      tags:
+      - radar
+      summary: Матрица «КАМ × вид сигнала»
+      description: 'Тепловая карта руководителя: открытые сигналы по видам у каждого КАМа.'
+      operationId: read_signals_summary_api_v1_signals_summary_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: kind
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/SignalKind'
+          - type: 'null'
+          description: Вид сигнала
+          title: Kind
+        description: Вид сигнала
+      - name: severity
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/Severity'
+          - type: 'null'
+          description: Серьёзность
+          title: Severity
+        description: Серьёзность
+      - name: owner_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: КАМ
+          title: Owner Id
+        description: КАМ
+      - name: university_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: Вуз
+          title: University Id
+        description: Вуз
+      - name: period_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Начало периода, UTC
+          title: Period From
+        description: Начало периода, UTC
+      - name: period_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Конец периода, UTC
+          title: Period To
+        description: Конец периода, UTC
+      - name: search
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          description: Вуз, программа или продукт
+          title: Search
+        description: Вуз, программа или продукт
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignalSummaryOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/events:
+    get:
+      tags:
+      - events
+      summary: Поток событий
+      description: '`text/event-stream`. Заголовок `Last-Event-ID` досылает пропущенное после обрыва связи;
+        раз в 15 секунд приходит комментарий-пульс.'
+      operationId: read_events_api_v1_events_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: Last-Event-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last-Event-Id
+      responses:
+        '200':
+          description: События области видимости пользователя
+          content:
+            text/event-stream: {}
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
 components:
   schemas:
     AllowedTransitionOut:
@@ -1828,6 +2105,18 @@ components:
       - team
       - scope
       title: MeOut
+    NormUpdate:
+      properties:
+        norm_days:
+          type: integer
+          maximum: 365.0
+          minimum: 1.0
+          title: Norm Days
+          description: Новая норма этапа в днях
+      type: object
+      required:
+      - norm_days
+      title: NormUpdate
     OwnerChange:
       properties:
         owner_id:
@@ -2137,6 +2426,71 @@ components:
       - message
       - evidence
       title: SignalOut
+    SignalSummaryOut:
+      properties:
+        kinds:
+          items:
+            $ref: '#/components/schemas/SignalKind'
+          type: array
+          title: Kinds
+        rows:
+          items:
+            $ref: '#/components/schemas/SummaryRow'
+          type: array
+          title: Rows
+        total:
+          type: integer
+          title: Total
+      type: object
+      required:
+      - kinds
+      - rows
+      - total
+      title: SignalSummaryOut
+      description: Матрица «КАМ × вид сигнала» для тепловой карты руководителя.
+    StageNormOut:
+      properties:
+        stage_code:
+          type: string
+          title: Stage Code
+        stage_name:
+          type: string
+          title: Stage Name
+        norm_days:
+          type: integer
+          title: Norm Days
+        source:
+          type: string
+          title: Source
+          description: manual — задана вручную, suggested — принята подсказка
+        suggested_median_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Suggested Median Days
+          description: Типичный срок этапа по завершённым переходам
+        suggested_percentile_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Suggested Percentile Days
+          description: '80-й перцентиль: срок, в который укладывается большинство'
+        sample_size:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Sample Size
+          description: Сколько завершённых этапов легло в подсказку
+      type: object
+      required:
+      - stage_code
+      - stage_name
+      - norm_days
+      - source
+      - suggested_median_days
+      - suggested_percentile_days
+      - sample_size
+      title: StageNormOut
     StageOut:
       properties:
         id:
@@ -2201,6 +2555,27 @@ components:
       - name
       - position
       title: StageRef
+    SummaryRow:
+      properties:
+        owner:
+          $ref: '#/components/schemas/UserRef'
+        counts:
+          additionalProperties:
+            type: integer
+          propertyNames:
+            $ref: '#/components/schemas/SignalKind'
+          type: object
+          title: Counts
+          description: Открытые сигналы по видам
+        total:
+          type: integer
+          title: Total
+      type: object
+      required:
+      - owner
+      - counts
+      - total
+      title: SummaryRow
     TeamRef:
       properties:
         id:

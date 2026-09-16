@@ -12,6 +12,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.interfaces import LoaderOption
 
 from app.core.errors import AppError, ErrorCode, FieldError
+from app.core.events import INTERACTION_TRANSITIONED, get_event_bus
 from app.core.pagination import Page, PageParams
 from app.core.roles import Role
 from app.core.scope import apply_interaction_scope
@@ -362,6 +363,16 @@ async def _apply_transition(
         )
     )
     await session.flush()
+    await get_event_bus().publish(
+        INTERACTION_TRANSITIONED,
+        {
+            "interaction_id": str(interaction.id),
+            "to_stage_code": to_stage.code,
+            "version": interaction.version,
+            "source": source,
+        },
+        owner_user_id=interaction.owner_user_id,
+    )
     return transition
 
 
