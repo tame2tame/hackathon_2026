@@ -7,6 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Шрифт с кириллицей нужен отчётам в PDF: во fpdf2 встроены только латинские.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml alembic.ini ./
 COPY app ./app
 COPY scripts ./scripts

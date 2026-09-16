@@ -176,7 +176,11 @@ async def seed_demo(session: AsyncSession, now: datetime) -> bool:
         )
         session.add(interaction)
         await session.flush()
-        _add_history(session, interaction, stages, spec.stage_code, entered_at)
+        # Дата создания совпадает с первым переходом: иначе отчёт за прошлый период
+        # не увидит взаимодействие, которое тогда уже велось.
+        interaction.created_at = _add_history(
+            session, interaction, stages, spec.stage_code, entered_at
+        )
         ids.append(interaction.id)
 
     await session.flush()
@@ -230,8 +234,8 @@ def _add_history(
     stages: dict[str, Stage],
     current_code: str,
     entered_at: datetime,
-) -> None:
-    """История от первого этапа до текущего; необязательная доработка документов пропускается."""
+) -> datetime:
+    """История от первого этапа до текущего; возвращает дату первого перехода."""
     path = [s.code for s in BASE_STAGES if s.code != "documents_revision"]
     passed = path[: path.index(current_code) + 1]
     started_at = entered_at - timedelta(days=PREVIOUS_STAGE_DAYS * (len(passed) - 1))
@@ -250,3 +254,4 @@ def _add_history(
             )
         )
         previous = stage
+    return started_at

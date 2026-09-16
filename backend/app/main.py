@@ -25,6 +25,7 @@ from app.modules.events.router import router as events_router
 from app.modules.imports.router import router as imports_router
 from app.modules.interactions.router import router as interactions_router
 from app.modules.radar.router import router as radar_router
+from app.modules.reports.router import router as reports_router
 from app.modules.workflow.router import router as workflow_router
 
 DESCRIPTION = """
@@ -95,6 +96,7 @@ def create_app() -> FastAPI:
         attachments_router,
         imports_router,
         radar_router,
+        reports_router,
         events_router,
     ):
         app.include_router(router)

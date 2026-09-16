@@ -78,7 +78,8 @@ def _card_options() -> list[LoaderOption]:
     ]
 
 
-def _apply_filters[S: Select[Any]](stmt: S, filters: InteractionFilters) -> S:
+def apply_filters[S: Select[Any]](stmt: S, filters: InteractionFilters) -> S:
+    """Фильтры списка. Отчёты берут те же самые, поэтому функция открыта наружу."""
     stmt = stmt.where(Interaction.status != "cancelled")
     period = period_condition(filters.period_from, filters.period_to)
     if period is not None:
@@ -183,7 +184,7 @@ async def list_interactions(
     now: datetime | None = None,
 ) -> Page[InteractionListItem]:
     now = now or datetime.now(UTC)
-    stmt = _apply_filters(apply_interaction_scope(select(Interaction), user), filters)
+    stmt = apply_filters(apply_interaction_scope(select(Interaction), user), filters)
     total = await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     interactions = list(
         (

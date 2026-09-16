@@ -1399,6 +1399,145 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/reports:
+    get:
+      tags:
+      - reports
+      summary: Свои задания на отчёт
+      operationId: read_reports_api_v1_reports_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ReportJobOut'
+                type: array
+                title: Response Read Reports Api V1 Reports Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - reports
+      summary: Заказать отчёт
+      description: 'Отчёт строится в фоне: ответ содержит id задания, дальше состояние смотрят в `GET
+        /api/v1/reports/{id}`. Колонки: university, direction, program, product, stage, owner, contract,
+        license_valid_until, days_on_stage, signals.'
+      operationId: post_report_api_v1_reports_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportCreate'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportJobOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR · REPORT_TOO_LARGE
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/reports/{report_id}:
+    get:
+      tags:
+      - reports
+      summary: Состояние отчёта
+      operationId: read_report_api_v1_reports__report_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: report_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Report Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportJobOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/reports/{report_id}/file:
+    get:
+      tags:
+      - reports
+      summary: Скачать готовый отчёт
+      operationId: read_report_file_api_v1_reports__report_id__file_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: report_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Report Id
+      responses:
+        '200':
+          description: Файл отчёта
+          content:
+            application/octet-stream: {}
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/events:
     get:
       tags:
@@ -2277,6 +2416,130 @@ components:
       - name
       - direction
       title: ProgramRef
+    ReportCreate:
+      properties:
+        format:
+          type: string
+          enum:
+          - xlsx
+          - xls
+          - pdf
+          - json
+          title: Format
+          default: xlsx
+        period_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Period From
+        period_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Period To
+        university_id:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: University Id
+        direction_id:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Direction Id
+        program_id:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Program Id
+        product_id:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Product Id
+        owner_id:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Owner Id
+        stage_code:
+          items:
+            type: string
+          type: array
+          title: Stage Code
+        search:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Search
+        columns:
+          items:
+            type: string
+          type: array
+          minItems: 1
+          title: Columns
+          description: 'Из набора: university, direction, program, product, stage, owner, contract, license_valid_until,
+            days_on_stage, signals'
+      type: object
+      title: ReportCreate
+      description: Те же фильтры, что у списка взаимодействий, плюс колонки и формат файла.
+    ReportJobOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          title: Status
+          description: queued, running, done или failed
+        progress:
+          type: integer
+          title: Progress
+          description: Процент готовности
+        format:
+          type: string
+          title: Format
+        row_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Row Count
+        error_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Code
+          description: Код ошибки из каталога, если отчёт не построен
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        finished_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Finished At
+      type: object
+      required:
+      - id
+      - status
+      - progress
+      - format
+      - row_count
+      - error_code
+      - created_at
+      - finished_at
+      title: ReportJobOut
     Role:
       type: string
       enum:

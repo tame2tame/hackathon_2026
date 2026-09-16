@@ -26,6 +26,7 @@ from app.modules.interactions.models import (
 )
 from app.modules.metrics.models import ProgramMetric
 from app.modules.radar.models import RadarSignal
+from app.modules.reports.models import ReportJob
 from app.modules.workflow.models import (
     Stage,
     StageNorm,
@@ -54,6 +55,7 @@ __all__ = [
     "ProgramMetric",
     "ProgramProduct",
     "RadarSignal",
+    "ReportJob",
     "Stage",
     "StageNorm",
     "StageTransitionRule",
