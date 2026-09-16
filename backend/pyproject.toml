@@ -19,6 +19,9 @@ dependencies = [
     "pyyaml~=6.0",
     # Разбор multipart-запросов: загрузка вложений.
     "python-multipart~=0.0.20",
+    # Чтение выгрузок заказчика: openpyxl — xlsx, xlrd — устаревший xls.
+    "openpyxl~=3.1",
+    "xlrd~=2.0",
 ]
 
 [project.optional-dependencies]
@@ -55,6 +58,11 @@ exclude = ["^migrations/"]
 
 [[tool.mypy.overrides]]
 module = ["asyncpg.*"]
+ignore_missing_imports = true
+
+# У openpyxl и xlrd нет типов; границы использования узкие — чтение ячеек в reader.py.
+[[tool.mypy.overrides]]
+module = ["openpyxl.*", "xlrd.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -14,6 +14,7 @@ from app.modules.catalogs.models import (
     Vendor,
     product_direction,
 )
+from app.modules.imports.models import ImportBatch, ImportProfile, ImportRow
 from app.modules.interactions.models import (
     AssignmentChange,
     Attachment,
@@ -41,6 +42,9 @@ __all__ = [
     "ContactPerson",
     "Contract",
     "Direction",
+    "ImportBatch",
+    "ImportProfile",
+    "ImportRow",
     "Interaction",
     "InteractionContact",
     "InteractionNote",

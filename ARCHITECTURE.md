@@ -139,8 +139,10 @@ assignment_change  id, interaction_id, from_user_id, to_user_id, changed_by, cha
 
 ```text
 import_profile     id, name, file_kind (xls|xlsx), column_map jsonb
-import_batch       id, profile_id, file_name, status (uploaded|previewed|applied|failed), stats jsonb
-import_row         id, batch_id, row_no, raw jsonb, resolution (new|update|conflict|skip|needs_program)
+import_batch       id, profile_id, file_name, file_kind, status (uploaded|previewed|applied|failed),
+                   headers jsonb, column_map jsonb, stats jsonb, uploaded_by, applied_at
+import_row         id, batch_id, row_no, raw jsonb, resolution (new|update|conflict|skip|needs_program),
+                   detail   -- причина, по которой строка требует внимания
 integration_source id, kind (lms|site), base_url, secret_ref, is_mock, schedule_cron, last_sync_at
 sync_run           id, source_id, started_at, finished_at, status, stats jsonb, error_code
 site_application   id, external_id UNIQUE, university_id, program_id, received_at, match_status, interaction_id
@@ -194,6 +196,10 @@ app_setting        key, value jsonb                    -- пороги рада�
 | `POST /api/v1/interactions/{id}/attachments` | Загрузка документа (multipart: `file`, `document_type`) |
 | `GET /api/v1/interactions/{id}/attachments` | Документы взаимодействия |
 | `GET /api/v1/attachments/{id}/file` | Файл вложения с исходным именем |
+| `POST /api/v1/imports` | Загрузка выгрузки xls/xlsx: колонки файла и подсказка соответствия |
+| `PUT /api/v1/imports/{id}/mapping` | Соответствие колонок и предпросмотр по строкам |
+| `POST /api/v1/imports/{id}/apply` | Применение загрузки |
+| `GET /api/v1/import-profiles` | Сохранённые соответствия колонок |
 | `GET /api/v1/signals` | Открытые сигналы радара с доказательствами |
 
 Вложения лежат за интерфейсом `Storage` (`app/core/storage.py`): на своей машине и демо-стенде это каталог `UPLOAD_DIR`, в облаке — S3 с тем же ключом `interactions/{interaction_id}/{attachment_id}`. Тип файла проверяется дважды — по расширению и по сигнатуре содержимого, поэтому exe с именем `.pdf` отклоняется кодом `FILE_TYPE_NOT_ALLOWED`; предел размера задаёт `MAX_UPLOAD_MB` (по ТЗ 25 МБ), превышение — `FILE_TOO_LARGE`. Документ привязывается к этапу, на котором загружен, и закрывает сигнал «нет документа»; выход с этапов «Подписание», «Передача материалов» и «Обучение преподавателей» без документа недоступен.

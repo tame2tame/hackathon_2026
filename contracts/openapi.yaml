@@ -841,6 +841,190 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/imports:
+    post:
+      tags:
+      - imports
+      summary: Загрузить выгрузку xls или xlsx
+      description: Возвращает колонки файла и подсказку соответствия по заголовкам ТЗ.
+      operationId: post_import_api_v1_imports_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_post_import_api_v1_imports_post'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatchOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '415':
+          description: FILE_TYPE_NOT_ALLOWED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '413':
+          description: FILE_TOO_LARGE
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/imports/{batch_id}/mapping:
+    put:
+      tags:
+      - imports
+      summary: Задать соответствие колонок и увидеть предпросмотр
+      description: 'Каждая строка получает решение: new, update, conflict, skip или needs_program.'
+      operationId: put_mapping_api_v1_imports__batch_id__mapping_put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Batch Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MappingUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatchOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR · IMPORT_MAPPING_INVALID
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/imports/{batch_id}/apply:
+    post:
+      tags:
+      - imports
+      summary: Применить загрузку
+      description: Создаёт и обновляет записи по строкам new и update, затем пересчитывает радар.
+      operationId: post_apply_api_v1_imports__batch_id__apply_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Batch Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyResult'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/import-profiles:
+    get:
+      tags:
+      - imports
+      summary: Сохранённые соответствия колонок
+      operationId: read_import_profiles_api_v1_import_profiles_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ImportProfileOut'
+                type: array
+                title: Response Read Import Profiles Api V1 Import Profiles Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
   /api/v1/signals:
     get:
       tags:
@@ -992,6 +1176,36 @@ components:
       - requires_comment
       - requires_attachment
       title: AllowedTransitionOut
+    ApplyResult:
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+          title: Batch Id
+        created:
+          type: integer
+          title: Created
+        updated:
+          type: integer
+          title: Updated
+        skipped:
+          type: integer
+          title: Skipped
+        conflicts:
+          type: integer
+          title: Conflicts
+        needs_program:
+          type: integer
+          title: Needs Program
+      type: object
+      required:
+      - batch_id
+      - created
+      - updated
+      - skipped
+      - conflicts
+      - needs_program
+      title: ApplyResult
     AttachmentOut:
       properties:
         id:
@@ -1059,6 +1273,17 @@ components:
       required:
       - file
       title: Body_post_attachment_api_v1_interactions__interaction_id__attachments_post
+    Body_post_import_api_v1_imports_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Книга Excel с выгрузкой
+      type: object
+      required:
+      - file
+      title: Body_post_import_api_v1_imports_post
     BulkItemResult:
       properties:
         interaction_id:
@@ -1282,6 +1507,104 @@ components:
       - version
       - database
       title: HealthOut
+    ImportBatchOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        file_name:
+          type: string
+          title: File Name
+        file_kind:
+          type: string
+          title: File Kind
+        status:
+          type: string
+          title: Status
+        headers:
+          items:
+            type: string
+          type: array
+          title: Headers
+          description: Колонки файла в исходном порядке
+        column_map:
+          additionalProperties:
+            type: string
+          type: object
+          title: Column Map
+          description: Поле модели → заголовок колонки
+        suggested_map:
+          additionalProperties:
+            type: string
+          type: object
+          title: Suggested Map
+          description: Подсказка по заголовкам ТЗ
+        fields:
+          items:
+            type: string
+          type: array
+          title: Fields
+          description: Поля модели, доступные для сопоставления
+        required_fields:
+          items:
+            type: string
+          type: array
+          title: Required Fields
+        total_rows:
+          type: integer
+          title: Total Rows
+        stats:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Stats
+          description: Сколько строк в каждом решении
+        rows:
+          items:
+            $ref: '#/components/schemas/RowPreview'
+          type: array
+          title: Rows
+          description: Первые строки для предпросмотра
+      type: object
+      required:
+      - id
+      - file_name
+      - file_kind
+      - status
+      - headers
+      - column_map
+      - suggested_map
+      - fields
+      - required_fields
+      - total_rows
+      - stats
+      - rows
+      title: ImportBatchOut
+    ImportProfileOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        file_kind:
+          type: string
+          title: File Kind
+        column_map:
+          additionalProperties:
+            type: string
+          type: object
+          title: Column Map
+      type: object
+      required:
+      - id
+      - name
+      - file_kind
+      - column_map
+      title: ImportProfileOut
     InteractionDetail:
       properties:
         id:
@@ -1452,6 +1775,25 @@ components:
       - product
       - owner
       title: InteractionRef
+    MappingUpdate:
+      properties:
+        column_map:
+          additionalProperties:
+            type: string
+          type: object
+          title: Column Map
+          description: Поле модели → заголовок колонки файла
+        save_as_profile:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Save As Profile
+          description: Сохранить соответствие под этим именем
+      type: object
+      required:
+      - column_map
+      title: MappingUpdate
     MeOut:
       properties:
         id:
@@ -1653,6 +1995,39 @@ components:
       - manager
       - admin
       title: Role
+    RowPreview:
+      properties:
+        row_no:
+          type: integer
+          title: Row No
+        resolution:
+          type: string
+          title: Resolution
+          description: new, update, conflict, skip или needs_program
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Detail
+          description: Причина, если строка требует внимания
+        university:
+          type: string
+          title: University
+        product:
+          type: string
+          title: Product
+        contract_number:
+          type: string
+          title: Contract Number
+      type: object
+      required:
+      - row_no
+      - resolution
+      - detail
+      - university
+      - product
+      - contract_number
+      title: RowPreview
     Severity:
       type: string
       enum:
