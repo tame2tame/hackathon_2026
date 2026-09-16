@@ -219,6 +219,13 @@ app_setting        key, value jsonb                    -- пороги рада�
 | `GET /api/v1/analytics/rating` | Рейтинг: место, балл, вклад каждой метрики, полнота данных |
 | `GET`, `PUT /api/v1/analytics/rating/weights` | Веса по умолчанию; меняют руководитель и админ |
 | `GET /api/v1/analytics/stats/funnel`, `/stage-durations`, `/distribution` | Статистика с настройками ECharts |
+| `GET`, `PATCH /api/v1/admin/users` | Сотрудники: роль, команда, доступ |
+| `GET`, `POST /api/v1/admin/teams` | Команды |
+| `GET`, `POST`, `DELETE /api/v1/admin/access-rules` | Правила доступа к данным |
+| `GET`, `PUT /api/v1/admin/settings` | Настройки приложения |
+| `GET /api/v1/admin/audit` | Журнал аудита с фильтрами |
+| `POST /api/v1/admin/catalogs/{kind}`, `/{id}/archive` | Каталоги: добавление и архивирование |
+| `GET`, `POST /api/v1/universities/{id}/contacts` | Контакты вуза; просмотр пишется в аудит |
 | `GET /api/v1/events` | Поток событий `text/event-stream` |
 | `GET /api/v1/workflows/default/norms` | Нормы этапов с подсказками по истории |
 | `PUT /api/v1/workflows/default/norms/{stage_code}` | Норма вручную |

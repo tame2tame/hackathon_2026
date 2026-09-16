@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     # Адреса внешних систем; на демо-стенде это моки из backend/mocks.
     lms_base_url: str = "http://127.0.0.1:8100"
     site_base_url: str = "http://127.0.0.1:8101"
+    # Ключ Fernet для email и телефонов контактов вуза; пустой означает «шифрование не настроено».
+    pd_encryption_key: str = ""
     # Каталог вложений; в облаке заменяется на S3 за тем же интерфейсом Storage.
     upload_dir: str = "storage/uploads"
     max_upload_mb: int = 25

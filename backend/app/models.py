@@ -1,6 +1,7 @@
 """Регистрация всех моделей в метаданных — для Alembic и тестов."""
 
 from app.core.db import Base
+from app.modules.admin.models import AppSetting, DataAccessRule
 from app.modules.analytics.models import RatingWeightSet
 from app.modules.audit.models import AuditLog
 from app.modules.catalogs.models import (
@@ -38,6 +39,7 @@ from app.modules.workflow.models import (
 )
 
 __all__ = [
+    "AppSetting",
     "AppUser",
     "AssignmentChange",
     "Attachment",
@@ -45,6 +47,7 @@ __all__ = [
     "Base",
     "ContactPerson",
     "Contract",
+    "DataAccessRule",
     "Direction",
     "ImportBatch",
     "ImportProfile",

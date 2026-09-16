@@ -1,6 +1,7 @@
 """Тестовая БД: миграции и демо-данные один раз за сессию, откат после каждого теста."""
 
 import asyncio
+import base64
 import os
 import tempfile
 from collections.abc import AsyncIterator
@@ -15,8 +16,14 @@ TEST_DATABASE_URL = os.environ.get(
 # Вложения тестов пишутся во временный каталог, а не в рабочий var/uploads.
 TEST_UPLOAD_DIR = tempfile.mkdtemp(prefix="radar-uploads-")
 # Настройки читаются при первом обращении, поэтому окружение задаётся до импорта приложения.
+# Ключ шифрования контактов: фиксированный, чтобы тесты не зависели от окружения машины.
+TEST_PD_KEY = base64.urlsafe_b64encode(b"radar-test-key-32-bytes-exactly!").decode()
 os.environ.update(
-    APP_ENV="test", AUTH_MODE="dev", DATABASE_URL=TEST_DATABASE_URL, UPLOAD_DIR=TEST_UPLOAD_DIR
+    APP_ENV="test",
+    AUTH_MODE="dev",
+    DATABASE_URL=TEST_DATABASE_URL,
+    UPLOAD_DIR=TEST_UPLOAD_DIR,
+    PD_ENCRYPTION_KEY=TEST_PD_KEY,
 )
 
 from alembic import command  # noqa: E402

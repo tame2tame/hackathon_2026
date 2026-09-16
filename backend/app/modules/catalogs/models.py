@@ -37,6 +37,8 @@ class Direction(UUIDPrimaryKey, Timestamps, Base):
 
     code: Mapped[str] = mapped_column(String(60), unique=True)
     name: Mapped[str] = mapped_column(String(200))
+    # Каталоги не удаляются: на них ссылается история, поэтому запись архивируется.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Program(UUIDPrimaryKey, Timestamps, Base):
@@ -50,6 +52,7 @@ class Program(UUIDPrimaryKey, Timestamps, Base):
     )
     name: Mapped[str] = mapped_column(String(300))
     lms_course_ref: Mapped[str | None] = mapped_column(String(120))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     direction: Mapped[Direction] = relationship(lazy="raise")
 
@@ -58,6 +61,7 @@ class Vendor(UUIDPrimaryKey, Timestamps, Base):
     __tablename__ = "vendor"
 
     name: Mapped[str] = mapped_column(String(200), unique=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 product_direction = Table(
@@ -78,6 +82,7 @@ class Product(UUIDPrimaryKey, Timestamps, Base):
         ForeignKey("vendor.id", ondelete="RESTRICT"), index=True
     )
     name: Mapped[str] = mapped_column(String(200))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     vendor: Mapped[Vendor] = relationship(lazy="raise")
 
@@ -108,6 +113,7 @@ class ContactPerson(UUIDPrimaryKey, Timestamps, Base):
     position: Mapped[str | None] = mapped_column(String(200))
     email_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
     phone_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Team(UUIDPrimaryKey, Timestamps, Base):

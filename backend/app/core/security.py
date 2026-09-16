@@ -9,7 +9,7 @@ from typing import Annotated, Any
 import jwt
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -31,6 +31,8 @@ class CurrentUser:
     full_name: str
     role: Role
     team_id: uuid.UUID | None
+    # Правила администратора: загружаются один раз за запрос и применяются в области видимости.
+    access_rules: tuple[Any, ...] = ()
 
 
 @lru_cache
@@ -119,6 +121,26 @@ async def get_current_user(
         full_name=user.full_name,
         role=Role(user.role),
         team_id=user.team_id,
+        access_rules=await _access_rules(session, user),
+    )
+
+
+async def _access_rules(session: AsyncSession, user: AppUser) -> tuple[Any, ...]:
+    """Правила доступа сотрудника и его роли — одним запросом на весь запрос к API."""
+    from app.core.scope import AccessRule
+    from app.modules.admin.models import DataAccessRule
+
+    rows = await session.scalars(
+        select(DataAccessRule).where(
+            or_(
+                DataAccessRule.subject_user_id == user.id,
+                DataAccessRule.subject_role == user.role,
+            )
+        )
+    )
+    return tuple(
+        AccessRule(effect=rule.effect, scope_kind=rule.scope_kind, scope_id=rule.scope_id)
+        for rule in rows
     )
 
 
