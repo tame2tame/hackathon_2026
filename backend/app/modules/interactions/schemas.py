@@ -5,6 +5,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.errors import ErrorCode
 from app.modules.catalogs.schemas import ProductRef, ProgramRef, UniversityRef, UserRef
 from app.modules.radar.rules import Severity, SignalKind
 from app.modules.radar.schemas import SignalOut
@@ -72,3 +73,39 @@ class TransitionCreate(BaseModel):
 class TransitionResult(BaseModel):
     transition: TransitionOut
     interaction: InteractionDetail
+
+
+class BulkTransitionRequest(BaseModel):
+    interaction_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    to_stage_code: str = Field(
+        max_length=60, description="Код этапа назначения в версии процесса взаимодействия"
+    )
+    comment: str = Field(default="", max_length=4000)
+
+
+class OwnerChange(BaseModel):
+    owner_id: uuid.UUID
+    reason: str = Field(default="", max_length=4000)
+    expected_version: int = Field(ge=1, description="Версия записи, которую видел пользователь")
+
+
+class BulkOwnerRequest(BaseModel):
+    interaction_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    owner_id: uuid.UUID
+    reason: str = Field(default="", max_length=4000)
+
+
+class BulkItemResult(BaseModel):
+    interaction_id: uuid.UUID
+    ok: bool
+    version: int | None = Field(default=None, description="Новая версия записи при успехе")
+    code: ErrorCode | None = Field(default=None, description="Код ошибки из каталога при отказе")
+    detail: str | None = None
+
+
+class BulkResult(BaseModel):
+    """Частичный успех — обычный ответ: у каждой записи свой итог."""
+
+    results: list[BulkItemResult]
+    succeeded: int
+    failed: int

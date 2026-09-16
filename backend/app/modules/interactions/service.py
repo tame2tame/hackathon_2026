@@ -1,6 +1,7 @@
 """Взаимодействия: список с фильтрами, карточка и переход между этапами."""
 
 import uuid
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
@@ -12,17 +13,28 @@ from sqlalchemy.orm.interfaces import LoaderOption
 
 from app.core.errors import AppError, ErrorCode, FieldError
 from app.core.pagination import Page, PageParams
+from app.core.roles import Role
 from app.core.scope import apply_interaction_scope
 from app.core.security import CurrentUser
 from app.modules.audit.models import AuditLog
-from app.modules.catalogs.models import Product, Program, University
+from app.modules.catalogs.models import AppUser, Product, Program, University
 from app.modules.catalogs.schemas import ProductRef, ProgramRef, UniversityRef, UserRef
-from app.modules.interactions.models import Attachment, Interaction, Transition
+from app.modules.interactions.models import (
+    AssignmentChange,
+    Attachment,
+    Interaction,
+    Transition,
+)
 from app.modules.interactions.period import period_condition
 from app.modules.interactions.schemas import (
+    BulkItemResult,
+    BulkOwnerRequest,
+    BulkResult,
+    BulkTransitionRequest,
     ContractOut,
     InteractionDetail,
     InteractionListItem,
+    OwnerChange,
     SignalBrief,
     TransitionCreate,
     TransitionOut,
@@ -287,15 +299,47 @@ async def create_transition(
             errors=[FieldError(field="attachment_ids", message="Нужен хотя бы один документ")],
         )
 
+    transition = await _apply_transition(
+        session,
+        user,
+        interaction,
+        to_stage,
+        comment,
+        source="manual",
+        attachments=attachments,
+        trace_id=trace_id,
+        now=now,
+    )
+    await recompute_signals(session, [interaction_id], now)
+    await session.commit()
+
+    detail = await get_interaction_detail(session, user, interaction_id, now)
+    created = next(t for t in detail.history if t.id == transition.id)
+    return TransitionResult(transition=created, interaction=detail)
+
+
+async def _apply_transition(
+    session: AsyncSession,
+    user: CurrentUser,
+    interaction: Interaction,
+    to_stage: Stage,
+    comment: str,
+    *,
+    source: str,
+    attachments: list[Attachment],
+    trace_id: str | None,
+    now: datetime,
+) -> Transition:
+    """Общая часть одиночного и группового перехода: история, карточка, аудит."""
     before = {"stage_id": str(interaction.current_stage_id), "version": interaction.version}
     transition = Transition(
-        interaction_id=interaction_id,
+        interaction_id=interaction.id,
         from_stage_id=interaction.current_stage_id,
         to_stage_id=to_stage.id,
         occurred_at=now,
         actor_user_id=user.id,
         comment=comment or None,
-        source="manual",
+        source=source,
     )
     session.add(transition)
     await session.flush()
@@ -311,19 +355,14 @@ async def create_transition(
             actor_user_id=user.id,
             action="interaction.transition",
             entity_kind="interaction",
-            entity_id=interaction_id,
+            entity_id=interaction.id,
             before=before,
             after={"stage_id": str(to_stage.id), "version": interaction.version},
             trace_id=trace_id,
         )
     )
     await session.flush()
-    await recompute_signals(session, [interaction_id], now)
-    await session.commit()
-
-    detail = await get_interaction_detail(session, user, interaction_id, now)
-    created = next(t for t in detail.history if t.id == transition.id)
-    return TransitionResult(transition=created, interaction=detail)
+    return transition
 
 
 async def _own_attachments(
@@ -345,3 +384,225 @@ async def _own_attachments(
             errors=[FieldError(field="attachment_ids", message="Неизвестный документ")],
         )
     return attachments
+
+
+async def _locked_interaction(
+    session: AsyncSession, user: CurrentUser, interaction_id: uuid.UUID
+) -> Interaction:
+    """Запись в области видимости под блокировкой строки: параллельные изменения ждут очереди."""
+    interaction = await session.scalar(
+        apply_interaction_scope(
+            select(Interaction).where(Interaction.id == interaction_id), user
+        ).with_for_update()
+    )
+    if interaction is None:
+        raise AppError(ErrorCode.NOT_FOUND, NOT_FOUND_DETAIL)
+    return interaction
+
+
+async def _bulk(
+    session: AsyncSession,
+    interaction_ids: list[uuid.UUID],
+    one: Callable[[uuid.UUID], Coroutine[Any, Any, int]],
+) -> BulkResult:
+    """Каждая запись обрабатывается в своей точке сохранения, поэтому возможен частичный успех."""
+    results: list[BulkItemResult] = []
+    for interaction_id in dict.fromkeys(interaction_ids):
+        try:
+            async with session.begin_nested():
+                version = await one(interaction_id)
+        except AppError as error:
+            results.append(
+                BulkItemResult(
+                    interaction_id=interaction_id, ok=False, code=error.code, detail=error.detail
+                )
+            )
+        else:
+            results.append(BulkItemResult(interaction_id=interaction_id, ok=True, version=version))
+    await session.commit()
+    succeeded = sum(1 for result in results if result.ok)
+    return BulkResult(results=results, succeeded=succeeded, failed=len(results) - succeeded)
+
+
+async def bulk_transitions(
+    session: AsyncSession,
+    user: CurrentUser,
+    payload: BulkTransitionRequest,
+    trace_id: str | None = None,
+    now: datetime | None = None,
+) -> BulkResult:
+    moment = now or datetime.now(UTC)
+
+    async def move(interaction_id: uuid.UUID) -> int:
+        return await _bulk_transition_one(session, user, interaction_id, payload, trace_id, moment)
+
+    return await _bulk(session, payload.interaction_ids, move)
+
+
+async def _bulk_transition_one(
+    session: AsyncSession,
+    user: CurrentUser,
+    interaction_id: uuid.UUID,
+    payload: BulkTransitionRequest,
+    trace_id: str | None,
+    now: datetime,
+) -> int:
+    interaction = await _locked_interaction(session, user, interaction_id)
+    if interaction.status != "active":
+        raise AppError(ErrorCode.WF_TRANSITION_NOT_ALLOWED, "Взаимодействие не активно.")
+
+    from_stage = await session.get(Stage, interaction.current_stage_id)
+    if from_stage is None or not from_stage.bulk_allowed:
+        name = from_stage.name if from_stage else "текущего"
+        raise AppError(
+            ErrorCode.WF_TRANSITION_NOT_ALLOWED,
+            f"С этапа «{name}» групповой переход запрещён: переведите запись из карточки.",
+        )
+    to_stage = await session.scalar(
+        select(Stage).where(
+            Stage.version_id == interaction.workflow_version_id,
+            Stage.code == payload.to_stage_code,
+        )
+    )
+    rule = (
+        await get_transition_rule(session, interaction.current_stage_id, to_stage.id)
+        if to_stage is not None
+        else None
+    )
+    if to_stage is None or rule is None:
+        raise AppError(
+            ErrorCode.WF_TRANSITION_NOT_ALLOWED, "Переход в выбранный этап из текущего недоступен."
+        )
+    comment = payload.comment.strip()
+    if rule.requires_comment and not comment:
+        raise AppError(
+            ErrorCode.WF_COMMENT_REQUIRED,
+            f"Добавьте комментарий: без него переход на этап «{to_stage.name}» недоступен.",
+            errors=[FieldError(field="comment", message="Обязательное поле")],
+        )
+    if rule.requires_attachment:
+        # Документ прикладывается к конкретной записи, поэтому такой переход только из карточки.
+        raise AppError(
+            ErrorCode.WF_ATTACHMENT_REQUIRED,
+            f"Переход на этап «{to_stage.name}» требует документа: выполните его в карточке.",
+        )
+
+    await _apply_transition(
+        session,
+        user,
+        interaction,
+        to_stage,
+        comment,
+        source="bulk",
+        attachments=[],
+        trace_id=trace_id,
+        now=now,
+    )
+    await recompute_signals(session, [interaction_id], now)
+    return interaction.version
+
+
+def _ensure_can_assign(user: CurrentUser) -> None:
+    if user.role is Role.KAM:
+        raise AppError(
+            ErrorCode.AUTH_FORBIDDEN,
+            "Менять ответственного может руководитель команды или администратор.",
+        )
+
+
+async def _assignable_user(
+    session: AsyncSession, user: CurrentUser, owner_id: uuid.UUID
+) -> AppUser:
+    target = await session.scalar(select(AppUser).where(AppUser.id == owner_id))
+    if target is None or not target.is_active:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Сотрудник не найден или отключён.",
+            errors=[FieldError(field="owner_id", message="Неизвестный сотрудник")],
+        )
+    if user.role is Role.MANAGER and target.team_id != user.team_id:
+        raise AppError(ErrorCode.AUTH_FORBIDDEN, "Назначить можно только сотрудника своей команды.")
+    return target
+
+
+async def _assign_owner(
+    session: AsyncSession,
+    user: CurrentUser,
+    interaction: Interaction,
+    target: AppUser,
+    reason: str,
+    trace_id: str | None,
+    now: datetime,
+) -> None:
+    previous_owner_id = interaction.owner_user_id
+    session.add(
+        AssignmentChange(
+            interaction_id=interaction.id,
+            from_user_id=previous_owner_id,
+            to_user_id=target.id,
+            changed_by=user.id,
+            changed_at=now,
+            reason=reason or None,
+        )
+    )
+    before = {"owner_user_id": str(previous_owner_id), "version": interaction.version}
+    interaction.owner_user_id = target.id
+    interaction.last_activity_at = now
+    interaction.version += 1
+    session.add(
+        AuditLog(
+            actor_user_id=user.id,
+            action="interaction.owner_change",
+            entity_kind="interaction",
+            entity_id=interaction.id,
+            before=before,
+            after={"owner_user_id": str(target.id), "version": interaction.version},
+            trace_id=trace_id,
+        )
+    )
+    await session.flush()
+
+
+async def change_owner(
+    session: AsyncSession,
+    user: CurrentUser,
+    interaction_id: uuid.UUID,
+    payload: OwnerChange,
+    trace_id: str | None = None,
+    now: datetime | None = None,
+) -> InteractionDetail:
+    now = now or datetime.now(UTC)
+    _ensure_can_assign(user)
+    interaction = await _locked_interaction(session, user, interaction_id)
+    if interaction.version != payload.expected_version:
+        raise AppError(
+            ErrorCode.INTERACTION_VERSION_CONFLICT,
+            "Взаимодействие уже изменил другой пользователь. Обновите карточку и повторите.",
+        )
+    target = await _assignable_user(session, user, payload.owner_id)
+    if interaction.owner_user_id != target.id:
+        reason = payload.reason.strip()
+        await _assign_owner(session, user, interaction, target, reason, trace_id, now)
+    await session.commit()
+    return await get_interaction_detail(session, user, interaction_id, now)
+
+
+async def bulk_change_owner(
+    session: AsyncSession,
+    user: CurrentUser,
+    payload: BulkOwnerRequest,
+    trace_id: str | None = None,
+    now: datetime | None = None,
+) -> BulkResult:
+    moment = now or datetime.now(UTC)
+    _ensure_can_assign(user)
+    target = await _assignable_user(session, user, payload.owner_id)
+    reason = payload.reason.strip()
+
+    async def assign(interaction_id: uuid.UUID) -> int:
+        interaction = await _locked_interaction(session, user, interaction_id)
+        if interaction.owner_user_id != target.id:
+            await _assign_owner(session, user, interaction, target, reason, trace_id, moment)
+        return interaction.version
+
+    return await _bulk(session, payload.interaction_ids, assign)

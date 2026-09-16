@@ -563,6 +563,141 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/interactions/bulk-transitions:
+    post:
+      tags:
+      - interactions
+      summary: Перевести несколько взаимодействий на один этап
+      description: Разрешён только с этапов с `bulk_allowed`. У каждой записи свой итог, поэтому частичный
+        успех — обычный ответ. Переход с требованием документа выполняется в карточке.
+      operationId: post_bulk_transitions_api_v1_interactions_bulk_transitions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkTransitionRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResult'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/interactions/{interaction_id}/owner:
+    put:
+      tags:
+      - interactions
+      summary: Сменить ответственного КАМа
+      description: Доступно руководителю в пределах команды и администратору.
+      operationId: put_owner_api_v1_interactions__interaction_id__owner_put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OwnerChange'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InteractionDetail'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: INTERACTION_VERSION_CONFLICT
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/interactions/bulk-owner:
+    post:
+      tags:
+      - interactions
+      summary: Передать несколько взаимодействий другому КАМу
+      description: Итог по каждой записи; недоступные записи возвращают `NOT_FOUND`.
+      operationId: post_bulk_owner_api_v1_interactions_bulk_owner_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkOwnerRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResult'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
   /api/v1/signals:
     get:
       tags:
@@ -714,6 +849,105 @@ components:
       - requires_comment
       - requires_attachment
       title: AllowedTransitionOut
+    BulkItemResult:
+      properties:
+        interaction_id:
+          type: string
+          format: uuid
+          title: Interaction Id
+        ok:
+          type: boolean
+          title: Ok
+        version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Version
+          description: Новая версия записи при успехе
+        code:
+          anyOf:
+          - $ref: '#/components/schemas/ErrorCode'
+          - type: 'null'
+          description: Код ошибки из каталога при отказе
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Detail
+      type: object
+      required:
+      - interaction_id
+      - ok
+      title: BulkItemResult
+    BulkOwnerRequest:
+      properties:
+        interaction_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Interaction Ids
+        owner_id:
+          type: string
+          format: uuid
+          title: Owner Id
+        reason:
+          type: string
+          maxLength: 4000
+          title: Reason
+          default: ''
+      type: object
+      required:
+      - interaction_ids
+      - owner_id
+      title: BulkOwnerRequest
+    BulkResult:
+      properties:
+        results:
+          items:
+            $ref: '#/components/schemas/BulkItemResult'
+          type: array
+          title: Results
+        succeeded:
+          type: integer
+          title: Succeeded
+        failed:
+          type: integer
+          title: Failed
+      type: object
+      required:
+      - results
+      - succeeded
+      - failed
+      title: BulkResult
+      description: 'Частичный успех — обычный ответ: у каждой записи свой итог.'
+    BulkTransitionRequest:
+      properties:
+        interaction_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Interaction Ids
+        to_stage_code:
+          type: string
+          maxLength: 60
+          title: To Stage Code
+          description: Код этапа назначения в версии процесса взаимодействия
+        comment:
+          type: string
+          maxLength: 4000
+          title: Comment
+          default: ''
+      type: object
+      required:
+      - interaction_ids
+      - to_stage_code
+      title: BulkTransitionRequest
     ContractOut:
       properties:
         id:
@@ -1042,6 +1276,27 @@ components:
       - team
       - scope
       title: MeOut
+    OwnerChange:
+      properties:
+        owner_id:
+          type: string
+          format: uuid
+          title: Owner Id
+        reason:
+          type: string
+          maxLength: 4000
+          title: Reason
+          default: ''
+        expected_version:
+          type: integer
+          minimum: 1.0
+          title: Expected Version
+          description: Версия записи, которую видел пользователь
+      type: object
+      required:
+      - owner_id
+      - expected_version
+      title: OwnerChange
     Page_InteractionListItem_:
       properties:
         items:

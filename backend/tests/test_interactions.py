@@ -1,5 +1,4 @@
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -10,20 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from app.modules.audit.models import AuditLog
 from app.modules.interactions.models import Interaction
 from app.modules.workflow.models import Stage
+from tests.api import find, stage_id
 from tests.users import ALINA_ADMIN, ANNA_KAM, MIKHAIL_KAM, ROMAN_MANAGER, as_user
-
-
-async def find(client: AsyncClient, email: str, **params: Any) -> dict[str, Any]:
-    response = await client.get("/api/v1/interactions", params=params, headers=as_user(email))
-    assert response.status_code == 200
-    items: list[dict[str, Any]] = response.json()["items"]
-    assert len(items) == 1
-    return items[0]
-
-
-async def stage_id(client: AsyncClient, code: str) -> str:
-    workflow = (await client.get("/api/v1/workflows/default", headers=as_user(ALINA_ADMIN))).json()
-    return str(next(s["id"] for s in workflow["stages"] if s["code"] == code))
 
 
 @pytest.mark.parametrize(("email", "total"), [(ANNA_KAM, 4), (MIKHAIL_KAM, 2), (ROMAN_MANAGER, 6)])
