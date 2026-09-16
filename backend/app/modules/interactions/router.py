@@ -14,6 +14,8 @@ from app.modules.interactions.schemas import (
     BulkTransitionRequest,
     InteractionDetail,
     InteractionListItem,
+    NoteCreate,
+    NoteOut,
     OwnerChange,
     TransitionCreate,
     TransitionResult,
@@ -23,9 +25,11 @@ from app.modules.interactions.service import (
     bulk_change_owner,
     bulk_transitions,
     change_owner,
+    create_note,
     create_transition,
     get_interaction_detail,
     list_interactions,
+    list_notes,
 )
 
 router = APIRouter(prefix="/api/v1/interactions", tags=["interactions"])
@@ -108,6 +112,35 @@ async def post_transition(
 ) -> TransitionResult:
     trace_id = getattr(request.state, "trace_id", None)
     return await create_transition(session, user, interaction_id, payload, trace_id=trace_id)
+
+
+@router.get(
+    "/{interaction_id}/notes",
+    summary="Заметки по взаимодействию",
+    responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
+)
+async def read_notes(
+    interaction_id: uuid.UUID, session: SessionDep, user: CurrentUserDep
+) -> list[NoteOut]:
+    return await list_notes(session, user, interaction_id)
+
+
+@router.post(
+    "/{interaction_id}/notes",
+    status_code=status.HTTP_201_CREATED,
+    summary="Добавить заметку",
+    description="Заметка считается работой по записи и снимает сигнал о простое.",
+    responses=error_responses(
+        ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND, ErrorCode.VALIDATION_ERROR
+    ),
+)
+async def post_note(
+    interaction_id: uuid.UUID,
+    payload: NoteCreate,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> NoteOut:
+    return await create_note(session, user, interaction_id, payload.text)
 
 
 @router.post(

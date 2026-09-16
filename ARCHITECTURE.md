@@ -196,6 +196,7 @@ app_setting        key, value jsonb                    -- пороги рада�
 | `GET /api/v1/interactions` | Взаимодействия с фильтрами: вуз, программа, продукт, КАМ, этап, дни на этапе, версия, открытые сигналы |
 | `GET /api/v1/interactions/{id}` | Карточка: договор, история, допустимые переходы с требованиями, сигналы |
 | `POST /api/v1/interactions/{id}/transitions` | Переход: `to_stage_id`, `comment`, `expected_version`, `attachment_ids` |
+| `GET`, `POST /api/v1/interactions/{id}/notes` | Заметки по записи; заметка снимает сигнал о простое |
 | `POST /api/v1/interactions/bulk-transitions` | Групповой переход: `interaction_ids`, `to_stage_code`, `comment` |
 | `PUT /api/v1/interactions/{id}/owner` | Смена ответственного: `owner_id`, `reason`, `expected_version` |
 | `POST /api/v1/interactions/bulk-owner` | Групповая передача записей другому КАМу |

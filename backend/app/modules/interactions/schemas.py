@@ -75,6 +75,17 @@ class TransitionResult(BaseModel):
     interaction: InteractionDetail
 
 
+class NoteCreate(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class NoteOut(BaseModel):
+    id: uuid.UUID
+    text: str
+    author: UserRef
+    created_at: datetime
+
+
 class BulkTransitionRequest(BaseModel):
     interaction_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
     to_stage_code: str = Field(

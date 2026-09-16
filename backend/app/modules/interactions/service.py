@@ -24,6 +24,7 @@ from app.modules.interactions.models import (
     AssignmentChange,
     Attachment,
     Interaction,
+    InteractionNote,
     Transition,
 )
 from app.modules.interactions.period import period_condition
@@ -35,6 +36,7 @@ from app.modules.interactions.schemas import (
     ContractOut,
     InteractionDetail,
     InteractionListItem,
+    NoteOut,
     OwnerChange,
     SignalBrief,
     TransitionCreate,
@@ -396,6 +398,62 @@ async def _own_attachments(
             errors=[FieldError(field="attachment_ids", message="Неизвестный документ")],
         )
     return attachments
+
+
+async def list_notes(
+    session: AsyncSession, user: CurrentUser, interaction_id: uuid.UUID
+) -> list[NoteOut]:
+    await _visible_interaction(session, user, interaction_id)
+    rows = await session.execute(
+        select(InteractionNote, AppUser)
+        .join(AppUser, AppUser.id == InteractionNote.author_user_id)
+        .where(InteractionNote.interaction_id == interaction_id)
+        .order_by(InteractionNote.created_at.desc())
+    )
+    return [
+        NoteOut(
+            id=note.id,
+            text=note.text,
+            author=UserRef.model_validate(author),
+            created_at=note.created_at,
+        )
+        for note, author in rows.tuples()
+    ]
+
+
+async def create_note(
+    session: AsyncSession,
+    user: CurrentUser,
+    interaction_id: uuid.UUID,
+    text: str,
+    now: datetime | None = None,
+) -> NoteOut:
+    """Заметка — работа по взаимодействию, поэтому она же гасит сигнал о простое."""
+    now = now or datetime.now(UTC)
+    interaction = await _visible_interaction(session, user, interaction_id)
+    note = InteractionNote(interaction_id=interaction_id, author_user_id=user.id, text=text.strip())
+    session.add(note)
+    interaction.last_activity_at = now
+    await session.flush()
+    await recompute_signals(session, [interaction_id], now)
+    await session.commit()
+    return NoteOut(
+        id=note.id,
+        text=note.text,
+        author=UserRef(id=user.id, full_name=user.full_name),
+        created_at=note.created_at,
+    )
+
+
+async def _visible_interaction(
+    session: AsyncSession, user: CurrentUser, interaction_id: uuid.UUID
+) -> Interaction:
+    interaction = await session.scalar(
+        apply_interaction_scope(select(Interaction).where(Interaction.id == interaction_id), user)
+    )
+    if interaction is None:
+        raise AppError(ErrorCode.NOT_FOUND, NOT_FOUND_DETAIL)
+    return interaction
 
 
 async def _locked_interaction(
