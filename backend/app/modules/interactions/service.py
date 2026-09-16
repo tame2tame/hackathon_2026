@@ -2,7 +2,7 @@
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import Select, and_, func, or_, select
@@ -18,6 +18,7 @@ from app.modules.audit.models import AuditLog
 from app.modules.catalogs.models import Product, Program, University
 from app.modules.catalogs.schemas import ProductRef, ProgramRef, UniversityRef, UserRef
 from app.modules.interactions.models import Attachment, Interaction, Transition
+from app.modules.interactions.period import period_condition
 from app.modules.interactions.schemas import (
     ContractOut,
     InteractionDetail,
@@ -47,6 +48,8 @@ class InteractionFilters:
     owner_id: list[uuid.UUID] = field(default_factory=list)
     stage_code: list[str] = field(default_factory=list)
     has_signal: bool | None = None
+    period_from: date | None = None
+    period_to: date | None = None
     search: str | None = None
 
 
@@ -64,6 +67,9 @@ def _card_options() -> list[LoaderOption]:
 
 def _apply_filters[S: Select[Any]](stmt: S, filters: InteractionFilters) -> S:
     stmt = stmt.where(Interaction.status != "cancelled")
+    period = period_condition(filters.period_from, filters.period_to)
+    if period is not None:
+        stmt = stmt.where(period)
     if filters.university_id:
         stmt = stmt.where(Interaction.university_id.in_(filters.university_id))
     if filters.program_id:

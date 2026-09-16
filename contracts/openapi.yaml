@@ -31,7 +31,7 @@ paths:
         '500':
           description: INTERNAL_ERROR
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
   /api/v1/me:
@@ -50,7 +50,7 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
@@ -106,15 +106,15 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: Validation Error
+          description: VALIDATION_ERROR
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/Problem'
   /api/v1/universities/{university_id}:
     get:
       tags:
@@ -139,23 +139,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/UniversityOut'
         '401':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '404':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: NOT_FOUND
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
           description: Validation Error
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/Problem'
   /api/v1/directions:
     get:
       tags:
@@ -175,7 +175,7 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
@@ -215,15 +215,15 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: Validation Error
+          description: VALIDATION_ERROR
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/Problem'
   /api/v1/products:
     get:
       tags:
@@ -243,7 +243,7 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
@@ -267,7 +267,7 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
@@ -286,15 +286,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/WorkflowOut'
         '401':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '404':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: NOT_FOUND
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
@@ -416,6 +416,28 @@ paths:
           description: Есть открытый сигнал
           title: Has Signal
         description: Есть открытый сигнал
+      - name: period_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Начало периода, UTC
+          title: Period From
+        description: Начало периода, UTC
+      - name: period_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Конец периода, UTC
+          title: Period To
+        description: Конец периода, UTC
       - name: search
         in: query
         required: false
@@ -435,15 +457,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/Page_InteractionListItem_'
         '401':
-          description: AUTH_REQUIRED, VALIDATION_ERROR
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: AUTH_REQUIRED, VALIDATION_ERROR
+          description: VALIDATION_ERROR
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
   /api/v1/interactions/{interaction_id}:
@@ -471,23 +493,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/InteractionDetail'
         '401':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '404':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: NOT_FOUND
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
           description: Validation Error
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/Problem'
   /api/v1/interactions/{interaction_id}/transitions:
     post:
       tags:
@@ -518,27 +540,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/TransitionResult'
         '401':
-          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '404':
-          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
+          description: NOT_FOUND
           content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '409':
-          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
-          content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
+          description: VALIDATION_ERROR · WF_COMMENT_REQUIRED · WF_ATTACHMENT_REQUIRED
           content:
-            application/json:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: INTERACTION_VERSION_CONFLICT · WF_TRANSITION_NOT_ALLOWED
+          content:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
   /api/v1/signals:
@@ -622,6 +644,28 @@ paths:
           description: Вуз
           title: University Id
         description: Вуз
+      - name: period_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Начало периода, UTC
+          title: Period From
+        description: Начало периода, UTC
+      - name: period_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Конец периода, UTC
+          title: Period To
+        description: Конец периода, UTC
       - name: search
         in: query
         required: false
@@ -641,15 +685,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/Page_SignalListItem_'
         '401':
-          description: AUTH_REQUIRED, VALIDATION_ERROR
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: AUTH_REQUIRED, VALIDATION_ERROR
+          description: VALIDATION_ERROR
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
 components:
@@ -1193,10 +1237,13 @@ components:
         message:
           type: string
           title: Message
+          description: Готовая строка для интерфейса, проверяемая по evidence
         evidence:
           additionalProperties: true
           type: object
           title: Evidence
+          description: 'Доказательство сигнала: этап, дни на этапе, норма и её источник (norm_source:
+            manual или suggested), дата окончания лицензии или последней активности'
         interaction:
           $ref: '#/components/schemas/InteractionRef'
       type: object
@@ -1233,10 +1280,13 @@ components:
         message:
           type: string
           title: Message
+          description: Готовая строка для интерфейса, проверяемая по evidence
         evidence:
           additionalProperties: true
           type: object
           title: Evidence
+          description: 'Доказательство сигнала: этап, дни на этапе, норма и её источник (norm_source:
+            manual или suggested), дата окончания лицензии или последней активности'
       type: object
       required:
       - id

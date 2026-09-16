@@ -91,10 +91,13 @@ class AppError(Exception):
 
 
 def error_responses(*codes: ErrorCode) -> dict[int | str, dict[str, Any]]:
-    """Описание ответов с ошибками для OpenAPI."""
+    """Ответы с ошибками для OpenAPI: один ответ на статус со списком своих кодов."""
+    by_status: dict[int, list[str]] = {}
+    for code in codes:
+        by_status.setdefault(_CATALOG[code][0], []).append(code.value)
     return {
-        _CATALOG[code][0]: {"model": Problem, "description": ", ".join(c.value for c in codes)}
-        for code in codes
+        status: {"model": Problem, "description": " · ".join(values)}
+        for status, values in by_status.items()
     }
 
 

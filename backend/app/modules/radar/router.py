@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -19,6 +20,8 @@ def _signal_filters(
     severity: Annotated[list[Severity] | None, Query(description="Серьёзность")] = None,
     owner_id: Annotated[list[uuid.UUID] | None, Query(description="КАМ")] = None,
     university_id: Annotated[list[uuid.UUID] | None, Query(description="Вуз")] = None,
+    period_from: Annotated[date | None, Query(description="Начало периода, UTC")] = None,
+    period_to: Annotated[date | None, Query(description="Конец периода, UTC")] = None,
     search: Annotated[
         str | None, Query(max_length=100, description="Вуз, программа или продукт")
     ] = None,
@@ -28,6 +31,8 @@ def _signal_filters(
         severity=[s.value for s in severity or []],
         owner_id=owner_id or [],
         university_id=university_id or [],
+        period_from=period_from,
+        period_to=period_to,
         search=search.strip() if search and search.strip() else None,
     )
 

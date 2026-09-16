@@ -104,7 +104,13 @@ def test_plural_days(n: int, word: str) -> None:
 
 def test_messages_can_be_checked_by_hand() -> None:
     overdue = signal_message(
-        "stage_overdue", {"days_on_stage": 41, "norm_days": 14, "stage_name": "Подписание"}
+        "stage_overdue",
+        {
+            "days_on_stage": 41,
+            "norm_days": 14,
+            "stage_name": "Подписание",
+            "norm_source": "manual",
+        },
     )
     license_message = signal_message(
         "license_expiring",
@@ -115,5 +121,5 @@ def test_messages_can_be_checked_by_hand() -> None:
         },
     )
 
-    assert overdue == "41 день на этапе «Подписание» при норме 14 дней."
+    assert overdue == "41 день на этапе «Подписание» при норме 14 дней. Норма задана вручную."
     assert license_message == "Лицензия по договору Д-2026/042 истекает 04.10.2026 — через 19 дней."

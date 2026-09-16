@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.catalogs.schemas import ProductRef, ProgramRef, UniversityRef, UserRef
 from app.modules.radar.messages import signal_message
@@ -18,8 +18,13 @@ class SignalOut(BaseModel):
     severity: Severity
     detected_at: datetime
     resolved_at: datetime | None
-    message: str
-    evidence: dict[str, Any]
+    message: str = Field(description="Готовая строка для интерфейса, проверяемая по evidence")
+    evidence: dict[str, Any] = Field(
+        description=(
+            "Доказательство сигнала: этап, дни на этапе, норма и её источник "
+            "(norm_source: manual или suggested), дата окончания лицензии или последней активности"
+        )
+    )
 
     @classmethod
     def from_model(cls, signal: RadarSignal) -> Self:

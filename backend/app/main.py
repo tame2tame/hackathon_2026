@@ -1,16 +1,23 @@
 """Сборка приложения FastAPI."""
 
 import logging
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel
 from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.core.db import SessionDep
-from app.core.errors import ErrorCode, TraceIdMiddleware, error_responses, install_error_handlers
+from app.core.errors import (
+    PROBLEM_MEDIA_TYPE,
+    ErrorCode,
+    TraceIdMiddleware,
+    error_responses,
+    install_error_handlers,
+)
 from app.core.security import DEV_USER_HEADER
 from app.modules.catalogs.router import router as catalogs_router
 from app.modules.interactions.router import router as interactions_router
@@ -30,6 +37,18 @@ class HealthOut(BaseModel):
     status: Literal["ok"]
     version: str
     database: Literal["ok"]
+
+
+def declare_problem_responses(schema: dict[str, Any]) -> dict[str, Any]:
+    """Все ошибки отдаются как application/problem+json, поэтому контракт объявляет тот же тип."""
+    for path in schema.get("paths", {}).values():
+        for operation in path.values():
+            for status, response in operation.get("responses", {}).items():
+                if status.startswith(("4", "5")):
+                    response["content"] = {
+                        PROBLEM_MEDIA_TYPE: {"schema": {"$ref": "#/components/schemas/Problem"}}
+                    }
+    return schema
 
 
 def create_app() -> FastAPI:
@@ -68,6 +87,20 @@ def create_app() -> FastAPI:
 
     for router in (catalogs_router, workflow_router, interactions_router, radar_router):
         app.include_router(router)
+
+    def openapi() -> dict[str, Any]:
+        if not app.openapi_schema:
+            app.openapi_schema = declare_problem_responses(
+                get_openapi(
+                    title=app.title,
+                    version=app.version,
+                    description=app.description,
+                    routes=app.routes,
+                )
+            )
+        return app.openapi_schema
+
+    app.openapi = openapi  # type: ignore[method-assign]
     return app
 
 

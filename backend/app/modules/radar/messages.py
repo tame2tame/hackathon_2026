@@ -5,6 +5,11 @@ from typing import Any
 
 from app.modules.radar.rules import SignalKind
 
+NORM_SOURCES = {
+    "manual": "Норма задана вручную.",
+    "suggested": "Норма предложена по накопленной истории.",
+}
+
 DOCUMENT_LABELS = {
     "signed_contract": "подписанный договор",
     "transfer_act": "акт передачи",
@@ -36,9 +41,11 @@ def _ru_date(iso: str) -> str:
 def signal_message(kind: str, evidence: dict[str, Any]) -> str:
     match SignalKind(kind):
         case SignalKind.STAGE_OVERDUE:
+            source = NORM_SOURCES.get(str(evidence.get("norm_source") or ""), "")
             return (
                 f"{_days(evidence['days_on_stage']).capitalize()} на этапе "
                 f"«{evidence['stage_name']}» при норме {_days(evidence['norm_days'])}."
+                f"{' ' + source if source else ''}"
             )
         case SignalKind.LICENSE_EXPIRING:
             valid_until = _ru_date(evidence["license_valid_until"])

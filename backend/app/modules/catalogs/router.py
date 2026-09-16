@@ -28,6 +28,7 @@ from app.modules.catalogs.service import (
 router = APIRouter(prefix="/api/v1", tags=["catalogs"])
 
 AUTH_ERRORS = error_responses(ErrorCode.AUTH_REQUIRED)
+LIST_ERRORS = error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.VALIDATION_ERROR)
 
 
 @router.get("/me", summary="Профиль текущего пользователя", responses=AUTH_ERRORS)
@@ -38,7 +39,7 @@ async def read_me(session: SessionDep, user: CurrentUserDep) -> MeOut:
 @router.get(
     "/universities",
     summary="Вузы со счётчиками взаимодействий и открытых сигналов",
-    responses=AUTH_ERRORS,
+    responses=LIST_ERRORS,
 )
 async def read_universities(
     session: SessionDep,
@@ -66,7 +67,7 @@ async def read_directions(session: SessionDep, _user: CurrentUserDep) -> list[Di
     return await list_directions(session)
 
 
-@router.get("/programs", summary="ИТ-программы", responses=AUTH_ERRORS)
+@router.get("/programs", summary="ИТ-программы", responses=LIST_ERRORS)
 async def read_programs(
     session: SessionDep,
     _user: CurrentUserDep,

@@ -41,6 +41,7 @@ class InteractionState:
     stage_entered_at: datetime
     last_activity_at: datetime
     norm_days: int | None = None
+    norm_source: str | None = None
     required_document_types: tuple[str, ...] = ()
     uploaded_document_types: frozenset[str] = frozenset()
     contract_number: str | None = None
@@ -76,6 +77,7 @@ def evaluate_signals(
                         **stage,
                         "days_on_stage": days_on_stage,
                         "norm_days": state.norm_days,
+                        "norm_source": state.norm_source,
                         "stage_entered_at": state.stage_entered_at.isoformat(),
                     },
                 )
@@ -93,6 +95,7 @@ def evaluate_signals(
                         **stage,
                         "days_on_stage": days_on_stage,
                         "norm_days": state.norm_days,
+                        "norm_source": state.norm_source,
                         "missing_document_types": missing,
                     },
                 )

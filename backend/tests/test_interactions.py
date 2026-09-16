@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -39,6 +40,27 @@ async def test_filters_by_search_and_stage(client: AsyncClient) -> None:
     assert by_search["university"]["short_name"] == "ИТМО"
     assert by_stage["university"]["short_name"] == "МГТУ"
     assert by_stage["days_on_stage"] == 41
+
+
+async def test_period_filter_covers_active_and_past(client: AsyncClient) -> None:
+    today = datetime.now(UTC).date()
+
+    recent = await client.get(
+        "/api/v1/interactions",
+        params={"period_from": str(today - timedelta(days=90)), "period_to": str(today)},
+        headers=as_user(ALINA_ADMIN),
+    )
+    long_ago = await client.get(
+        "/api/v1/interactions",
+        params={
+            "period_from": str(today - timedelta(days=400)),
+            "period_to": str(today - timedelta(days=365)),
+        },
+        headers=as_user(ALINA_ADMIN),
+    )
+
+    assert recent.json()["total"] == 6
+    assert long_ago.json()["total"] == 0
 
 
 async def test_card_has_history_transitions_and_signals(client: AsyncClient) -> None:

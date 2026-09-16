@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, status
@@ -31,6 +32,8 @@ def _interaction_filters(
     owner_id: Annotated[list[uuid.UUID] | None, Query(description="КАМ")] = None,
     stage_code: Annotated[list[str] | None, Query(description="Код текущего этапа")] = None,
     has_signal: Annotated[bool | None, Query(description="Есть открытый сигнал")] = None,
+    period_from: Annotated[date | None, Query(description="Начало периода, UTC")] = None,
+    period_to: Annotated[date | None, Query(description="Конец периода, UTC")] = None,
     search: Annotated[
         str | None, Query(max_length=100, description="Вуз, программа или продукт")
     ] = None,
@@ -43,6 +46,8 @@ def _interaction_filters(
         owner_id=owner_id or [],
         stage_code=stage_code or [],
         has_signal=has_signal,
+        period_from=period_from,
+        period_to=period_to,
         search=search.strip() if search and search.strip() else None,
     )
 
@@ -80,8 +85,11 @@ async def read_interaction(
     responses=error_responses(
         ErrorCode.AUTH_REQUIRED,
         ErrorCode.NOT_FOUND,
+        ErrorCode.VALIDATION_ERROR,
         ErrorCode.INTERACTION_VERSION_CONFLICT,
+        ErrorCode.WF_TRANSITION_NOT_ALLOWED,
         ErrorCode.WF_COMMENT_REQUIRED,
+        ErrorCode.WF_ATTACHMENT_REQUIRED,
     ),
 )
 async def post_transition(

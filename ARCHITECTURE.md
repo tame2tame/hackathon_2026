@@ -173,7 +173,7 @@ app_setting        key, value jsonb                    -- пороги рада�
 ## 5. API
 
 - Префикс `/api/v1`, JSON, даты ISO 8601 в UTC. Swagger UI — `/api/docs`, схема — `/api/openapi.json`, копия — `contracts/openapi.yaml`.
-- Списки: `?page=1&page_size=50` (максимум 200) → `{items, total, page, page_size}`. Одинаковые фильтры у списков, отчётов и JSON-выгрузки: `period_from`, `period_to`, `university_id`, `direction_id`, `program_id`, `product_id`, `owner_id`, `stage_code`, `search` (повторяемые параметры для множественного выбора). Взаимодействие попадает в период, если в нём был хотя бы один переход в этом периоде или оно было активно весь период: создано не позже `period_to` и не отменено и не завершено до `period_from`.
+- Списки: `?page=1&page_size=50` (максимум 200) → `{items, total, page, page_size}`. Одинаковые фильтры у списков, отчётов и JSON-выгрузки: `period_from`, `period_to`, `university_id`, `direction_id`, `program_id`, `product_id`, `owner_id`, `stage_code`, `search` (повторяемые параметры для множественного выбора). Взаимодействие попадает в период, если создано не позже `period_to` и либо всё ещё активно, либо в периоде был хотя бы один переход. Даты сравниваются в UTC.
 - Авторизация: `Authorization: Bearer <access_token>`.
 
 ### Методы v0

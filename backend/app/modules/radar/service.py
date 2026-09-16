@@ -4,7 +4,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import ColumnElement, and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,7 @@ from app.core.scope import apply_interaction_scope
 from app.core.security import CurrentUser
 from app.modules.catalogs.models import Product, Program, University
 from app.modules.interactions.models import Attachment, Contract, Interaction
+from app.modules.interactions.period import period_condition
 from app.modules.radar.models import RadarSignal
 from app.modules.radar.rules import (
     DEFAULT_THRESHOLDS,
@@ -32,6 +33,8 @@ class SignalFilters:
     severity: list[str] = field(default_factory=list)
     owner_id: list[uuid.UUID] = field(default_factory=list)
     university_id: list[uuid.UUID] = field(default_factory=list)
+    period_from: date | None = None
+    period_to: date | None = None
     search: str | None = None
 
 
@@ -44,7 +47,7 @@ async def load_states(
     session: AsyncSession, interaction_ids: Sequence[uuid.UUID]
 ) -> dict[uuid.UUID, InteractionState]:
     rows = await session.execute(
-        select(Interaction, Stage, Contract, StageNorm.norm_days)
+        select(Interaction, Stage, Contract, StageNorm.norm_days, StageNorm.source)
         .join(Stage, Stage.id == Interaction.current_stage_id)
         .join(WorkflowVersion, WorkflowVersion.id == Interaction.workflow_version_id)
         .outerjoin(Contract, Contract.id == Interaction.contract_id)
@@ -72,7 +75,7 @@ async def load_states(
             uploaded[interaction_id].add(document_type)
 
     states: dict[uuid.UUID, InteractionState] = {}
-    for interaction, stage, contract, norm_days in rows.tuples():
+    for interaction, stage, contract, norm_days, norm_source in rows.tuples():
         states[interaction.id] = InteractionState(
             status=interaction.status,
             stage_code=stage.code,
@@ -81,6 +84,7 @@ async def load_states(
             stage_entered_at=interaction.stage_entered_at,
             last_activity_at=interaction.last_activity_at,
             norm_days=norm_days,
+            norm_source=norm_source,
             required_document_types=tuple(stage.required_document_types),
             uploaded_document_types=frozenset(uploaded[interaction.id]),
             contract_number=contract.number if contract else None,
@@ -166,6 +170,9 @@ async def list_signals(
         stmt = stmt.where(Interaction.owner_user_id.in_(filters.owner_id))
     if filters.university_id:
         stmt = stmt.where(Interaction.university_id.in_(filters.university_id))
+    period = period_condition(filters.period_from, filters.period_to)
+    if period is not None:
+        stmt = stmt.where(period)
     if filters.search:
         pattern = like_pattern(filters.search)
         stmt = stmt.where(
