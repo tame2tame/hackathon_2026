@@ -9,11 +9,13 @@ API на FastAPI. Архитектура — [`ARCHITECTURE.md`](../ARCHITECTURE
 ```bash
 cp .env.example .env
 make install
-make db-up      # PostgreSQL и Redis в Docker
+make db-up      # PostgreSQL на порту 55432 и Redis в Docker
 make migrate
 make seed       # базовый workflow и 6 демо-связок из фронтенд-фикстур
 make run        # Swagger UI: http://127.0.0.1:8000/api/docs
 ```
+
+PostgreSQL публикуется на 55432, потому что 5432 на машине разработчика обычно занят локальным сервером. Адреса с этим портом уже прописаны в `.env.example`; внутри compose адрес остаётся `postgres:5432`.
 
 Без Keycloak при `AUTH_MODE=dev` пользователь передаётся заголовком `X-Dev-User`:
 

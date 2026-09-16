@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL", "postgresql+asyncpg://radar:radar@127.0.0.1:5432/radar_test"
+    "TEST_DATABASE_URL", "postgresql+asyncpg://radar:radar@127.0.0.1:55432/radar_test"
 )
 # Настройки читаются при первом обращении, поэтому окружение задаётся до импорта приложения.
 os.environ.update(APP_ENV="test", AUTH_MODE="dev", DATABASE_URL=TEST_DATABASE_URL)

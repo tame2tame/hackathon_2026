@@ -12,7 +12,8 @@ class Settings(BaseSettings):
 
     app_env: Literal["local", "test", "production"] = "local"
     auth_mode: Literal["keycloak", "dev"] = "keycloak"
-    database_url: str = "postgresql+asyncpg://radar:radar@127.0.0.1:5432/radar"
+    # Порт из docker compose: 5432 на машине разработчика обычно занят локальным PostgreSQL.
+    database_url: str = "postgresql+asyncpg://radar:radar@127.0.0.1:55432/radar"
     cors_origins: str = ""
     keycloak_issuer: str = "http://127.0.0.1:8080/realms/radar-vuzov"
     # Внутри docker compose ключи берутся по внутреннему адресу, а издатель в токене — внешний.

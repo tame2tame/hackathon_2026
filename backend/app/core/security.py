@@ -80,9 +80,12 @@ async def _user_from_claims(claims: dict[str, Any], session: AsyncSession) -> Ap
             email=email or f"{sub}@users.keycloak",
             full_name=claims.get("name") or email or sub,
             role=role.value,
+            is_active=True,
         )
         session.add(user)
-    if not user.is_active:
+    elif not user.is_active:
+        # Проверяем только тех, кто уже есть в базе: у нового объекта значения по умолчанию
+        # проставляются лишь при сохранении.
         raise AppError(ErrorCode.AUTH_FORBIDDEN, "Учётная запись отключена.")
     user.role = role.value  # источник правды о роли — Keycloak
     if session.dirty or session.new:

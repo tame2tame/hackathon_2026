@@ -37,7 +37,16 @@ jobs:
         run: ruff check . && ruff format --check .
       - name: Mypy
         run: mypy app scripts
+      - name: Миграции — одна голова Alembic
+        run: test "$(alembic heads | wc -l)" -eq 1
       - name: Контракт совпадает со схемой приложения
         run: python -m scripts.export_openapi --check
       - name: Тесты — миграции вниз и вверх, API, правила радара
         run: pytest
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка образа API
+        run: docker build backend

@@ -10,7 +10,9 @@ services:
       POSTGRES_USER: radar
       POSTGRES_PASSWORD: radar
     ports:
-      - "127.0.0.1:5432:5432"
+      # Порт 5432 на машине разработчика обычно занят локальным PostgreSQL, поэтому наружу 55432.
+      # Внутри сети compose (Keycloak, api) адрес остаётся postgres:5432.
+      - "127.0.0.1:55432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
