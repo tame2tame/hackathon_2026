@@ -1,3 +1,4 @@
+import { NetworkSculpture } from "./components/NetworkSculpture";
 import { useEffect, useRef, useState, type ElementType } from "react";
 import {
   Link,
@@ -37,7 +38,6 @@ import {
   Cable,
   History,
   CircleHelp,
-  Check,
   RotateCcw,
 } from "lucide-react";
 import { Button } from "./components/ui/button";
@@ -59,7 +59,7 @@ const iconKinds = {
   missing_document: FileWarning,
   inactivity: CirclePause,
 };
-const navigation: {
+export const navigation: {
   path: string;
   title: string;
   icon: ElementType;
@@ -128,108 +128,110 @@ const navigation: {
   { path: "/admin/audit", title: "Аудит", icon: History, roles: ["admin"] },
   { path: "/help", title: "Справка", icon: CircleHelp, section: "ПОМОЩЬ" },
 ];
-const planned: Record<string, { text: string; items: string[]; date: string }> =
-  {
-    "/reports": {
-      text: "Отчёт по взаимодействиям за выбранный период",
-      items: [
-        "Период и фильтры: вуз, программа, продукт, ответственный",
-        "Выбор колонок и формата: XLS, XLSX, PDF, JSON",
-        "Очередь формирования, прогресс и скачивание",
-      ],
-      date: "20–22.09",
-    },
-    "/analytics/rating": {
-      text: "Какие программы и вузы наиболее востребованы",
-      items: [
-        "Вклад заявок, обучающихся и потоков в балл 0–100",
-        "Веса 40 / 40 / 20 и объяснение каждого балла",
-        "Фильтр направления, период и отметки неполных данных",
-      ],
-      date: "23–24.09",
-    },
-    "/analytics/stats": {
-      text: "Путь от первого контакта до обучения",
-      items: [
-        "Воронка по 14 этапам",
-        "Длительность этапов относительно нормы",
-        "Динамика переходов и экспорт графиков в PNG / PDF",
-      ],
-      date: "23–24.09",
-    },
-    "/team": {
-      text: "Нагрузка команды и распределение ответственности",
-      items: [
-        "Список КАМов: взаимодействия и сигналы",
-        "Назначение и замена ответственного",
-        "Групповая передача взаимодействий",
-      ],
-      date: "20–24.09",
-    },
-    "/import": {
-      text: "Перенесите каталоги из таблиц в рабочее пространство",
-      items: [
-        "Загрузка XLS / XLSX",
-        "Сопоставление колонок и сохранённые профили",
-        "Предпросмотр конфликтов → применение → итог",
-      ],
-      date: "17–19.09",
-    },
-    "/admin/workflows": {
-      text: "Настраиваемый путь взаимодействия с вузом",
-      items: [
-        "14 базовых этапов и нормы длительности",
-        "Правила переходов: комментарии и документы",
-        "Версии шаблона и карта переноса взаимодействий",
-      ],
-      date: "23–24.09",
-    },
-    "/admin/catalogs": {
-      text: "Единые справочники для всей команды",
-      items: [
-        "Вузы, направления, программы",
-        "Вендоры и продукты",
-        "Контакты вузов и архивирование",
-      ],
-      date: "23–24.09",
-    },
-    "/admin/access": {
-      text: "Права пользователей и область видимости данных",
-      items: [
-        "Пользователи и роли Keycloak",
-        "Команды и доступ к вузам",
-        "Правила разрешения и запрета",
-      ],
-      date: "23–24.09",
-    },
-    "/admin/integrations": {
-      text: "Связь с LMS и сайтом ИТ Школы",
-      items: [
-        "Статус источников и время синхронизации",
-        "Журнал запусков и коды ошибок",
-        "Сопоставление поступивших заявок",
-      ],
-      date: "23–24.09",
-    },
-    "/admin/settings": {
-      text: "Параметры радара и аналитики",
-      items: [
-        "Пороги истечения лицензий: 60 / 30 дней",
-        "Порог отсутствия активности: 21 день",
-        "Веса рейтинга по умолчанию",
-      ],
-      date: "23–24.09",
-    },
-    "/admin/audit": {
-      text: "История действий пользователей",
-      items: [
-        "Фильтры по дате, автору и объекту",
-        "Значения до и после изменения",
-        "Неизменяемая история на стороне сервера",
-      ],
-      date: "23–24.09",
-    },
-  };
+export const planned: Record<
+  string,
+  { text: string; items: string[]; date: string }
+> = {
+  "/reports": {
+    text: "Отчёт по взаимодействиям за выбранный период",
+    items: [
+      "Период и фильтры: вуз, программа, продукт, ответственный",
+      "Выбор колонок и формата: XLS, XLSX, PDF, JSON",
+      "Очередь формирования, прогресс и скачивание",
+    ],
+    date: "20-22.09",
+  },
+  "/analytics/rating": {
+    text: "Какие программы и вузы наиболее востребованы",
+    items: [
+      "Вклад заявок, обучающихся и потоков в балл 0-100",
+      "Веса 40 / 40 / 20 и объяснение каждого балла",
+      "Фильтр направления, период и отметки неполных данных",
+    ],
+    date: "23-24.09",
+  },
+  "/analytics/stats": {
+    text: "Путь от первого контакта до обучения",
+    items: [
+      "Воронка по 14 этапам",
+      "Длительность этапов относительно нормы",
+      "Динамика переходов и экспорт графиков в PNG / PDF",
+    ],
+    date: "23-24.09",
+  },
+  "/team": {
+    text: "Нагрузка команды и распределение ответственности",
+    items: [
+      "Список КАМов: взаимодействия и сигналы",
+      "Назначение и замена ответственного",
+      "Групповая передача взаимодействий",
+    ],
+    date: "20-24.09",
+  },
+  "/import": {
+    text: "Перенесите каталоги из таблиц в рабочее пространство",
+    items: [
+      "Загрузка XLS / XLSX",
+      "Сопоставление колонок и сохранённые профили",
+      "Предпросмотр конфликтов → применение → итог",
+    ],
+    date: "17-19.09",
+  },
+  "/admin/workflows": {
+    text: "Настраиваемый путь взаимодействия с вузом",
+    items: [
+      "14 базовых этапов и нормы длительности",
+      "Правила переходов: комментарии и документы",
+      "Версии шаблона и карта переноса взаимодействий",
+    ],
+    date: "23-24.09",
+  },
+  "/admin/catalogs": {
+    text: "Единые справочники для всей команды",
+    items: [
+      "Вузы, направления, программы",
+      "Вендоры и продукты",
+      "Контакты вузов и архивирование",
+    ],
+    date: "23-24.09",
+  },
+  "/admin/access": {
+    text: "Права пользователей и область видимости данных",
+    items: [
+      "Пользователи и роли Keycloak",
+      "Команды и доступ к вузам",
+      "Правила разрешения и запрета",
+    ],
+    date: "23-24.09",
+  },
+  "/admin/integrations": {
+    text: "Связь с LMS и сайтом ИТ Школы",
+    items: [
+      "Статус источников и время синхронизации",
+      "Журнал запусков и коды ошибок",
+      "Сопоставление поступивших заявок",
+    ],
+    date: "23-24.09",
+  },
+  "/admin/settings": {
+    text: "Параметры радара и аналитики",
+    items: [
+      "Пороги истечения лицензий: 60 / 30 дней",
+      "Порог отсутствия активности: 21 день",
+      "Веса рейтинга по умолчанию",
+    ],
+    date: "23-24.09",
+  },
+  "/admin/audit": {
+    text: "История действий пользователей",
+    items: [
+      "Фильтры по дате, автору и объекту",
+      "Значения до и после изменения",
+      "Неизменяемая история на стороне сервера",
+    ],
+    date: "23-24.09",
+  },
+};
 function loadData() {
   try {
     const saved = JSON.parse(localStorage.getItem("radar-demo-v1") || "null");
@@ -245,7 +247,12 @@ function loadData() {
           Array.isArray(i.history),
       )
     )
-      return saved as Interaction[];
+      // Refresh editorial copy while preserving locally saved demo transitions.
+      return (saved as Interaction[]).map((item) => ({
+        ...item,
+        evidence: initialData.find((fixture) => fixture.id === item.id)!
+          .evidence,
+      }));
   } catch {
     /* Invalid demo storage falls back to known fixtures. */
   }
@@ -463,7 +470,7 @@ export default function App() {
     </div>
   );
 }
-function Heading({
+export function Heading({
   eyebrow,
   title,
   text,
@@ -542,9 +549,7 @@ function RadarPage({
     <>
       <Heading
         eyebrow="ВТОРНИК, 15 СЕНТЯБРЯ 2026"
-        title={
-          role === "kam" ? "Всё важное — на радаре" : "Радар вашей команды"
-        }
+        title={role === "kam" ? "Всё важное на радаре" : "Радар вашей команды"}
         text={
           role === "kam"
             ? "Анна, вот что требует внимания в ваших взаимодействиях."
@@ -560,40 +565,23 @@ function RadarPage({
       <div className="hero glass">
         <div className="hero-copy">
           <span className="hero-tag">
-            <span className="status-dot" /> ДЕРЖИМ КУРС
+            <span className="status-dot" /> /01 · КОНТРОЛЬ ВЗАИМОДЕЙСТВИЙ
           </span>
           <h2>
-            От первого контакта
+            РАДАР
             <br />
-            до новых возможностей.
+            <span className="hero-accent">ВУЗОВ</span>
           </h2>
+          <div className="hero-manifest">СВЯЗИ. ДАННЫЕ. РЕЗУЛЬТАТ.</div>
           <p>
-            Каждый вуз, программа и продукт — в едином рабочем пространстве.
-            Начните с того, что важно сегодня.
+            Объединяем вузы, программы и продукты в одном пространстве. Начните
+            с того, что важно сегодня.
           </p>
           <Link to="/interactions" className="text-link">
             Перейти к взаимодействиям <ArrowRight size={17} />
           </Link>
         </div>
-        <div className="radar-art" aria-hidden="true">
-          <div className="orbit orbit-one" />
-          <div className="orbit orbit-two" />
-          <div className="orbit orbit-three" />
-          <div className="sweep" />
-          <div className="radar-center">
-            <Radar size={32} />
-          </div>
-          <div className="radar-point point-one">
-            <Building2 size={18} />
-          </div>
-          <div className="radar-point point-two">
-            <Check size={16} />
-          </div>
-          <div className="radar-point point-three" />
-          <span className="art-label">
-            Видеть главное. Действовать вовремя.
-          </span>
-        </div>
+        <NetworkSculpture />
       </div>
       <section className="metric-grid" aria-label="Сигналы по категориям">
         {(Object.keys(kinds) as Kind[]).map((k, index) => {
@@ -700,31 +688,31 @@ function RadarPage({
                   style={{
                     background:
                       i.severity === "high"
-                        ? "#ff8c68"
+                        ? "#FF5012"
                         : i.severity === "medium"
-                          ? "#aa94f3"
-                          : "#92cbb8",
+                          ? "#8308E9"
+                          : "#9A8EA7",
                   }}
                 />
               ))}
             </div>
             <div className="legend">
               <span>
-                <i style={{ background: "#ff8c68" }} />
+                <i style={{ background: "#FF5012" }} />
                 Высокий приоритет
               </span>
               <b>{total.filter((i) => i.severity === "high").length}</b>
             </div>
             <div className="legend">
               <span>
-                <i style={{ background: "#aa94f3" }} />
+                <i style={{ background: "#8308E9" }} />
                 Средний приоритет
               </span>
               <b>{total.filter((i) => i.severity === "medium").length}</b>
             </div>
             <div className="legend">
               <span>
-                <i style={{ background: "#92cbb8" }} />
+                <i style={{ background: "#9A8EA7" }} />
                 Низкий приоритет
               </span>
               <b>{total.filter((i) => i.severity === "low").length}</b>
@@ -739,8 +727,8 @@ function RadarPage({
             </div>
             <h3>Один путь. 14 этапов.</h3>
             <p>
-              История сохраняет каждый шаг взаимодействия — от поиска контакта
-              до контроля обучения.
+              История сохраняет каждый шаг: от поиска контакта до контроля
+              обучения.
             </p>
             <Link to="/help">
               Как устроен процесс <ArrowRight size={15} />
@@ -986,9 +974,9 @@ function Detail({
             <>
               <h3>Документы по этапам</h3>
               <p>
-                Загрузка и хранение вложений запланированы на 17–19.09. Для
-                подписания потребуется договор, для передачи материалов — акт,
-                для обучения — подтверждение.
+                Загрузка и хранение вложений запланированы на 17-19.09. Для
+                подписания потребуется договор, для передачи материалов нужен
+                акт, для обучения нужно подтверждение.
               </p>
             </>
           ) : (
@@ -1132,7 +1120,7 @@ function University({ data }: { data: Interaction[] }) {
     <Empty title="Вуз недоступен" text="Проверьте адрес и выбранную роль." />
   );
 }
-function Planned({ path }: { path: string }) {
+export function Planned({ path }: { path: string }) {
   const p = planned[path];
   const n = navigation.find((n) => n.path === path)!;
   return (
@@ -1186,7 +1174,8 @@ function Help({ onReset }: { onReset: () => void }) {
           </ol>
           <p>
             Для демонстрации видимости меню выберите роль в верхней панели. КАМ
-            видит записи Анны, руководитель и администратор — всю демо-команду.
+            видит записи Анны, руководитель и администратор видят всю
+            демо-команду.
           </p>
           <Button
             variant="outline"
@@ -1220,7 +1209,7 @@ function Help({ onReset }: { onReset: () => void }) {
     </>
   );
 }
-function Empty({ title, text }: { title: string; text: string }) {
+export function Empty({ title, text }: { title: string; text: string }) {
   return (
     <div className="empty">
       <Radar size={30} />

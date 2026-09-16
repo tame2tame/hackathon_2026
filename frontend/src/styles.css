@@ -1744,3 +1744,431 @@ footer {
     font-size: 12px;
   }
 }
+
+/* CRM theme restored at the user's request. */
+@font-face {
+  font-family: Montserrat;
+  src: url("/fonts/Montserrat-Variable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: swap;
+  font-style: normal;
+}
+@theme {
+  --color-primary: #8308e9;
+}
+h1,
+h2,
+h3,
+.brand {
+  font-family:
+    Montserrat,
+    -apple-system,
+    sans-serif;
+  font-weight: 700;
+  color: #282039;
+}
+h1 {
+  font-size: 29px;
+  line-height: 1.3;
+}
+.brand {
+  font-size: 20px;
+}
+.brand small {
+  font-size: 7px;
+  letter-spacing: 0.8px;
+}
+.brand-icon,
+.button-primary {
+  background: #8308e9;
+}
+.button-primary:hover {
+  background: #6e00c8;
+}
+.nav-link.active {
+  color: #7512bd;
+  background: #f0e6fc;
+}
+.avatar {
+  background: #f0e6fc;
+}
+.button {
+  border-radius: 9px;
+  min-height: 42px;
+  font-size: 12px;
+}
+.button svg {
+  width: 16px;
+  height: 16px;
+}
+.page-heading p {
+  font-size: 13px;
+}
+.section-heading h2 {
+  font-size: 17px;
+}
+.section-heading p {
+  font-size: 12px;
+}
+.search input {
+  font-size: 12px;
+}
+.filters > select {
+  font-size: 12px;
+  max-width: 230px;
+}
+.signal-title strong {
+  font-size: 14px;
+}
+.signal-main > p,
+.signal-reason {
+  font-size: 12px;
+}
+.signal-meta {
+  font-size: 10px;
+}
+.badge {
+  font-size: 9px;
+}
+.signal-icon.stage_overdue,
+.signal-icon.license_expiring {
+  color: #ac370a;
+  background: #fff0e8;
+}
+.signal-icon.missing_document {
+  color: #8308e9;
+  background: #f2e8ff;
+}
+.signal-icon.inactivity {
+  color: #6f6678;
+  background: #efedf2;
+}
+.sidebar-bottom > svg {
+  display: inline;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+.profile-role {
+  font-size: 11px;
+  color: #665974;
+}
+.user-select {
+  border: 1px solid #e5ddeb;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 12px;
+  max-width: 185px;
+  color: #463551;
+}
+.crm-intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 25px;
+  padding: 25px 29px;
+  border: 1px solid #e8ddf3;
+  border-radius: 17px;
+  background: linear-gradient(120deg, #f1e8fa, #fff8f2);
+  margin-bottom: 22px;
+}
+.crm-intro h2 {
+  font-size: 22px;
+  margin-bottom: 10px;
+}
+.crm-intro p {
+  font-size: 13px;
+}
+.intro-total {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 140px;
+}
+.intro-total strong {
+  font-family: Montserrat, sans-serif;
+  font-size: 36px;
+  color: #8308e9;
+}
+.intro-total span {
+  font-size: 11px;
+  color: #776780;
+}
+.metric-grid {
+  margin-top: 18px;
+}
+.metric-0,
+.metric-1 {
+  background: #fff2eb;
+}
+.metric-2 {
+  background: #f2eafa;
+}
+.metric-3 {
+  background: #f2f1f5;
+}
+.metric-card.selected {
+  box-shadow: 0 0 0 2px #8308e9;
+}
+.metric-value {
+  font-family: Montserrat, sans-serif;
+  font-weight: 700;
+}
+.metric-card > strong {
+  font-size: 12px;
+}
+.pagination {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px;
+  flex-wrap: wrap;
+  border-top: 1px solid #eee7f4;
+}
+.pagination > span {
+  font-size: 12px;
+  color: #776780;
+  margin-right: auto;
+}
+.pagination .button {
+  font-size: 11px;
+  min-height: 36px;
+}
+.loading-state,
+.error-state {
+  padding: 28px;
+}
+.error-state h2 {
+  font-size: 19px;
+  margin-bottom: 12px;
+}
+.error-state p {
+  margin: 10px 0;
+  font-size: 13px;
+}
+.error-state code,
+.transition-error code {
+  display: block;
+  color: #9c3619;
+  font-size: 11px;
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.error-state small {
+  display: block;
+  margin-bottom: 15px;
+}
+.error-state > div {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+.skeleton {
+  height: 18px;
+  background: #eee9f4;
+  border-radius: 7px;
+  max-width: 80%;
+  margin-bottom: 12px;
+}
+.skeleton:nth-child(2) {
+  width: 50%;
+}
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #f5f6fa;
+}
+.login-panel {
+  padding: 38px;
+  width: min(100%, 480px);
+  text-align: center;
+}
+.login-panel .brand-icon {
+  margin: 0 auto 23px;
+  color: white;
+}
+.login-panel p {
+  margin: 20px 0;
+}
+.login-panel .button {
+  margin-top: 8px;
+}
+.detail-fields {
+  margin-top: 24px;
+}
+.detail-fields strong > a {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.dialog-content select {
+  width: 100%;
+  border: 1px solid #ddd5e6;
+  border-radius: 8px;
+  padding: 11px;
+  background: #fff;
+  font-size: 13px;
+}
+.transition-error {
+  padding: 12px;
+  background: #fff3ed;
+  border: 1px solid #efcfbd;
+  border-radius: 8px;
+  margin-top: 14px;
+}
+.transition-error p {
+  font-size: 12px;
+}
+.dialog-actions .button {
+  font-size: 11px;
+}
+.interaction-card strong {
+  font-size: 14px;
+}
+.interaction-card p {
+  font-size: 12px;
+}
+.interaction-card small {
+  font-size: 11px;
+}
+.stage-tag {
+  font-size: 12px;
+}
+.university-card h2 {
+  font-size: 17px;
+  line-height: 1.5;
+}
+.university-card p {
+  font-size: 13px;
+}
+.tip p {
+  font-size: 12px;
+}
+@media (max-width: 980px) {
+  .profile-role {
+    display: none;
+  }
+  .page-heading > .button {
+    font-size: 11px;
+  }
+  .crm-intro {
+    padding: 23px;
+  }
+  .topbar {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+@media (max-width: 700px) {
+  h1 {
+    font-size: 24px;
+  }
+  .page-heading {
+    flex-wrap: wrap;
+  }
+  .page-heading > .button {
+    font-size: 11px;
+  }
+  .page-heading > button.button {
+    width: 100%;
+    font-size: 12px;
+    min-height: 46px;
+  }
+  .topbar {
+    padding: 0 13px;
+  }
+  .breadcrumb::before {
+    font-family: Montserrat, sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #7512bd;
+  }
+  .user-select {
+    max-width: 125px;
+    font-size: 10px;
+    padding: 7px;
+  }
+  .demo-badge {
+    font-size: 7px;
+  }
+  .top-actions {
+    gap: 6px;
+  }
+  .crm-intro {
+    padding: 20px;
+    align-items: flex-start;
+    gap: 15px;
+  }
+  .crm-intro h2 {
+    font-size: 18px;
+  }
+  .crm-intro p {
+    font-size: 11px;
+  }
+  .intro-total {
+    min-width: 75px;
+  }
+  .intro-total strong {
+    font-size: 29px;
+  }
+  .intro-total span {
+    font-size: 9px;
+  }
+  .metric-card > strong {
+    font-size: 11px;
+  }
+  .signal-title strong {
+    font-size: 13px;
+  }
+  .signal-main > p {
+    font-size: 11px;
+  }
+  .signal-reason {
+    font-size: 11px;
+  }
+  .signal-meta {
+    font-size: 9px;
+  }
+  .section-heading h2 {
+    font-size: 16px;
+  }
+  .section-heading p {
+    font-size: 10px;
+  }
+  .pagination {
+    padding: 15px;
+    gap: 8px;
+  }
+  .pagination > span {
+    width: 100%;
+    font-size: 11px;
+  }
+  .pagination .button {
+    flex: 1;
+  }
+  .detail-fields {
+    gap: 23px;
+  }
+  .detail-fields strong {
+    font-size: 11px;
+  }
+  .detail-summary h2 {
+    font-size: 20px;
+  }
+  .interaction-card > div:nth-child(2) {
+    min-width: 0;
+    flex: 1;
+  }
+  .interaction-card strong {
+    font-size: 13px;
+  }
+  .filters > select {
+    max-width: 100%;
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+  }
+}

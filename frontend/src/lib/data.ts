@@ -71,7 +71,7 @@ export const initialData: Interaction[] = [
     days: 8,
     kind: "license_expiring",
     evidence:
-      "Лицензия по договору Д-2026/042 истекает 04.10.2026 — через 19 дней на дату демо.",
+      "Лицензия по договору Д-2026/042 истекает 04.10.2026, через 19 дней на дату демо.",
     severity: "high",
     history: [],
   },
@@ -103,7 +103,7 @@ export const initialData: Interaction[] = [
     days: 23,
     kind: "inactivity",
     evidence:
-      "Последнее действие — встреча 23.08.2026. Нет активности 23 дня, порог — 21 день.",
+      "Последнее действие: встреча 23.08.2026. Нет активности 23 дня, порог составляет 21 день.",
     severity: "low",
     history: [],
   },
@@ -135,7 +135,7 @@ export const initialData: Interaction[] = [
     days: 12,
     kind: "license_expiring",
     evidence:
-      "Лицензия по договору Д-2026/068 истекает 29.10.2026 — через 44 дня на дату демо.",
+      "Лицензия по договору Д-2026/068 истекает 29.10.2026, через 44 дня на дату демо.",
     severity: "medium",
     history: [],
   },
