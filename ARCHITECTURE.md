@@ -188,6 +188,11 @@ app_setting        key, value jsonb                    -- пороги рада�
 | `GET /api/v1/universities`, `/{id}` | Вузы со счётчиками взаимодействий и открытых сигналов |
 | `GET /api/v1/directions`, `/programs`, `/products`, `/users` | Справочники |
 | `GET /api/v1/workflows/default` | Опубликованная версия базового workflow с этапами и правилами |
+| `POST /api/v1/workflows` | Новый шаблон процесса |
+| `POST /api/v1/workflows/{template_id}/versions` | Черновик версии копией последней |
+| `PATCH /api/v1/workflow-versions/{id}` | Этапы, порядок, нормы и правила черновика |
+| `PATCH /api/v1/stages/{id}` | Переименование этапа — разрешено и в опубликованной версии |
+| `POST /api/v1/workflow-versions/{id}/publish` | Публикация с картой переноса открытых записей |
 | `GET /api/v1/interactions` | Взаимодействия с фильтрами: вуз, программа, продукт, КАМ, этап, дни на этапе, версия, открытые сигналы |
 | `GET /api/v1/interactions/{id}` | Карточка: договор, история, допустимые переходы с требованиями, сигналы |
 | `POST /api/v1/interactions/{id}/transitions` | Переход: `to_stage_id`, `comment`, `expected_version`, `attachment_ids` |
@@ -257,6 +262,8 @@ app_setting        key, value jsonb                    -- пороги рада�
 | `WF_TRANSITION_NOT_ALLOWED` | 409 | Переход в выбранный этап не разрешён правилами |
 | `WF_COMMENT_REQUIRED` | 422 | Для перехода нужен комментарий |
 | `WF_ATTACHMENT_REQUIRED` | 422 | Для перехода нужен документ |
+| `WF_VERSION_NOT_DRAFT` | 409 | В опубликованной версии разрешено только переименование |
+| `WF_MIGRATION_MAP_INCOMPLETE` | 422 | Карта переноса не покрывает все этапы с открытыми взаимодействиями |
 | `FILE_TYPE_NOT_ALLOWED` | 415 | Тип файла вне белого списка ТЗ |
 | `FILE_TOO_LARGE` | 413 | Файл больше лимита |
 | `IMPORT_MAPPING_INVALID` | 422 | Маппинг колонок не покрывает обязательные поля |

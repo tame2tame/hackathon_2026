@@ -27,6 +27,8 @@ class ErrorCode(StrEnum):
     WF_TRANSITION_NOT_ALLOWED = "WF_TRANSITION_NOT_ALLOWED"
     WF_COMMENT_REQUIRED = "WF_COMMENT_REQUIRED"
     WF_ATTACHMENT_REQUIRED = "WF_ATTACHMENT_REQUIRED"
+    WF_VERSION_NOT_DRAFT = "WF_VERSION_NOT_DRAFT"
+    WF_MIGRATION_MAP_INCOMPLETE = "WF_MIGRATION_MAP_INCOMPLETE"
     FILE_TYPE_NOT_ALLOWED = "FILE_TYPE_NOT_ALLOWED"
     FILE_TOO_LARGE = "FILE_TOO_LARGE"
     IMPORT_MAPPING_INVALID = "IMPORT_MAPPING_INVALID"
@@ -44,6 +46,8 @@ _CATALOG: dict[ErrorCode, tuple[int, str]] = {
     ErrorCode.WF_TRANSITION_NOT_ALLOWED: (409, "Переход недоступен"),
     ErrorCode.WF_COMMENT_REQUIRED: (422, "Нужен комментарий"),
     ErrorCode.WF_ATTACHMENT_REQUIRED: (422, "Нужен документ"),
+    ErrorCode.WF_VERSION_NOT_DRAFT: (409, "Версия уже опубликована"),
+    ErrorCode.WF_MIGRATION_MAP_INCOMPLETE: (422, "Карта переноса неполная"),
     ErrorCode.FILE_TYPE_NOT_ALLOWED: (415, "Тип файла не поддерживается"),
     ErrorCode.FILE_TOO_LARGE: (413, "Файл слишком большой"),
     ErrorCode.IMPORT_MAPPING_INVALID: (422, "Маппинг колонок неполный"),

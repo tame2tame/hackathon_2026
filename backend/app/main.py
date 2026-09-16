@@ -28,6 +28,7 @@ from app.modules.integrations.router import router as integrations_router
 from app.modules.interactions.router import router as interactions_router
 from app.modules.radar.router import router as radar_router
 from app.modules.reports.router import router as reports_router
+from app.modules.workflow.router import editor_router as workflow_editor_router
 from app.modules.workflow.router import router as workflow_router
 
 DESCRIPTION = """
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
     for router in (
         catalogs_router,
         workflow_router,
+        workflow_editor_router,
         interactions_router,
         attachments_router,
         imports_router,

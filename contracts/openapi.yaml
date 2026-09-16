@@ -428,6 +428,274 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/workflows:
+    post:
+      tags:
+      - workflow
+      summary: Создать шаблон процесса
+      operationId: post_template_api_v1_workflows_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowTemplateCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowTemplateOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/workflows/{template_id}/versions:
+    post:
+      tags:
+      - workflow
+      summary: Создать черновик версии
+      description: 'Черновик копирует последнюю версию шаблона: править проще, чем собирать заново.'
+      operationId: post_version_api_v1_workflows__template_id__versions_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Template Id
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/workflow-versions/{version_id}:
+    patch:
+      tags:
+      - workflow
+      summary: Изменить черновик версии
+      description: Этапы, их порядок, нормы, требования к документам и правила переходов.
+      operationId: patch_workflow_version_api_v1_workflow_versions__version_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Version Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionPatch'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: WF_VERSION_NOT_DRAFT
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/stages/{stage_id}:
+    patch:
+      tags:
+      - workflow
+      summary: Переименовать этап
+      description: Единственное изменение, разрешённое в опубликованной версии.
+      operationId: patch_stage_api_v1_stages__stage_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: stage_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Stage Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StageRename'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageRef'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/workflow-versions/{version_id}/publish:
+    post:
+      tags:
+      - workflow
+      summary: Опубликовать версию
+      description: Открытые взаимодействия переезжают на новую версию переходом `migration`, а прежняя
+        версия становится `retired`. Карта переноса нужна для занятых этапов.
+      operationId: post_publish_api_v1_workflow_versions__version_id__publish_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Version Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR · WF_MIGRATION_MAP_INCOMPLETE
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: WF_VERSION_NOT_DRAFT
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/interactions:
     get:
       tags:
@@ -2403,6 +2671,8 @@ components:
       - WF_TRANSITION_NOT_ALLOWED
       - WF_COMMENT_REQUIRED
       - WF_ATTACHMENT_REQUIRED
+      - WF_VERSION_NOT_DRAFT
+      - WF_MIGRATION_MAP_INCOMPLETE
       - FILE_TYPE_NOT_ALLOWED
       - FILE_TOO_LARGE
       - IMPORT_MAPPING_INVALID
@@ -2984,6 +3254,16 @@ components:
       - name
       - direction
       title: ProgramRef
+    PublishRequest:
+      properties:
+        migration_map:
+          additionalProperties:
+            type: string
+          type: object
+          title: Migration Map
+          description: Код этапа старой версии → код новой; нужен для занятых этапов
+      type: object
+      title: PublishRequest
     RatingOut:
       properties:
         entity:
@@ -3404,6 +3684,52 @@ components:
       - match_status
       - interaction_id
       title: SiteApplicationOut
+    StageDraft:
+      properties:
+        code:
+          type: string
+          maxLength: 60
+          pattern: ^[a-z][a-z0-9_]*$
+          title: Code
+        name:
+          type: string
+          maxLength: 200
+          title: Name
+        position:
+          type: integer
+          minimum: 1.0
+          title: Position
+        kind:
+          type: string
+          enum:
+          - start
+          - normal
+          - final
+          title: Kind
+          default: normal
+        bulk_allowed:
+          type: boolean
+          title: Bulk Allowed
+          default: false
+        required_document_types:
+          items:
+            type: string
+          type: array
+          title: Required Document Types
+        norm_days:
+          anyOf:
+          - type: integer
+            maximum: 365.0
+            minimum: 1.0
+          - type: 'null'
+          title: Norm Days
+      type: object
+      required:
+      - code
+      - name
+      - position
+      title: StageDraft
+      description: 'Этап черновика: код неизменяем и связывает норму с этапом между версиями.'
     StageNormOut:
       properties:
         stage_code:
@@ -3511,6 +3837,17 @@ components:
       - name
       - position
       title: StageRef
+    StageRename:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 2
+          title: Name
+      type: object
+      required:
+      - name
+      title: StageRename
     SummaryRow:
       properties:
         owner:
@@ -3617,6 +3954,29 @@ components:
       - to_stage_id
       - expected_version
       title: TransitionCreate
+    TransitionDraft:
+      properties:
+        from_code:
+          type: string
+          maxLength: 60
+          title: From Code
+        to_code:
+          type: string
+          maxLength: 60
+          title: To Code
+        requires_comment:
+          type: boolean
+          title: Requires Comment
+          default: true
+        requires_attachment:
+          type: boolean
+          title: Requires Attachment
+          default: false
+      type: object
+      required:
+      - from_code
+      - to_code
+      title: TransitionDraft
     TransitionOut:
       properties:
         id:
@@ -3822,6 +4182,69 @@ components:
       - id
       - name
       title: VendorRef
+    VersionOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        template_id:
+          type: string
+          format: uuid
+          title: Template Id
+        version_no:
+          type: integer
+          title: Version No
+        status:
+          type: string
+          title: Status
+          description: draft, published или retired
+        published_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Published At
+        stages:
+          items:
+            $ref: '#/components/schemas/StageOut'
+          type: array
+          title: Stages
+        transitions:
+          items:
+            $ref: '#/components/schemas/TransitionRuleOut'
+          type: array
+          title: Transitions
+      type: object
+      required:
+      - id
+      - template_id
+      - version_no
+      - status
+      - published_at
+      - stages
+      - transitions
+      title: VersionOut
+    VersionPatch:
+      properties:
+        stages:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/StageDraft'
+            type: array
+            minItems: 2
+          - type: 'null'
+          title: Stages
+        transitions:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/TransitionDraft'
+            type: array
+          - type: 'null'
+          title: Transitions
+      type: object
+      title: VersionPatch
+      description: Что меняем в черновике. Пропущенное поле остаётся как было.
     WeightsOut:
       properties:
         id:
@@ -3910,6 +4333,35 @@ components:
       - stages
       - transitions
       title: WorkflowOut
+    WorkflowTemplateCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 3
+          title: Name
+      type: object
+      required:
+      - name
+      title: WorkflowTemplateCreate
+    WorkflowTemplateOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        is_default:
+          type: boolean
+          title: Is Default
+      type: object
+      required:
+      - id
+      - name
+      - is_default
+      title: WorkflowTemplateOut
   securitySchemes:
     HTTPBearer:
       type: http

@@ -1,6 +1,8 @@
 """Схемы workflow: этапы, правила переходов, версия шаблона."""
 
 import uuid
+from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -59,3 +61,62 @@ class StageNormOut(BaseModel):
 
 class NormUpdate(BaseModel):
     norm_days: int = Field(ge=1, le=365, description="Новая норма этапа в днях")
+
+
+class WorkflowTemplateCreate(BaseModel):
+    name: str = Field(max_length=200, min_length=3)
+
+
+class WorkflowTemplateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    is_default: bool
+
+
+class StageDraft(BaseModel):
+    """Этап черновика: код неизменяем и связывает норму с этапом между версиями."""
+
+    code: str = Field(max_length=60, pattern=r"^[a-z][a-z0-9_]*$")
+    name: str = Field(max_length=200)
+    position: int = Field(ge=1)
+    kind: Literal["start", "normal", "final"] = "normal"
+    bulk_allowed: bool = False
+    required_document_types: list[str] = Field(default_factory=list)
+    norm_days: int | None = Field(default=None, ge=1, le=365)
+
+
+class TransitionDraft(BaseModel):
+    from_code: str = Field(max_length=60)
+    to_code: str = Field(max_length=60)
+    requires_comment: bool = True
+    requires_attachment: bool = False
+
+
+class VersionPatch(BaseModel):
+    """Что меняем в черновике. Пропущенное поле остаётся как было."""
+
+    stages: list[StageDraft] | None = Field(default=None, min_length=2)
+    transitions: list[TransitionDraft] | None = None
+
+
+class StageRename(BaseModel):
+    name: str = Field(max_length=200, min_length=2)
+
+
+class PublishRequest(BaseModel):
+    migration_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Код этапа старой версии → код новой; нужен для занятых этапов",
+    )
+
+
+class VersionOut(BaseModel):
+    id: uuid.UUID
+    template_id: uuid.UUID
+    version_no: int
+    status: str = Field(description="draft, published или retired")
+    published_at: datetime | None
+    stages: list[StageOut]
+    transitions: list[TransitionRuleOut]
