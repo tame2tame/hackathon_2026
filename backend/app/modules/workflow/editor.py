@@ -24,7 +24,9 @@ from app.modules.workflow.models import (
 )
 from app.modules.workflow.schemas import (
     PublishRequest,
+    StageDraft,
     StageOut,
+    TransitionDraft,
     TransitionRuleOut,
     VersionOut,
     VersionPatch,
@@ -203,72 +205,9 @@ async def patch_version(
     draft = await _draft(session, version_id)
 
     if payload.stages is not None:
-        codes = [stage.code for stage in payload.stages]
-        if len(set(codes)) != len(codes):
-            raise AppError(
-                ErrorCode.VALIDATION_ERROR,
-                "Коды этапов повторяются.",
-                errors=[FieldError(field="stages", message="Код этапа должен быть уникален")],
-            )
-        existing = list(await session.scalars(select(Stage).where(Stage.version_id == draft.id)))
-        for rule in await session.scalars(
-            select(StageTransitionRule).where(StageTransitionRule.version_id == draft.id)
-        ):
-            await session.delete(rule)
-        for stage in existing:
-            await session.delete(stage)
-        await session.flush()
-
-        for stage_draft in payload.stages:
-            session.add(
-                Stage(
-                    version_id=draft.id,
-                    code=stage_draft.code,
-                    name=stage_draft.name,
-                    position=stage_draft.position,
-                    kind=stage_draft.kind,
-                    bulk_allowed=stage_draft.bulk_allowed,
-                    required_document_types=list(stage_draft.required_document_types),
-                )
-            )
-            if stage_draft.norm_days is not None:
-                await _set_norm(session, draft.template_id, stage_draft.code, stage_draft.norm_days)
-        await session.flush()
-
+        await _replace_stages(session, draft, payload.stages)
     if payload.transitions is not None:
-        stages = {
-            stage.code: stage
-            for stage in await session.scalars(select(Stage).where(Stage.version_id == draft.id))
-        }
-        unknown = sorted(
-            {
-                code
-                for rule in payload.transitions
-                for code in (rule.from_code, rule.to_code)
-                if code not in stages
-            }
-        )
-        if unknown:
-            raise AppError(
-                ErrorCode.VALIDATION_ERROR,
-                f"В версии нет этапов: {', '.join(unknown)}.",
-                errors=[FieldError(field="transitions", message="Неизвестный код этапа")],
-            )
-        for rule in await session.scalars(
-            select(StageTransitionRule).where(StageTransitionRule.version_id == draft.id)
-        ):
-            await session.delete(rule)
-        await session.flush()
-        for rule_draft in payload.transitions:
-            session.add(
-                StageTransitionRule(
-                    version_id=draft.id,
-                    from_stage_id=stages[rule_draft.from_code].id,
-                    to_stage_id=stages[rule_draft.to_code].id,
-                    requires_comment=rule_draft.requires_comment,
-                    requires_attachment=rule_draft.requires_attachment,
-                )
-            )
+        await _replace_transitions(session, draft, payload.transitions)
 
     session.add(
         AuditLog(
@@ -287,6 +226,81 @@ async def patch_version(
     )
     await session.commit()
     return draft
+
+
+async def _drop_transitions(session: AsyncSession, version_id: uuid.UUID) -> None:
+    for rule in await session.scalars(
+        select(StageTransitionRule).where(StageTransitionRule.version_id == version_id)
+    ):
+        await session.delete(rule)
+    await session.flush()
+
+
+async def _replace_stages(
+    session: AsyncSession, draft: WorkflowVersion, stages: list[StageDraft]
+) -> None:
+    """Этапы задаются целиком. Правила удаляются вместе с ними: они ссылаются на этапы."""
+    codes = [stage.code for stage in stages]
+    if len(set(codes)) != len(codes):
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Коды этапов повторяются.",
+            errors=[FieldError(field="stages", message="Код этапа должен быть уникален")],
+        )
+    await _drop_transitions(session, draft.id)
+    for stage in await session.scalars(select(Stage).where(Stage.version_id == draft.id)):
+        await session.delete(stage)
+    await session.flush()
+
+    for stage_draft in stages:
+        session.add(
+            Stage(
+                version_id=draft.id,
+                code=stage_draft.code,
+                name=stage_draft.name,
+                position=stage_draft.position,
+                kind=stage_draft.kind,
+                bulk_allowed=stage_draft.bulk_allowed,
+                required_document_types=list(stage_draft.required_document_types),
+            )
+        )
+        if stage_draft.norm_days is not None:
+            await _set_norm(session, draft.template_id, stage_draft.code, stage_draft.norm_days)
+    await session.flush()
+
+
+async def _replace_transitions(
+    session: AsyncSession, draft: WorkflowVersion, transitions: list[TransitionDraft]
+) -> None:
+    stages = {
+        stage.code: stage
+        for stage in await session.scalars(select(Stage).where(Stage.version_id == draft.id))
+    }
+    unknown = sorted(
+        {
+            code
+            for rule in transitions
+            for code in (rule.from_code, rule.to_code)
+            if code not in stages
+        }
+    )
+    if unknown:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            f"В версии нет этапов: {', '.join(unknown)}.",
+            errors=[FieldError(field="transitions", message="Неизвестный код этапа")],
+        )
+    await _drop_transitions(session, draft.id)
+    for rule_draft in transitions:
+        session.add(
+            StageTransitionRule(
+                version_id=draft.id,
+                from_stage_id=stages[rule_draft.from_code].id,
+                to_stage_id=stages[rule_draft.to_code].id,
+                requires_comment=rule_draft.requires_comment,
+                requires_attachment=rule_draft.requires_attachment,
+            )
+        )
 
 
 async def _set_norm(

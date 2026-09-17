@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from sqlalchemy import ColumnElement, Select, and_, not_, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import AppError, ErrorCode
 from app.core.roles import Role
 from app.core.security import CurrentUser
 from app.modules.catalogs.models import AppUser, Program
@@ -36,6 +38,21 @@ def _rule_condition(rule: AccessRule) -> ColumnElement[bool]:
             return Interaction.program_id.in_(
                 select(Program.id).where(Program.direction_id == rule.scope_id)
             )
+
+
+INTERACTION_NOT_FOUND = "Взаимодействие не найдено или недоступно."
+
+
+async def visible_interaction(
+    session: AsyncSession, user: CurrentUser, interaction_id: uuid.UUID
+) -> Interaction:
+    """Запись в области видимости или отказ. Вне области — «не найдено», не «нет прав» (ADR-007)."""
+    interaction = await session.scalar(
+        apply_interaction_scope(select(Interaction).where(Interaction.id == interaction_id), user)
+    )
+    if interaction is None:
+        raise AppError(ErrorCode.NOT_FOUND, INTERACTION_NOT_FOUND)
+    return interaction
 
 
 def scope_name(user: CurrentUser) -> ScopeName:

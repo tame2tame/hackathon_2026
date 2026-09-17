@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, ErrorCode
 from app.core.roles import Role
-from app.core.scope import apply_interaction_scope
+from app.core.scope import visible_interaction
 from app.core.security import CurrentUser
 from app.modules.catalogs.models import AppUser, Program, ProgramProduct, University
 from app.modules.imports.mapping import normalize
@@ -219,40 +219,60 @@ async def _match_application(
     )
     created_id: uuid.UUID | None = None
     if interaction is None:
-        owner = await _owner_for(session, university.id)
-        if owner is None:
+        interaction = await _interaction_from_application(
+            session, record, university.id, program.id, product_id, stages, version_id
+        )
+        if interaction is None:
+            # Некому вести вуз: заявка остаётся в очереди, а не висит без ответственного.
             return application, None
-        stage = stages[START_STAGE_CODE]
-        interaction = Interaction(
-            university_id=university.id,
-            program_id=program.id,
-            product_id=product_id,
-            workflow_version_id=version_id,
-            current_stage_id=stage.id,
-            stage_entered_at=record.received_at,
-            owner_user_id=owner.id,
-            source="site",
-            last_activity_at=record.received_at,
-            created_at=record.received_at,
-        )
-        session.add(interaction)
-        await session.flush()
-        session.add(
-            Transition(
-                interaction_id=interaction.id,
-                from_stage_id=None,
-                to_stage_id=stage.id,
-                occurred_at=record.received_at,
-                actor_user_id=owner.id,
-                comment="Заявка с сайта",
-                source="integration",
-            )
-        )
         created_id = interaction.id
 
     application.interaction_id = interaction.id
     application.match_status = "matched"
     return application, created_id
+
+
+async def _interaction_from_application(
+    session: AsyncSession,
+    record: ApplicationRecord,
+    university_id: uuid.UUID,
+    program_id: uuid.UUID,
+    product_id: uuid.UUID,
+    stages: dict[str, Stage],
+    version_id: uuid.UUID,
+) -> Interaction | None:
+    """Заводит взаимодействие по заявке. Даты берутся из заявки: она и есть начало работы."""
+    owner = await _owner_for(session, university_id)
+    if owner is None:
+        return None
+
+    stage = stages[START_STAGE_CODE]
+    interaction = Interaction(
+        university_id=university_id,
+        program_id=program_id,
+        product_id=product_id,
+        workflow_version_id=version_id,
+        current_stage_id=stage.id,
+        stage_entered_at=record.received_at,
+        owner_user_id=owner.id,
+        source="site",
+        last_activity_at=record.received_at,
+        created_at=record.received_at,
+    )
+    session.add(interaction)
+    await session.flush()
+    session.add(
+        Transition(
+            interaction_id=interaction.id,
+            from_stage_id=None,
+            to_stage_id=stage.id,
+            occurred_at=record.received_at,
+            actor_user_id=owner.id,
+            comment="Заявка с сайта",
+            source="integration",
+        )
+    )
+    return interaction
 
 
 async def _save_applications(
@@ -368,11 +388,7 @@ async def match_application(
     application = await session.get(SiteApplication, application_id)
     if application is None:
         raise AppError(ErrorCode.NOT_FOUND, "Заявка не найдена.")
-    interaction = await session.scalar(
-        apply_interaction_scope(select(Interaction).where(Interaction.id == interaction_id), user)
-    )
-    if interaction is None:
-        raise AppError(ErrorCode.NOT_FOUND, "Взаимодействие не найдено или недоступно.")
+    interaction = await visible_interaction(session, user, interaction_id)
 
     application.interaction_id = interaction.id
     application.university_id = interaction.university_id

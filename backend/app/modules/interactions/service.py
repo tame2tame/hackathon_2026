@@ -15,7 +15,7 @@ from app.core.errors import AppError, ErrorCode, FieldError
 from app.core.events import INTERACTION_TRANSITIONED, get_event_bus
 from app.core.pagination import Page, PageParams
 from app.core.roles import Role
-from app.core.scope import apply_interaction_scope
+from app.core.scope import apply_interaction_scope, visible_interaction
 from app.core.security import CurrentUser
 from app.modules.audit.models import AuditLog
 from app.modules.catalogs.models import AppUser, Product, Program, University
@@ -403,7 +403,7 @@ async def _own_attachments(
 async def list_notes(
     session: AsyncSession, user: CurrentUser, interaction_id: uuid.UUID
 ) -> list[NoteOut]:
-    await _visible_interaction(session, user, interaction_id)
+    await visible_interaction(session, user, interaction_id)
     rows = await session.execute(
         select(InteractionNote, AppUser)
         .join(AppUser, AppUser.id == InteractionNote.author_user_id)
@@ -430,7 +430,7 @@ async def create_note(
 ) -> NoteOut:
     """Заметка — работа по взаимодействию, поэтому она же гасит сигнал о простое."""
     now = now or datetime.now(UTC)
-    interaction = await _visible_interaction(session, user, interaction_id)
+    interaction = await visible_interaction(session, user, interaction_id)
     note = InteractionNote(interaction_id=interaction_id, author_user_id=user.id, text=text.strip())
     session.add(note)
     interaction.last_activity_at = now
@@ -443,17 +443,6 @@ async def create_note(
         author=UserRef(id=user.id, full_name=user.full_name),
         created_at=note.created_at,
     )
-
-
-async def _visible_interaction(
-    session: AsyncSession, user: CurrentUser, interaction_id: uuid.UUID
-) -> Interaction:
-    interaction = await session.scalar(
-        apply_interaction_scope(select(Interaction).where(Interaction.id == interaction_id), user)
-    )
-    if interaction is None:
-        raise AppError(ErrorCode.NOT_FOUND, NOT_FOUND_DETAIL)
-    return interaction
 
 
 async def _locked_interaction(

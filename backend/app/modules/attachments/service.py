@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, ErrorCode, FieldError
-from app.core.scope import apply_interaction_scope
+from app.core.scope import apply_interaction_scope, visible_interaction
 from app.core.security import CurrentUser
 from app.core.storage import Storage, get_storage
 from app.modules.attachments import files
@@ -23,19 +23,7 @@ from app.modules.radar.service import recompute_signals
 from app.modules.workflow.models import Stage
 
 CHUNK_BYTES = 1024 * 1024
-INTERACTION_NOT_FOUND = "Взаимодействие не найдено или недоступно."
 ATTACHMENT_NOT_FOUND = "Вложение не найдено или недоступно."
-
-
-async def _interaction(
-    session: AsyncSession, user: CurrentUser, interaction_id: uuid.UUID
-) -> Interaction:
-    interaction = await session.scalar(
-        apply_interaction_scope(select(Interaction).where(Interaction.id == interaction_id), user)
-    )
-    if interaction is None:
-        raise AppError(ErrorCode.NOT_FOUND, INTERACTION_NOT_FOUND)
-    return interaction
 
 
 async def _known_document_types(session: AsyncSession, version_id: uuid.UUID) -> set[str]:
@@ -88,7 +76,7 @@ async def upload_attachment(
     settings = settings or get_settings()
     storage = storage or get_storage()
 
-    interaction = await _interaction(session, user, interaction_id)
+    interaction = await visible_interaction(session, user, interaction_id)
     document_type = document_type.strip() if document_type else None
     if document_type:
         known = await _known_document_types(session, interaction.workflow_version_id)
@@ -144,7 +132,7 @@ async def upload_attachment(
 async def list_attachments(
     session: AsyncSession, user: CurrentUser, interaction_id: uuid.UUID
 ) -> list[Attachment]:
-    await _interaction(session, user, interaction_id)
+    await visible_interaction(session, user, interaction_id)
     attachments = await session.scalars(
         select(Attachment)
         .where(Attachment.interaction_id == interaction_id)
