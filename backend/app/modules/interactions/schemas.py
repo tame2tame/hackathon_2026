@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -119,6 +120,16 @@ class BulkTransitionRequest(BaseModel):
         max_length=60, description="Код этапа назначения в версии процесса взаимодействия"
     )
     comment: str = Field(default="", max_length=4000)
+
+
+class StatusChange(BaseModel):
+    """Приостановка, завершение, отмена и возврат в работу. Этап сам по себе ничего не завершает."""
+
+    status: Literal["active", "paused", "completed", "cancelled"]
+    reason: str = Field(
+        default="", max_length=4000, description="Обязателен для паузы и отмены: почему"
+    )
+    expected_version: int = Field(ge=1, description="Версия записи, которую видел пользователь")
 
 
 class OwnerChange(BaseModel):

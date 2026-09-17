@@ -51,6 +51,11 @@ class ProgramRef(_FromAttributes):
     id: uuid.UUID
     name: str
     direction: DirectionRef
+    priority: int = Field(description="Ручной приоритет курса, 0 — не задан")
+
+
+class PriorityUpdate(BaseModel):
+    priority: int = Field(ge=0, le=100, description="Чем больше, тем выше в списке; 0 — не задан")
 
 
 class VendorRef(_FromAttributes):

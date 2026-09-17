@@ -54,6 +54,10 @@ PROGRAMS: tuple[tuple[str, str, str, str], ...] = (
     ("Веб-разработка", "web", "Акола", "Акола"),
 )
 
+# Руководитель отметил, какие курсы продвигаем в первую очередь: рейтинг считается по данным,
+# а очередь показа задаётся вручную.
+PROGRAM_PRIORITY: dict[str, int] = {"Анализ данных": 30, "DevOps-инженерия": 20}
+
 UNIVERSITIES: tuple[tuple[str, str, str, str], ...] = (
     ("МГТУ им. Н. Э. Баумана", "МГТУ", "Москва", "Москва"),
     ("Университет ИТМО", "ИТМО", "Санкт-Петербург", "Санкт-Петербург"),
@@ -229,7 +233,11 @@ async def _seed_catalogs(session: AsyncSession) -> dict[str, tuple[Program, Prod
         session.add(vendor)
         await session.flush()
         product = Product(vendor_id=vendor.id, name=product_name)
-        program = Program(direction_id=directions[direction_code].id, name=program_name)
+        program = Program(
+            direction_id=directions[direction_code].id,
+            name=program_name,
+            priority=PROGRAM_PRIORITY.get(program_name, 0),
+        )
         session.add_all([product, program])
         await session.flush()
         session.add(ProgramProduct(program_id=program.id, product_id=product.id, is_default=True))

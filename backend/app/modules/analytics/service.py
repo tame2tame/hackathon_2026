@@ -13,6 +13,7 @@ from app.modules.analytics.rating import DEFAULT_WEIGHTS, METRICS, Entry, Rating
 from app.modules.analytics.schemas import (
     ContributionOut,
     RatingEntity,
+    RatingOrder,
     RatingOut,
     RatingRowOut,
     WeightsUpdate,
@@ -165,6 +166,7 @@ async def rating(
     period_to: date | None,
     direction_ids: list[uuid.UUID],
     weights: dict[str, int] | None = None,
+    order: RatingOrder = "score",
 ) -> RatingOut:
     """Места за период и сдвиг относительно предыдущего периода такой же длины."""
     start, end = _period(period_from, period_to)
@@ -179,15 +181,21 @@ async def rating(
         await _entries(session, entity, previous_start, previous_end, direction_ids), weights
     )
     places = {row.key: row.place for row in previous}
+    priorities = {
+        program_id: priority
+        for program_id, priority in (
+            await session.execute(select(Program.id, Program.priority))
+        ).tuples()
+    }
 
-    return RatingOut(
-        entity=entity,
-        weights=weights,
-        rows=[_row_out(row, places.get(row.key)) for row in current],
-    )
+    rows = [_row_out(row, places.get(row.key), priorities.get(row.key, 0)) for row in current]
+    if order == "priority":
+        # Место остаётся местом по баллу: ручной приоритет меняет только порядок показа.
+        rows.sort(key=lambda row: (-row.priority, row.place))
+    return RatingOut(entity=entity, weights=weights, order=order, rows=rows)
 
 
-def _row_out(row: RatingRow, previous_place: int | None) -> RatingRowOut:
+def _row_out(row: RatingRow, previous_place: int | None, priority: int) -> RatingRowOut:
     return RatingRowOut(
         place=row.place,
         # Плюс — поднялись: было десятое место, стало третье, значит +7.
@@ -196,6 +204,7 @@ def _row_out(row: RatingRow, previous_place: int | None) -> RatingRowOut:
         name=row.name,
         direction_name=row.direction_name,
         score=row.score,
+        priority=priority,
         contributions=[
             ContributionOut(
                 metric=item.metric,

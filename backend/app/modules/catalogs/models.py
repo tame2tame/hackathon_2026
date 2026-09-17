@@ -65,13 +65,19 @@ class Program(UUIDPrimaryKey, Timestamps, Base):
     """ИТ-программа: методические материалы и практика по направлению."""
 
     __tablename__ = "program"
-    __table_args__ = (UniqueConstraint("direction_id", "name"),)
+    __table_args__ = (
+        UniqueConstraint("direction_id", "name"),
+        CheckConstraint("priority BETWEEN 0 AND 100", name="priority_range"),
+    )
 
     direction_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("direction.id", ondelete="RESTRICT"), index=True
     )
     name: Mapped[str] = mapped_column(String(300))
     lms_course_ref: Mapped[str | None] = mapped_column(String(120))
+    # Ручной приоритет курса: рейтинг считается по данным, но руководитель может сказать,
+    # что продвигать в первую очередь. Ноль — приоритет не задан.
+    priority: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     direction: Mapped[Direction] = relationship(lazy="raise")

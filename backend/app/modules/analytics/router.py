@@ -13,6 +13,7 @@ from app.modules.analytics.rating import normalize_weights
 from app.modules.analytics.schemas import (
     ChartOut,
     RatingEntity,
+    RatingOrder,
     RatingOut,
     WeightsOut,
     WeightsUpdate,
@@ -58,12 +59,15 @@ async def read_rating(
     period_from: Annotated[date | None, Query(description="Начало периода")] = None,
     period_to: Annotated[date | None, Query(description="Конец периода")] = None,
     direction_id: Annotated[list[uuid.UUID] | None, Query(description="ИТ-направление")] = None,
+    order: Annotated[
+        RatingOrder, Query(description="Порядок строк: по баллу или по ручному приоритету")
+    ] = "score",
     w_applications: Annotated[int | None, Query(ge=0, le=100)] = None,
     w_students: Annotated[int | None, Query(ge=0, le=100)] = None,
     w_streams: Annotated[int | None, Query(ge=0, le=100)] = None,
 ) -> RatingOut:
     weights = _weights_from_query(w_applications, w_students, w_streams)
-    return await rating(session, entity, period_from, period_to, direction_id or [], weights)
+    return await rating(session, entity, period_from, period_to, direction_id or [], weights, order)
 
 
 @router.get(

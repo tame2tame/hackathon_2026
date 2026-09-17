@@ -14,7 +14,12 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.interfaces import LoaderOption
 
 from app.core.errors import AppError, ErrorCode, FieldError
-from app.core.events import INTERACTION_CREATED, INTERACTION_TRANSITIONED, get_event_bus
+from app.core.events import (
+    INTERACTION_CREATED,
+    INTERACTION_STATUS_CHANGED,
+    INTERACTION_TRANSITIONED,
+    get_event_bus,
+)
 from app.core.pagination import Page, PageParams
 from app.core.roles import Role
 from app.core.scope import apply_interaction_scope, visible_interaction
@@ -60,6 +65,7 @@ from app.modules.interactions.schemas import (
     NoteOut,
     OwnerChange,
     SignalBrief,
+    StatusChange,
     TransitionCreate,
     TransitionOut,
     TransitionResult,
@@ -74,6 +80,12 @@ from app.modules.workflow.schemas import StageRef
 from app.modules.workflow.service import allowed_transitions, get_transition_rule, group_process
 
 NOT_FOUND_DETAIL = "Взаимодействие не найдено или недоступно."
+STATUS_NAMES = {
+    "active": "в работе",
+    "paused": "приостановлена",
+    "completed": "завершена",
+    "cancelled": "отменена",
+}
 
 
 @dataclass(slots=True)
@@ -86,6 +98,7 @@ class InteractionFilters:
     product_id: list[uuid.UUID] = field(default_factory=list)
     owner_id: list[uuid.UUID] = field(default_factory=list)
     stage_code: list[str] = field(default_factory=list)
+    status: list[str] = field(default_factory=list)
     has_signal: bool | None = None
     period_from: date | None = None
     period_to: date | None = None
@@ -108,7 +121,12 @@ def _card_options() -> list[LoaderOption]:
 
 def apply_filters[S: Select[Any]](stmt: S, filters: InteractionFilters) -> S:
     """Фильтры списка. Отчёты берут те же самые, поэтому функция открыта наружу."""
-    stmt = stmt.where(Interaction.status != "cancelled")
+    # Без явного фильтра отменённые записи не показываются: они закрыты решением человека.
+    stmt = stmt.where(
+        Interaction.status.in_(filters.status)
+        if filters.status
+        else Interaction.status != "cancelled"
+    )
     period = period_condition(filters.period_from, filters.period_to)
     if period is not None:
         stmt = stmt.where(period)
@@ -868,6 +886,117 @@ async def _bulk_transition_one(
     )
     await recompute_signals(session, [interaction_id], now)
     return interaction.version, interaction.owner_user_id, to_stage.name
+
+
+# Из какого состояния в какое можно перевести запись. Завершённую сначала возвращают в работу.
+STATUS_FLOW: dict[str, tuple[str, ...]] = {
+    "active": ("paused", "completed", "cancelled"),
+    "paused": ("active", "completed", "cancelled"),
+    "completed": ("active", "cancelled"),
+    "cancelled": ("active",),
+}
+REASON_REQUIRED = ("paused", "cancelled")
+
+
+async def change_status(
+    session: AsyncSession,
+    user: CurrentUser,
+    interaction_id: uuid.UUID,
+    payload: StatusChange,
+    trace_id: str | None = None,
+    now: datetime | None = None,
+) -> InteractionDetail:
+    """Пауза, завершение, отмена и возврат в работу: этап процесса и состояние записи — разное."""
+    now = now or datetime.now(UTC)
+    interaction = await _locked_interaction(session, user, interaction_id)
+    if interaction.version != payload.expected_version:
+        raise AppError(
+            ErrorCode.INTERACTION_VERSION_CONFLICT,
+            "Взаимодействие уже изменил другой пользователь. Обновите карточку и повторите.",
+        )
+    previous = interaction.status
+    if payload.status == previous:
+        return await get_interaction_detail(session, user, interaction_id, now)
+    if payload.status not in STATUS_FLOW[previous]:
+        was, becomes = STATUS_NAMES[previous], STATUS_NAMES[payload.status]
+        raise AppError(
+            ErrorCode.WF_TRANSITION_NOT_ALLOWED,
+            f"Запись {was}: перевести её в состояние «{becomes}» нельзя.",
+        )
+    reason = payload.reason.strip()
+    if payload.status in REASON_REQUIRED and not reason:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Объясните причину: она останется в истории записи.",
+            errors=[FieldError(field="reason", message="Обязательное поле")],
+        )
+    if previous == "cancelled":
+        # Отменённые не занимают связку: при возврате в работу она может быть уже занята.
+        await _check_duplicate(session, interaction)
+
+    interaction.status = payload.status
+    interaction.last_activity_at = now
+    interaction.version += 1
+    session.add(
+        AuditLog(
+            actor_user_id=user.id,
+            action="interaction.status_changed",
+            entity_kind="interaction",
+            entity_id=interaction.id,
+            before={"status": previous},
+            after={"status": payload.status, "reason": reason or None},
+            trace_id=trace_id,
+        )
+    )
+    await session.flush()
+    # Неактивная запись не даёт сигналов: правила радара сами закроют открытые.
+    await recompute_signals(session, [interaction.id], now)
+    await mark_changed(session, [interaction.id], "status")
+    if user.id != interaction.owner_user_id:
+        label = await interaction_label(session, interaction.id)
+        await notify(
+            session,
+            [interaction.owner_user_id],
+            "stage_changed",
+            f"Запись {STATUS_NAMES[payload.status]}: «{label}»",
+            f"{user.full_name} изменил(а) состояние записи с «{STATUS_NAMES[previous]}» "
+            f"на «{STATUS_NAMES[payload.status]}»." + (f" Причина: {reason}" if reason else ""),
+            interaction_id=interaction.id,
+            payload={"status": payload.status},
+        )
+    await session.commit()
+    await get_event_bus().publish(
+        INTERACTION_STATUS_CHANGED,
+        {
+            "interaction_id": str(interaction.id),
+            "status": payload.status,
+            "version": interaction.version,
+        },
+        owner_user_id=interaction.owner_user_id,
+    )
+    return await get_interaction_detail(session, user, interaction_id, now)
+
+
+async def _check_duplicate(session: AsyncSession, interaction: Interaction) -> None:
+    same_counterparty = (
+        Interaction.university_id == interaction.university_id
+        if interaction.university_id is not None
+        else Interaction.client_id == interaction.client_id
+    )
+    duplicate = await session.scalar(
+        select(Interaction.id).where(
+            same_counterparty,
+            Interaction.program_id == interaction.program_id,
+            Interaction.product_id.is_not_distinct_from(interaction.product_id),
+            Interaction.status != "cancelled",
+            Interaction.id != interaction.id,
+        )
+    )
+    if duplicate is not None:
+        raise AppError(
+            ErrorCode.INTERACTION_DUPLICATE,
+            "С этим контрагентом по этой программе и продукту уже ведётся другая запись.",
+        )
 
 
 def _ensure_can_assign(user: CurrentUser) -> None:

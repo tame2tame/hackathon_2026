@@ -33,6 +33,7 @@ def filters_of(payload: ReportCreate) -> InteractionFilters:
         product_id=payload.product_id,
         owner_id=payload.owner_id,
         stage_code=payload.stage_code,
+        status=list(payload.status),
         period_from=payload.period_from,
         period_to=payload.period_to,
         search=payload.search.strip() if payload.search and payload.search.strip() else None,

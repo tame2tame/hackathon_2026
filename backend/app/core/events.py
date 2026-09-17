@@ -22,6 +22,7 @@ HEARTBEAT_SECONDS = 15
 
 INTERACTION_CREATED = "interaction.created"
 INTERACTION_TRANSITIONED = "interaction.transitioned"
+INTERACTION_STATUS_CHANGED = "interaction.status_changed"
 SIGNAL_OPENED = "signal.opened"
 SIGNAL_RESOLVED = "signal.resolved"
 IMPORT_APPLIED = "import.applied"
@@ -31,6 +32,7 @@ NOTIFICATION_CREATED = "notification.created"
 EVENT_KINDS = (
     INTERACTION_CREATED,
     INTERACTION_TRANSITIONED,
+    INTERACTION_STATUS_CHANGED,
     SIGNAL_OPENED,
     SIGNAL_RESOLVED,
     IMPORT_APPLIED,

@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.modules.analytics.rating import WEIGHTS_TOTAL
 
 RatingEntity = Literal["program", "university"]
+RatingOrder = Literal["score", "priority"]
 
 
 class ContributionOut(BaseModel):
@@ -27,6 +28,7 @@ class RatingRowOut(BaseModel):
     name: str
     direction_name: str
     score: float
+    priority: int = Field(description="Ручной приоритет курса, 0 — не задан")
     contributions: list[ContributionOut]
     complete: bool = Field(description="Есть ли все три метрики за период")
     missing_metrics: list[str]
@@ -35,6 +37,9 @@ class RatingRowOut(BaseModel):
 class RatingOut(BaseModel):
     entity: RatingEntity
     weights: dict[str, int]
+    order: RatingOrder = Field(
+        default="score", description="Чем отсортированы строки: баллом или ручным приоритетом"
+    )
     rows: list[RatingRowOut]
 
 

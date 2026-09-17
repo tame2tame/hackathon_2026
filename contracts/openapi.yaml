@@ -249,6 +249,62 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/programs/{program_id}/priority:
+    put:
+      tags:
+      - catalogs
+      summary: Задать приоритет курса вручную
+      description: 'Рейтинг востребованности считается по данным LMS и сайта, но порядок продвижения можно
+        задать руками: приоритет показывается в справочнике и в рейтинге. Меняют руководитель и администратор,
+        изменение пишется в аудит.'
+      operationId: put_program_priority_api_v1_programs__program_id__priority_put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: program_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Program Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PriorityUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgramRef'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/products:
     get:
       tags:
@@ -1290,6 +1346,23 @@ paths:
           description: Код текущего этапа
           title: Stage Code
         description: Код текущего этапа
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              enum:
+              - active
+              - paused
+              - completed
+              - cancelled
+              type: string
+          - type: 'null'
+          description: Состояние записи; без фильтра отменённые скрыты
+          title: Status
+        description: Состояние записи; без фильтра отменённые скрыты
       - name: has_signal
         in: query
         required: false
@@ -1587,6 +1660,63 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '422':
           description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/interactions/{interaction_id}/status:
+    put:
+      tags:
+      - interactions
+      summary: Приостановить, завершить, отменить или вернуть запись в работу
+      description: 'Состояние записи ставит человек: финальный этап сам по себе ничего не завершает. Для
+        паузы и отмены нужна причина — она остаётся в аудите. Неактивная запись не даёт сигналов радара
+        и не принимает переходы. Возврат отменённой в работу невозможен, если такую же связку уже ведёт
+        другая запись.'
+      operationId: put_status_api_v1_interactions__interaction_id__status_put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusChange'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InteractionDetail'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: INTERACTION_VERSION_CONFLICT · INTERACTION_DUPLICATE · WF_TRANSITION_NOT_ALLOWED
           content:
             application/problem+json:
               schema:
@@ -3038,6 +3168,18 @@ paths:
           description: ИТ-направление
           title: Direction Id
         description: ИТ-направление
+      - name: order
+        in: query
+        required: false
+        schema:
+          enum:
+          - score
+          - priority
+          type: string
+          description: 'Порядок строк: по баллу или по ручному приоритету'
+          default: score
+          title: Order
+        description: 'Порядок строк: по баллу или по ручному приоритету'
       - name: w_applications
         in: query
         required: false
@@ -7321,6 +7463,18 @@ components:
       - page
       - page_size
       title: Page[UniversityOut]
+    PriorityUpdate:
+      properties:
+        priority:
+          type: integer
+          maximum: 100.0
+          minimum: 0.0
+          title: Priority
+          description: Чем больше, тем выше в списке; 0 — не задан
+      type: object
+      required:
+      - priority
+      title: PriorityUpdate
     Problem:
       properties:
         type:
@@ -7385,11 +7539,16 @@ components:
           title: Name
         direction:
           $ref: '#/components/schemas/DirectionRef'
+        priority:
+          type: integer
+          title: Priority
+          description: Ручной приоритет курса, 0 — не задан
       type: object
       required:
       - id
       - name
       - direction
+      - priority
       title: ProgramRef
     PublishPreview:
       properties:
@@ -7450,6 +7609,14 @@ components:
             type: integer
           type: object
           title: Weights
+        order:
+          type: string
+          enum:
+          - score
+          - priority
+          title: Order
+          description: 'Чем отсортированы строки: баллом или ручным приоритетом'
+          default: score
         rows:
           items:
             $ref: '#/components/schemas/RatingRowOut'
@@ -7485,6 +7652,10 @@ components:
         score:
           type: number
           title: Score
+        priority:
+          type: integer
+          title: Priority
+          description: Ручной приоритет курса, 0 — не задан
         contributions:
           items:
             $ref: '#/components/schemas/ContributionOut'
@@ -7507,6 +7678,7 @@ components:
       - name
       - direction_name
       - score
+      - priority
       - contributions
       - complete
       - missing_metrics
@@ -7594,6 +7766,17 @@ components:
             type: string
           type: array
           title: Stage Code
+        status:
+          items:
+            type: string
+            enum:
+            - active
+            - paused
+            - completed
+            - cancelled
+          type: array
+          title: Status
+          description: Состояние записи; без фильтра отменённые не попадают
         search:
           anyOf:
           - type: string
@@ -8152,6 +8335,33 @@ components:
       - old_name
       - new_name
       title: StageRenameOut
+    StatusChange:
+      properties:
+        status:
+          type: string
+          enum:
+          - active
+          - paused
+          - completed
+          - cancelled
+          title: Status
+        reason:
+          type: string
+          maxLength: 4000
+          title: Reason
+          description: 'Обязателен для паузы и отмены: почему'
+          default: ''
+        expected_version:
+          type: integer
+          minimum: 1.0
+          title: Expected Version
+          description: Версия записи, которую видел пользователь
+      type: object
+      required:
+      - status
+      - expected_version
+      title: StatusChange
+      description: Приостановка, завершение, отмена и возврат в работу. Этап сам по себе ничего не завершает.
     SummaryRow:
       properties:
         owner:

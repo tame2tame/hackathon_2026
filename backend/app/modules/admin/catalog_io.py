@@ -72,6 +72,7 @@ SPECS: dict[str, tuple[FieldSpec, ...]] = {
         FieldSpec("direction_code", "Код направления", True),
         FieldSpec("name", "Название", True, aliases=("Программа",)),
         FieldSpec("lms_course_ref", "Курс в LMS"),
+        FieldSpec("priority", "Приоритет"),
     ),
     "vendors": (FieldSpec("name", "Название", True, aliases=("Вендор", "Правообладатель")),),
     "products": (
@@ -137,6 +138,18 @@ def _clean(value: Any) -> str:
     if text.startswith("'") and text[1:2] in {"=", "+", "-", "@"}:
         return text[1:]
     return text
+
+
+def _priority(value: str) -> int:
+    if not value.strip():
+        return 0
+    try:
+        priority = int(value.strip())
+    except ValueError as error:
+        raise RowError(f"Приоритет — число от 0 до 100, а не «{value}»") from error
+    if not 0 <= priority <= 100:
+        raise RowError("Приоритет — число от 0 до 100")
+    return priority
 
 
 def _bool(value: str) -> bool:
@@ -319,6 +332,7 @@ async def _program(index: _Index, values: dict[str, str]) -> tuple[str, Action, 
             direction_id=direction.id,
             name=values["name"][:300],
             lms_course_ref=values.get("lms_course_ref") or None,
+            priority=_priority(values.get("priority", "")),
         )
         index.session.add(program)
         index.programs[(direction.id, normalize(values["name"]))] = program
@@ -326,6 +340,8 @@ async def _program(index: _Index, values: dict[str, str]) -> tuple[str, Action, 
     changed: list[str] = []
     if values.get("lms_course_ref"):
         _set(existing, "lms_course_ref", values["lms_course_ref"][:120], changed)
+    if values.get("priority"):
+        _set(existing, "priority", _priority(values["priority"]), changed)
     _restore(existing, changed)
     return _outcome(key, changed)
 
@@ -508,6 +524,7 @@ async def _export_rows(
                     "direction_code": direction.code,
                     "name": program.name,
                     "lms_course_ref": program.lms_course_ref or "",
+                    "priority": str(program.priority),
                 }
                 for program, direction in programs.tuples()
             ]

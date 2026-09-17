@@ -1,16 +1,18 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.core.db import SessionDep
-from app.core.errors import ErrorCode, error_responses
+from app.core.errors import ErrorCode, TraceIdDep, error_responses
 from app.core.pagination import Page, PageQuery
-from app.core.security import CurrentUserDep
+from app.core.roles import Role
+from app.core.security import CurrentUser, CurrentUserDep, require_roles
 from app.modules.catalogs.schemas import (
     CounterpartyGroupOut,
     DirectionRef,
     MeOut,
+    PriorityUpdate,
     ProductRef,
     ProgramRef,
     UniversityOut,
@@ -25,9 +27,11 @@ from app.modules.catalogs.service import (
     list_programs,
     list_universities,
     list_users,
+    set_program_priority,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["catalogs"])
+ManagerDep = Annotated[CurrentUser, Depends(require_roles(Role.MANAGER, Role.ADMIN))]
 
 AUTH_ERRORS = error_responses(ErrorCode.AUTH_REQUIRED)
 LIST_ERRORS = error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.VALIDATION_ERROR)
@@ -86,6 +90,31 @@ async def read_programs(
     direction_id: Annotated[list[uuid.UUID] | None, Query(description="ИТ-направление")] = None,
 ) -> list[ProgramRef]:
     return await list_programs(session, direction_id)
+
+
+@router.put(
+    "/programs/{program_id}/priority",
+    summary="Задать приоритет курса вручную",
+    description=(
+        "Рейтинг востребованности считается по данным LMS и сайта, но порядок продвижения можно "
+        "задать руками: приоритет показывается в справочнике и в рейтинге. Меняют руководитель "
+        "и администратор, изменение пишется в аудит."
+    ),
+    responses=error_responses(
+        ErrorCode.AUTH_REQUIRED,
+        ErrorCode.AUTH_FORBIDDEN,
+        ErrorCode.NOT_FOUND,
+        ErrorCode.VALIDATION_ERROR,
+    ),
+)
+async def put_program_priority(
+    program_id: uuid.UUID,
+    payload: PriorityUpdate,
+    trace_id: TraceIdDep,
+    session: SessionDep,
+    user: ManagerDep,
+) -> ProgramRef:
+    return await set_program_priority(session, user, program_id, payload.priority, trace_id)
 
 
 @router.get("/products", summary="ИТ-продукты", responses=AUTH_ERRORS)

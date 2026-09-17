@@ -42,6 +42,9 @@ class ReportCreate(BaseModel):
     product_id: list[uuid.UUID] = Field(default_factory=list)
     owner_id: list[uuid.UUID] = Field(default_factory=list)
     stage_code: list[str] = Field(default_factory=list)
+    status: list[Literal["active", "paused", "completed", "cancelled"]] = Field(
+        default_factory=list, description="Состояние записи; без фильтра отменённые не попадают"
+    )
     search: str | None = Field(default=None, max_length=100)
     columns: list[str] = Field(
         default_factory=lambda: list(DEFAULT_COLUMNS),

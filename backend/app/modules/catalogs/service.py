@@ -12,6 +12,7 @@ from app.core.pagination import Page, PageParams
 from app.core.roles import Role
 from app.core.scope import apply_interaction_scope, scope_name
 from app.core.security import CurrentUser
+from app.modules.audit.models import AuditLog
 from app.modules.catalogs.models import (
     AppUser,
     CounterpartyGroup,
@@ -150,7 +151,12 @@ async def list_directions(session: AsyncSession) -> list[DirectionRef]:
 async def list_programs(
     session: AsyncSession, direction_id: list[uuid.UUID] | None
 ) -> list[ProgramRef]:
-    stmt = select(Program).options(joinedload(Program.direction)).order_by(Program.name)
+    # Сначала то, что отмечено вручную как приоритетное, затем по алфавиту.
+    stmt = (
+        select(Program)
+        .options(joinedload(Program.direction))
+        .order_by(Program.priority.desc(), Program.name)
+    )
     if direction_id:
         stmt = stmt.where(Program.direction_id.in_(direction_id))
     return [ProgramRef.model_validate(p) for p in await session.scalars(stmt)]
@@ -174,3 +180,33 @@ async def list_users(session: AsyncSession, user: CurrentUser) -> list[UserOut]:
         case "all":
             pass
     return [UserOut.model_validate(u) for u in await session.scalars(stmt)]
+
+
+async def set_program_priority(
+    session: AsyncSession,
+    user: CurrentUser,
+    program_id: uuid.UUID,
+    priority: int,
+    trace_id: str | None = None,
+) -> ProgramRef:
+    """Ручной приоритет курса: данных LMS может не хватать, и решение остаётся за человеком."""
+    program = await session.scalar(
+        select(Program).where(Program.id == program_id).options(joinedload(Program.direction))
+    )
+    if program is None:
+        raise AppError(ErrorCode.NOT_FOUND, "Программа не найдена.")
+    before = program.priority
+    program.priority = priority
+    session.add(
+        AuditLog(
+            actor_user_id=user.id,
+            action="catalog.program_priority_changed",
+            entity_kind="program",
+            entity_id=program.id,
+            before={"priority": before},
+            after={"priority": priority},
+            trace_id=trace_id,
+        )
+    )
+    await session.commit()
+    return ProgramRef.model_validate(program)

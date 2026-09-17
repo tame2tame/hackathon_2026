@@ -1,6 +1,6 @@
 import uuid
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, status
 
@@ -18,6 +18,7 @@ from app.modules.interactions.schemas import (
     NoteCreate,
     NoteOut,
     OwnerChange,
+    StatusChange,
     TransitionCreate,
     TransitionResult,
 )
@@ -26,6 +27,7 @@ from app.modules.interactions.service import (
     bulk_change_owner,
     bulk_transitions,
     change_owner,
+    change_status,
     create_interaction,
     create_note,
     create_transition,
@@ -46,6 +48,10 @@ def _interaction_filters(
     product_id: Annotated[list[uuid.UUID] | None, Query(description="ИТ-продукт")] = None,
     owner_id: Annotated[list[uuid.UUID] | None, Query(description="КАМ")] = None,
     stage_code: Annotated[list[str] | None, Query(description="Код текущего этапа")] = None,
+    status: Annotated[
+        list[Literal["active", "paused", "completed", "cancelled"]] | None,
+        Query(description="Состояние записи; без фильтра отменённые скрыты"),
+    ] = None,
     has_signal: Annotated[bool | None, Query(description="Есть открытый сигнал")] = None,
     period_from: Annotated[date | None, Query(description="Начало периода, UTC")] = None,
     period_to: Annotated[date | None, Query(description="Конец периода, UTC")] = None,
@@ -62,6 +68,7 @@ def _interaction_filters(
         product_id=product_id or [],
         owner_id=owner_id or [],
         stage_code=stage_code or [],
+        status=list(status or []),
         has_signal=has_signal,
         period_from=period_from,
         period_to=period_to,
@@ -172,6 +179,34 @@ async def post_note(
     user: CurrentUserDep,
 ) -> NoteOut:
     return await create_note(session, user, interaction_id, payload.text)
+
+
+@router.put(
+    "/{interaction_id}/status",
+    summary="Приостановить, завершить, отменить или вернуть запись в работу",
+    description=(
+        "Состояние записи ставит человек: финальный этап сам по себе ничего не завершает. "
+        "Для паузы и отмены нужна причина — она остаётся в аудите. Неактивная запись не даёт "
+        "сигналов радара и не принимает переходы. Возврат отменённой в работу невозможен, если "
+        "такую же связку уже ведёт другая запись."
+    ),
+    responses=error_responses(
+        ErrorCode.AUTH_REQUIRED,
+        ErrorCode.NOT_FOUND,
+        ErrorCode.VALIDATION_ERROR,
+        ErrorCode.INTERACTION_VERSION_CONFLICT,
+        ErrorCode.INTERACTION_DUPLICATE,
+        ErrorCode.WF_TRANSITION_NOT_ALLOWED,
+    ),
+)
+async def put_status(
+    interaction_id: uuid.UUID,
+    payload: StatusChange,
+    trace_id: TraceIdDep,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> InteractionDetail:
+    return await change_status(session, user, interaction_id, payload, trace_id=trace_id)
 
 
 @router.post(
