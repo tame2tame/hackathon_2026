@@ -39,6 +39,14 @@ else
     FAILED=1
 fi
 
+# Хранилище файлов проверяется тем же health: без него вложения и отчёты не скачать.
+if curl -sk --max-time 20 "$BASE_URL/api/health" | grep -q '"storage":"ok"'; then
+    echo "ок      хранилище файлов отвечает"
+else
+    echo "ОШИБКА  хранилище файлов недоступно: проверьте MinIO и ключи S3_*" >&2
+    FAILED=1
+fi
+
 # Ответ об ошибке должен быть в формате problem+json с кодом из каталога.
 if curl -sk --max-time 20 "$BASE_URL/api/v1/me" | grep -q '"code":"AUTH_REQUIRED"'; then
     echo "ок      ошибки в формате problem+json"

@@ -170,6 +170,24 @@ services:
       retries: 20
     restart: unless-stopped
 
+  # Файлы копируются отдельно от базы: тем же образом MinIO, в котором есть mc.
+  backup-files:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    entrypoint: ["sh", "-c", "while true; do sh /scripts/files.sh || echo 'копия файлов не удалась'; sleep 86400; done"]
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: radar-vuzov
+      BACKUP_DIR: /backups/files
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?логин MinIO}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?пароль MinIO}
+    volumes:
+      - ./backup:/scripts:ro
+      - backups:/backups
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
   backup:
     image: postgres:16
     environment:
