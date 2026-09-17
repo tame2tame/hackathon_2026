@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     smtp_sender: str = "radar@example.com"
     # Адрес интерфейса: из него строится ссылка на карточку в тексте уведомления.
     public_url: str = "http://127.0.0.1:5173"
+    # Куда каналам уведомлений разрешено ходить: администратор выбирает из этого списка, а не
+    # вписывает любой адрес — иначе токеном канала можно было бы «постучаться» куда угодно.
+    notify_allowed_hosts: str = (
+        "api.telegram.org,botapi.max.ru,127.0.0.1,localhost,mock-messengers,mailpit"
+    )
     # Ключ Fernet для email и телефонов контактов вуза; пустой означает «шифрование не настроено».
     pd_encryption_key: str = ""
     # Хранилище файлов: local — каталог upload_dir, s3 — MinIO или другое S3-совместимое хранилище.
@@ -67,6 +72,12 @@ class Settings(BaseSettings):
     @property
     def jwks_url(self) -> str:
         return self.keycloak_jwks_url or f"{self.keycloak_issuer}/protocol/openid-connect/certs"
+
+    @property
+    def notify_allowed_host_list(self) -> list[str]:
+        return [
+            host.strip().casefold() for host in self.notify_allowed_hosts.split(",") if host.strip()
+        ]
 
     @property
     def cors_origin_list(self) -> list[str]:

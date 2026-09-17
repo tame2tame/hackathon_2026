@@ -6,7 +6,9 @@
 не задерживает переход по этапу.
 """
 
+import logging
 import re
+import time
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
@@ -15,7 +17,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,9 +48,16 @@ from app.modules.notifications.schemas import (
     NotificationOut,
 )
 
+logger = logging.getLogger("radar.notifications")
+
 MAX_ATTEMPTS = 5
 BACKOFF_MINUTES = (1, 5, 15, 60)
 DELIVERY_BATCH = 100
+# Аренда захвата и предел времени на один запуск: очередь не должна упереться в таймаут задачи.
+DELIVERY_LEASE = timedelta(minutes=5)
+DELIVERY_BUDGET_SECONDS = 120.0
+# Во внешние каналы уходит только заголовок и ссылка: подробности — за входом в систему.
+EXTERNAL_BODY = "Подробности — в «Радаре вузов»."
 NOTIFICATION_NOT_FOUND = "Уведомление не найдено."
 
 ADDRESS_PATTERNS = {
@@ -349,6 +358,7 @@ async def update_channel(
 ) -> ChannelOut:
     channel = await _channel(session, kind)
     before = {"is_enabled": channel.is_enabled, "settings": channel.settings}
+    previous_host = channels.host_of(channel)
     if payload.settings is not None:
         schema: type[BaseModel] = EmailSettings if kind == "email" else MessengerSettings
         try:
@@ -365,12 +375,27 @@ async def update_channel(
                     for item in error.errors()
                 ],
             ) from error
+        if not channels.host_allowed(channels.host_of(channel)):
+            allowed = ", ".join(get_settings().notify_allowed_host_list)
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"Адрес канала не разрешён. Разрешены: {allowed}.",
+                errors=[
+                    FieldError(
+                        field="settings.host" if kind == "email" else "settings.base_url",
+                        message="Адрес не входит в NOTIFY_ALLOWED_HOSTS",
+                    )
+                ],
+            )
     if payload.is_enabled is not None:
         channel.is_enabled = payload.is_enabled
     if payload.is_mock is not None:
         channel.is_mock = payload.is_mock
     if "secret_ref" in payload.model_fields_set:
         channel.secret_ref = payload.secret_ref
+    elif channels.host_of(channel) != previous_host:
+        # Адрес сменился — прежний секрет к нему не привязан: его называют заново.
+        channel.secret_ref = None
     if payload.kinds is not None:
         channel.kinds = list(dict.fromkeys(payload.kinds))
     channel.updated_by = admin.id
@@ -404,23 +429,30 @@ async def _send(
     now: datetime,
 ) -> None:
     delivery.attempts += 1
+    # Персональные данные во внешний канал не уходят: только заголовок события и ссылка.
+    body = notification.body if notification.kind == "channel_test" else EXTERNAL_BODY
+    failure: str | None = None
     try:
         await channels.sender_for(channel).send(
-            channels.OutgoingMessage(
-                address, notification.title, notification.body, _link(notification)
-            )
+            channels.OutgoingMessage(address, notification.title, body, _link(notification))
         )
     except channels.DeliveryError as error:
-        delivery.last_error = str(error)[:300]
-        if delivery.attempts >= MAX_ATTEMPTS:
-            delivery.status = "failed"
-        else:
-            pause = BACKOFF_MINUTES[min(delivery.attempts, len(BACKOFF_MINUTES)) - 1]
-            delivery.next_attempt_at = now + timedelta(minutes=pause)
-    else:
+        failure = str(error)
+    except Exception as error:
+        # Сбой отправителя не должен останавливать очередь: он становится обычным отказом доставки.
+        logger.exception("Канал %s не отправил уведомление %s", channel.kind, notification.id)
+        failure = type(error).__name__
+    if failure is None:
         delivery.status = "sent"
         delivery.sent_at = now
         delivery.last_error = None
+        return
+    delivery.last_error = failure[:300]
+    if delivery.attempts >= MAX_ATTEMPTS:
+        delivery.status = "failed"
+    else:
+        pause = BACKOFF_MINUTES[min(delivery.attempts, len(BACKOFF_MINUTES)) - 1]
+        delivery.next_attempt_at = now + timedelta(minutes=pause)
 
 
 async def send_test(session: AsyncSession, admin: CurrentUser, kind: str) -> DeliveryOut:
@@ -473,9 +505,56 @@ class DeliveryStats:
 
 
 async def deliver_pending(session: AsyncSession, now: datetime | None = None) -> DeliveryStats:
-    """Отправляет созревшие доставки. Несколько воркеров не пошлют одно сообщение дважды."""
+    """Отправляет созревшие доставки.
+
+    Захват фиксируется до сети, каждая доставка сохраняется отдельно, а остаток очереди
+    возвращается назад по истечении времени запуска: медленный канал не блокирует остальные
+    и не откатывает уже отправленное.
+    """
     now = now or datetime.now(UTC)
-    rows = (
+    due = (
+        select(NotificationDelivery.id)
+        .where(
+            NotificationDelivery.status == "pending",
+            NotificationDelivery.next_attempt_at <= now,
+            or_(
+                NotificationDelivery.locked_until.is_(None),
+                NotificationDelivery.locked_until < now,
+            ),
+        )
+        .order_by(NotificationDelivery.next_attempt_at)
+        .limit(DELIVERY_BATCH)
+        .with_for_update(skip_locked=True)
+    )
+    claimed = list(
+        await session.scalars(
+            update(NotificationDelivery)
+            .where(NotificationDelivery.id.in_(due.scalar_subquery()))
+            .values(locked_until=now + DELIVERY_LEASE)
+            .returning(NotificationDelivery.id)
+        )
+    )
+    await session.commit()
+
+    stats = DeliveryStats()
+    started = time.monotonic()
+    for index, delivery_id in enumerate(claimed):
+        if time.monotonic() - started > DELIVERY_BUDGET_SECONDS:
+            await session.execute(
+                update(NotificationDelivery)
+                .where(NotificationDelivery.id.in_(claimed[index:]))
+                .values(locked_until=None)
+            )
+            await session.commit()
+            break
+        await _deliver_one(session, delivery_id, now, stats)
+    return stats
+
+
+async def _deliver_one(
+    session: AsyncSession, delivery_id: uuid.UUID, now: datetime, stats: DeliveryStats
+) -> None:
+    row = (
         (
             await session.execute(
                 select(NotificationDelivery, Notification, NotificationChannel, AppUser)
@@ -485,31 +564,21 @@ async def deliver_pending(session: AsyncSession, now: datetime | None = None) ->
                     NotificationChannel.kind == NotificationDelivery.channel_kind,
                 )
                 .join(AppUser, AppUser.id == Notification.user_id)
-                .where(
-                    NotificationDelivery.status == "pending",
-                    NotificationDelivery.next_attempt_at <= now,
-                )
-                .order_by(NotificationDelivery.next_attempt_at)
-                .limit(DELIVERY_BATCH)
-                .with_for_update(of=NotificationDelivery, skip_locked=True)
+                .where(NotificationDelivery.id == delivery_id)
             )
         )
         .tuples()
-        .all()
+        .one_or_none()
     )
-    stats = DeliveryStats()
-    for delivery, notification, channel, user in rows:
-        address = await session.get(NotificationAddress, (user.id, channel.kind))
-        if (
-            not channel.is_enabled
-            or address is None
-            or not address.is_enabled
-            or not user.is_active
-        ):
-            delivery.status = "failed"
-            delivery.last_error = "Канал выключен или сотрудник отписался"
-            stats.failed += 1
-            continue
+    if row is None:
+        return
+    delivery, notification, channel, user = row
+    address = await session.get(NotificationAddress, (user.id, channel.kind))
+    if not channel.is_enabled or address is None or not address.is_enabled or not user.is_active:
+        delivery.status = "failed"
+        delivery.last_error = "Канал выключен или сотрудник отписался"
+        stats.failed += 1
+    else:
         await _send(delivery, notification, channel, address.address, now)
         match delivery.status:
             case "sent":
@@ -518,5 +587,6 @@ async def deliver_pending(session: AsyncSession, now: datetime | None = None) ->
                 stats.failed += 1
             case _:
                 stats.retried += 1
+    delivery.locked_until = None
+    # Каждая доставка фиксируется сама: ошибка одной не отменяет уже отправленные.
     await session.commit()
-    return stats

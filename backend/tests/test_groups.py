@@ -1,6 +1,7 @@
 """Группы контрагентов B2B и B2C: свои процессы, клиенты вне вузов и записи, заведённые вручную."""
 
 import json
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -444,3 +445,68 @@ async def test_admin_manages_groups(client: AsyncClient) -> None:
     assert again.status_code == 422
     assert busy_switch.status_code == 422
     assert busy_archive.status_code == 422
+
+
+async def test_deny_rule_for_a_university_keeps_client_records_visible(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    record = await b2c_record(client)
+    anna = await user_id(session, ANNA_KAM)
+    mgtu = await session.scalar(select(University).where(University.short_name == "МГТУ"))
+    assert mgtu is not None
+
+    rule = await client.post(
+        "/api/v1/admin/access-rules",
+        json={
+            "subject_user_id": str(anna),
+            "effect": "deny",
+            "scope_kind": "university",
+            "scope_id": str(mgtu.id),
+        },
+        headers=as_user(ALINA_ADMIN),
+    )
+    listed = await client.get(INTERACTIONS, headers=as_user(ANNA_KAM))
+
+    assert rule.status_code == 201, rule.text
+    names = {item["counterparty"]["short_name"] for item in listed.json()["items"]}
+    # Запрет по вузу убирает только его записи: у записи частного лица вуза нет.
+    assert "МГТУ" not in names
+    assert record["id"] in {item["id"] for item in listed.json()["items"]}
+
+
+async def test_person_inn_cannot_hide_behind_an_organization(client: AsyncClient) -> None:
+    response = await client.post(
+        CLIENTS,
+        json={"kind": "organization", "name": "ИП Кузнецов", "inn": "500100732259"},
+        headers=as_user(ANNA_KAM),
+    )
+
+    assert response.status_code == 422
+    assert "12 цифр" in response.json()["errors"][0]["message"]
+
+
+async def test_organization_contacts_are_shown_only_to_those_who_work_with_it(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    company = await new_client(
+        client,
+        ANNA_KAM,
+        kind="organization",
+        name="ООО «Контактная»",
+        inn="0055555555",
+        email="office@example.com",
+    )
+
+    mine = await client.get(f"{CLIENTS}/{company['id']}", headers=as_user(ANNA_KAM))
+    foreign = await client.get(f"{CLIENTS}/{company['id']}", headers=as_user(MIKHAIL_KAM))
+
+    assert mine.json()["email"] == "office@example.com"
+    # Карточка видна, чтобы не плодить дубли, но контакты — персональные данные.
+    assert foreign.status_code == 200
+    assert foreign.json()["email"] is None
+    viewed = await session.scalars(
+        select(AuditLog).where(
+            AuditLog.action == "client.viewed", AuditLog.entity_id == uuid.UUID(company["id"])
+        )
+    )
+    assert len(list(viewed)) == 1

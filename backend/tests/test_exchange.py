@@ -1,5 +1,6 @@
 """Двусторонняя интеграция: документ обмена, очередь отправки и приём на заглушках LMS и сайта."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -15,7 +16,7 @@ from app.modules.integrations.clients import (
     PushResult,
 )
 from app.modules.integrations.models import IntegrationOutbox, IntegrationSource
-from app.modules.integrations.outbox import push_source
+from app.modules.integrations.outbox import mark_changed, push_source
 from app.modules.integrations.service import ensure_sources, sync_source
 from app.modules.interactions.models import Interaction
 from mocks import lms as lms_mock
@@ -119,7 +120,9 @@ async def test_changes_are_queued_once_per_record_and_receiver(
 
     pending = await outbox(session, status="pending")
     assert len(pending) == 2
-    assert {entry.reason for entry in pending} == {"transition"}
+    # Очередь не раздувается, но второе изменение не теряется: причина свежая, счётчик вырос.
+    assert {entry.reason for entry in pending} == {"attachment"}
+    assert {entry.change_seq for entry in pending} == {1}
 
 
 async def test_push_delivers_documents_to_the_lms_and_site_mocks(
@@ -262,3 +265,29 @@ async def test_site_learns_where_its_application_went(session: AsyncSession) -> 
     [document] = captured
     assert [item["external_id"] for item in document["site_applications"]] == ["site-77"]
     assert document["status"]["stage_code"] == "contact_search"
+
+
+async def test_change_during_push_is_sent_again(client: AsyncClient, session: AsyncSession) -> None:
+    site = (await sources(session))["site"]
+    kfu = await move_kfu(client)
+
+    class Accepting:
+        def __init__(self, change_meanwhile: bool) -> None:
+            self.change_meanwhile = change_meanwhile
+
+        async def push_interactions(self, documents: list[dict[str, Any]]) -> PushResult:
+            if self.change_meanwhile:
+                # Пока документ летел к получателю, КАМ изменил запись ещё раз.
+                await mark_changed(session, [uuid.UUID(kfu["id"])], "transition")
+            return PushResult(frozenset(item["record"]["id"] for item in documents), {})
+
+    during = await push_source(session, site, client=Accepting(change_meanwhile=True))
+    [entry] = await outbox(session, source_id=site.id)
+    after_first = (entry.status, entry.change_seq)
+    later = await push_source(session, site, client=Accepting(change_meanwhile=False))
+
+    # Изменение, сделанное во время отправки, не теряется: запись уходит ещё раз.
+    assert during.stats == {"sent": 0, "changed": 1}
+    assert after_first == ("pending", 1)
+    assert later.stats == {"sent": 1}
+    assert [item.status for item in await outbox(session, source_id=site.id)] == ["sent"]

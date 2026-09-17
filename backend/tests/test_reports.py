@@ -7,10 +7,16 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import worker
+from app.core.security import current_user_for
+from app.modules.catalogs.models import AppUser, University
 from app.modules.reports import query
 from app.modules.reports.models import ReportJob
+from app.modules.reports.schemas import ReportCreate
+from app.modules.reports.service import create_job
 from tests.users import ALINA_ADMIN, ANNA_KAM, MIKHAIL_KAM, as_user
 
 REPORTS = "/api/v1/reports"
@@ -161,3 +167,53 @@ async def test_report_params_keep_the_period(client: AsyncClient, session: Async
     stored = await session.get(ReportJob, uuid.UUID(job["id"]))
     assert stored is not None
     assert stored.params["period_from"] == str(yesterday - timedelta(days=30))
+
+
+class _SessionFactory:
+    """Сессия теста вместо своей: воркер ходит в ту же транзакцию, что и проверка."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    def __call__(self) -> "_SessionFactory":
+        return self
+
+    async def __aenter__(self) -> AsyncSession:
+        return self._session
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
+async def test_report_from_the_worker_keeps_the_access_rules(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    anna = await session.scalar(select(AppUser).where(AppUser.email == ANNA_KAM))
+    mgtu = await session.scalar(select(University).where(University.short_name == "МГТУ"))
+    assert anna is not None
+    assert mgtu is not None
+    job = await create_job(
+        session,
+        await current_user_for(session, anna),
+        ReportCreate(format="json", columns=["university"]),
+    )
+    rule = await client.post(
+        "/api/v1/admin/access-rules",
+        json={
+            "subject_user_id": str(anna.id),
+            "effect": "deny",
+            "scope_kind": "university",
+            "scope_id": str(mgtu.id),
+        },
+        headers=as_user(ALINA_ADMIN),
+    )
+    assert rule.status_code == 201, rule.text
+    monkeypatch.setattr(worker, "get_sessionmaker", lambda: _SessionFactory(session))
+
+    status = await worker.build_report({}, str(job.id), str(anna.id))
+
+    assert status == "done"
+    rows = json.loads(await download(client, str(job.id)))
+    # Отчёт из очереди подчиняется тем же правилам доступа, что и список в интерфейсе.
+    assert rows
+    assert {"Вуз": "МГТУ им. Н. Э. Баумана"} not in rows

@@ -115,17 +115,22 @@ async def get_current_user(
             raise AppError(ErrorCode.AUTH_REQUIRED, "Нужен токен доступа.")
         claims = await run_in_threadpool(decode_keycloak_token, credentials.credentials, settings)
         user = await _user_from_claims(claims, session)
+    return await current_user_for(session, user)
+
+
+async def current_user_for(session: AsyncSession, user: AppUser) -> CurrentUser:
+    """Сотрудник вместе с его правилами доступа: одинаково для запроса и для фоновой задачи."""
     return CurrentUser(
         id=user.id,
         email=user.email,
         full_name=user.full_name,
         role=Role(user.role),
         team_id=user.team_id,
-        access_rules=await _access_rules(session, user),
+        access_rules=await access_rules_of(session, user),
     )
 
 
-async def _access_rules(session: AsyncSession, user: AppUser) -> tuple[Any, ...]:
+async def access_rules_of(session: AsyncSession, user: AppUser) -> tuple[Any, ...]:
     """Правила доступа сотрудника и его роли — одним запросом на весь запрос к API."""
     from app.core.scope import AccessRule
     from app.modules.admin.models import DataAccessRule

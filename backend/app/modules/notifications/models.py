@@ -110,6 +110,8 @@ class NotificationDelivery(UUIDPrimaryKey, Base):
     next_attempt_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Аренда воркера: пока не истекла, другой воркер эту доставку не берёт; упавший — отпускает сам.
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(String(300))
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

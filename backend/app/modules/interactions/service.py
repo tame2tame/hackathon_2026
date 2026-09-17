@@ -1,6 +1,7 @@
 """Взаимодействия: список с фильтрами, карточка и переход между этапами."""
 
 import uuid
+from collections import Counter
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -17,7 +18,7 @@ from app.core.events import INTERACTION_CREATED, INTERACTION_TRANSITIONED, get_e
 from app.core.pagination import Page, PageParams
 from app.core.roles import Role
 from app.core.scope import apply_interaction_scope, visible_interaction
-from app.core.security import CurrentUser
+from app.core.security import CurrentUser, current_user_for
 from app.modules.audit.models import AuditLog
 from app.modules.catalogs.models import (
     AppUser,
@@ -566,6 +567,7 @@ async def _apply_transition(
     attachments: list[Attachment],
     trace_id: str | None,
     now: datetime,
+    notify_owner: bool = True,
 ) -> Transition:
     """Общая часть одиночного и группового перехода: история, карточка, аудит."""
     before = {"stage_id": str(interaction.current_stage_id), "version": interaction.version}
@@ -610,7 +612,7 @@ async def _apply_transition(
         },
         owner_user_id=interaction.owner_user_id,
     )
-    if user.id != interaction.owner_user_id:
+    if notify_owner and user.id != interaction.owner_user_id:
         await _notify_owner(session, user, interaction, from_stage_id, to_stage, comment)
     await mark_changed(session, [interaction.id], "transition")
     return transition
@@ -625,6 +627,18 @@ async def _notify_owner(
     comment: str,
 ) -> None:
     """Запись перевёл не владелец: руководитель, групповой переход — владелец должен узнать."""
+    owner = await session.get(AppUser, interaction.owner_user_id)
+    if owner is None or not owner.is_active:
+        return
+    # Правило доступа могло закрыть запись самому владельцу: тогда и уведомлять его нечем.
+    visible = await session.scalar(
+        apply_interaction_scope(
+            select(Interaction.id).where(Interaction.id == interaction.id),
+            await current_user_for(session, owner),
+        )
+    )
+    if visible is None:
+        return
     from_stage = await session.get(Stage, from_stage_id)
     label = await interaction_label(session, interaction.id)
     body = (
@@ -756,11 +770,39 @@ async def bulk_transitions(
     now: datetime | None = None,
 ) -> BulkResult:
     moment = now or datetime.now(UTC)
+    moved: Counter[uuid.UUID] = Counter()
+    stage_name = ""
 
     async def move(interaction_id: uuid.UUID) -> int:
-        return await _bulk_transition_one(session, user, interaction_id, payload, trace_id, moment)
+        nonlocal stage_name
+        version, owner_id, stage_name = await _bulk_transition_one(
+            session, user, interaction_id, payload, trace_id, moment
+        )
+        moved[owner_id] += 1
+        return version
 
-    return await _bulk(session, payload.interaction_ids, move)
+    result = await _bulk(session, payload.interaction_ids, move)
+    await _notify_bulk_owners(session, user, moved, stage_name)
+    return result
+
+
+async def _notify_bulk_owners(
+    session: AsyncSession, user: CurrentUser, moved: Counter[uuid.UUID], stage_name: str
+) -> None:
+    """Одно уведомление на владельца вместо сотни: групповой переход — одно действие."""
+    for owner_id, count in moved.items():
+        if owner_id == user.id:
+            continue
+        await notify(
+            session,
+            [owner_id],
+            "stage_changed",
+            f"Записи переведены на этап «{stage_name}»",
+            f"{user.full_name} перевёл(а) групповым переходом ваших записей: {count}.",
+            payload={"moved": count, "stage_name": stage_name},
+        )
+    if moved:
+        await session.commit()
 
 
 async def _bulk_transition_one(
@@ -770,7 +812,7 @@ async def _bulk_transition_one(
     payload: BulkTransitionRequest,
     trace_id: str | None,
     now: datetime,
-) -> int:
+) -> tuple[int, uuid.UUID, str]:
     interaction = await _locked_interaction(session, user, interaction_id)
     if interaction.status != "active":
         raise AppError(ErrorCode.WF_TRANSITION_NOT_ALLOWED, "Взаимодействие не активно.")
@@ -821,9 +863,11 @@ async def _bulk_transition_one(
         attachments=[],
         trace_id=trace_id,
         now=now,
+        # Владельцу уходит одна сводка на весь групповой переход, а не письмо на каждую запись.
+        notify_owner=False,
     )
     await recompute_signals(session, [interaction_id], now)
-    return interaction.version
+    return interaction.version, interaction.owner_user_id, to_stage.name
 
 
 def _ensure_can_assign(user: CurrentUser) -> None:

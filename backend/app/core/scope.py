@@ -31,7 +31,9 @@ class AccessRule:
 def _rule_condition(rule: AccessRule) -> ColumnElement[bool]:
     match rule.scope_kind:
         case "university":
-            return Interaction.university_id == rule.scope_id
+            # IS NOT DISTINCT FROM вместо равенства: у записи B2C вуза нет, и обычное сравнение
+            # дало бы NULL — запрет по одному вузу спрятал бы все записи частных лиц.
+            return Interaction.university_id.is_not_distinct_from(rule.scope_id)
         case "program":
             return Interaction.program_id == rule.scope_id
         case "group":

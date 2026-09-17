@@ -8,6 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.catalogs.schemas import GroupRef
 
+# Название этапа попадает в заголовки уведомлений и в тему письма: управляющих символов там быть
+# не должно.
+NAME_PATTERN = r"^[^\x00-\x1f\x7f]+$"
+
 
 class StageRef(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -93,7 +97,7 @@ class StageDraft(BaseModel):
     """Этап черновика: код неизменяем и связывает норму с этапом между версиями."""
 
     code: str = Field(max_length=60, pattern=r"^[a-z][a-z0-9_]*$")
-    name: str = Field(max_length=200)
+    name: str = Field(max_length=200, pattern=NAME_PATTERN)
     position: int = Field(ge=1)
     kind: Literal["start", "normal", "final"] = "normal"
     bulk_allowed: bool = False
@@ -116,7 +120,7 @@ class VersionPatch(BaseModel):
 
 
 class StageRename(BaseModel):
-    name: str = Field(max_length=200, min_length=2)
+    name: str = Field(max_length=200, min_length=2, pattern=NAME_PATTERN)
 
 
 class PublishRequest(BaseModel):

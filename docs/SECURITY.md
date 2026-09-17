@@ -25,6 +25,10 @@
 | Правила администратора поверх ролей | `data_access_rule`: разрешение расширяет область, запрет вычитает и сильнее разрешения | [`backend/app/core/scope.py`](../backend/app/core/scope.py) |
 | Действия по ролям | `require_roles` на изменении норм, импорте, интеграциях, весах рейтинга, администрировании | [`backend/app/core/security.py`](../backend/app/core/security.py) |
 | Уведомления личные | Ленту и событие SSE `notification.created` видит только адресат, чужое уведомление — `404` | [`backend/app/modules/events/router.py`](../backend/app/modules/events/router.py) |
+| Во внешние каналы не уходят персональные данные | В Telegram, Max и почту отправляются заголовок события и ссылка, без контрагента, ответственного и комментариев | [`backend/app/modules/notifications/service.py`](../backend/app/modules/notifications/service.py) |
+| Канал ходит только по разрешённым адресам | Хост API мессенджера или почтового сервера сверяется с `NOTIFY_ALLOWED_HOSTS`; смена адреса отвязывает секрет, а пароль SMTP не уходит без STARTTLS | [`backend/app/modules/notifications/channels.py`](../backend/app/modules/notifications/channels.py) |
+| Контакты клиента видит тот, кто с ним работает | Карточка организации видна всем, чтобы не плодить дубли, но email и телефон расшифровываются только создателю, его команде и владельцам записей — и каждый такой просмотр пишется в аудит | [`backend/app/modules/clients/service.py`](../backend/app/modules/clients/service.py) |
+| Отчёт из очереди подчиняется правилам доступа | Воркер строит отчёт с правилами заказчика, а не с пустыми | [`backend/app/worker.py`](../backend/app/worker.py) |
 | Секреты каналов уведомлений | В базе — только имя переменной, и только с префиксом `NOTIFY_`: через настройку канала нельзя отправить наружу `DATABASE_URL` или ключ шифрования | [`backend/app/modules/notifications/channels.py`](../backend/app/modules/notifications/channels.py) |
 
 ## Персональные данные

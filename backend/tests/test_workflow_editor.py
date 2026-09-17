@@ -379,3 +379,20 @@ async def test_publish_moves_open_interactions(client: AsyncClient, session: Asy
     )
     assert retired is not None
     assert retired.status == "retired"
+
+
+async def test_stage_name_cannot_hide_a_line_break(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    workflow = (await client.get(f"{WORKFLOWS}/default", headers=as_user(ANNA_KAM))).json()
+    stage = next(item for item in workflow["stages"] if item["code"] == "signing")
+
+    response = await client.patch(
+        f"/api/v1/stages/{stage['id']}",
+        json={"name": "Подписание\nX-Injected: 1"},
+        headers=as_user(ALINA_ADMIN),
+    )
+
+    # Название этапа попадает в тему письма-уведомления: перенос строки туда пускать нельзя.
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"

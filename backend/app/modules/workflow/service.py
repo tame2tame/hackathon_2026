@@ -41,20 +41,30 @@ class GroupProcess:
 
 
 async def published_version(
-    session: AsyncSession, template_id: uuid.UUID
+    session: AsyncSession, template_id: uuid.UUID, lock: bool = False
 ) -> WorkflowVersion | None:
-    version: WorkflowVersion | None = await session.scalar(
+    stmt = (
         select(WorkflowVersion)
         .where(WorkflowVersion.template_id == template_id, WorkflowVersion.status == "published")
         .order_by(WorkflowVersion.version_no.desc())
         .limit(1)
     )
+    if lock:
+        stmt = stmt.with_for_update(read=True).execution_options(populate_existing=True)
+    version: WorkflowVersion | None = await session.scalar(stmt)
     return version
 
 
 async def group_process(session: AsyncSession, group: CounterpartyGroup) -> GroupProcess:
-    """Действующая схема процесса группы, её этапы по коду и первый этап."""
-    version = await published_version(session, group.workflow_template_id)
+    """Действующая схема процесса группы, её этапы по коду и первый этап.
+
+    Схема берётся под общую блокировку: если в этот момент идёт публикация, запись дождётся её
+    и встанет уже на новую схему, а не на ту, которую только что вывели из работы.
+    """
+    version = await published_version(session, group.workflow_template_id, lock=True)
+    if version is None:
+        # Публикация завершилась, пока мы ждали: перечитываем уже новую действующую схему.
+        version = await published_version(session, group.workflow_template_id, lock=True)
     stages = (
         {
             stage.code: stage

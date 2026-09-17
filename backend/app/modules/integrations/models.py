@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -85,8 +85,10 @@ class SiteApplication(UUIDPrimaryKey, Timestamps, Base):
 class IntegrationOutbox(UUIDPrimaryKey, Base):
     """Запись CRM изменилась и ждёт отправки получателю. Пишется в транзакции самого изменения.
 
-    Пока отправка не ушла, новые изменения той же записи не множат очередь: документ строится
-    в момент отправки и всегда отражает последнее состояние.
+    Пока отправка не ушла, новые изменения той же записи не множат очередь, а увеличивают
+    `change_seq`. Воркер захватывает строку арендой `locked_until`, а не блокировкой на время
+    сетевого вызова, и отмечает отправку, только если `change_seq` не изменился: изменение,
+    сделанное во время отправки, уйдёт следующим запуском, а не потеряется.
     """
 
     __tablename__ = "integration_outbox"
@@ -110,6 +112,8 @@ class IntegrationOutbox(UUIDPrimaryKey, Base):
     )
     reason: Mapped[str] = mapped_column(String(40))
     status: Mapped[str] = mapped_column(String(16), default="pending")
+    change_seq: Mapped[int] = mapped_column(BigInteger, default=0, server_default=text("0"))
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     next_attempt_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

@@ -15,8 +15,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.db import get_sessionmaker
-from app.core.roles import Role
-from app.core.security import CurrentUser
+from app.core.security import current_user_for
 from app.modules.catalogs.models import AppUser
 from app.modules.integrations.outbox import push_all
 from app.modules.integrations.service import ensure_sources, sync_all
@@ -49,13 +48,8 @@ async def build_report(ctx: dict[str, Any], job_id: str, user_id: str) -> str:
         requester = await session.get(AppUser, uuid.UUID(user_id))
         if requester is None:
             return "failed"
-        user = CurrentUser(
-            id=requester.id,
-            email=requester.email,
-            full_name=requester.full_name,
-            role=Role(requester.role),
-            team_id=requester.team_id,
-        )
+        # Вместе с правилами доступа: иначе отчёт из очереди показал бы больше, чем видит заказчик.
+        user = await current_user_for(session, requester)
         job = await run_job(session, user, uuid.UUID(job_id))
         return job.status
 

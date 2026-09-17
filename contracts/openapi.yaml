@@ -7943,6 +7943,7 @@ components:
         name:
           type: string
           maxLength: 200
+          pattern: ^[^\x00-\x1f\x7f]+$
           title: Name
         position:
           type: integer
@@ -8128,6 +8129,7 @@ components:
           type: string
           maxLength: 200
           minLength: 2
+          pattern: ^[^\x00-\x1f\x7f]+$
           title: Name
       type: object
       required:

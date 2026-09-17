@@ -53,8 +53,22 @@ async def _version(session: AsyncSession, version_id: uuid.UUID) -> WorkflowVers
     return version
 
 
-async def _draft(session: AsyncSession, version_id: uuid.UUID) -> WorkflowVersion:
-    version = await _version(session, version_id)
+async def _draft(
+    session: AsyncSession, version_id: uuid.UUID, lock: bool = False
+) -> WorkflowVersion:
+    if lock:
+        # Двойной клик по «Опубликовать» не должен перенести записи дважды: второй запрос
+        # дождётся первого и увидит, что черновик уже опубликован.
+        version = await session.scalar(
+            select(WorkflowVersion)
+            .where(WorkflowVersion.id == version_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if version is None:
+            raise AppError(ErrorCode.NOT_FOUND, "Версия процесса не найдена.")
+    else:
+        version = await _version(session, version_id)
     if version.status != "draft":
         raise AppError(
             ErrorCode.WF_VERSION_NOT_DRAFT,
@@ -394,7 +408,7 @@ def _neighbour(old_stages: list[Stage], index: int, new_stages: dict[str, Stage]
 
 
 async def _publish_plan(
-    session: AsyncSession, draft: WorkflowVersion, payload: PublishRequest
+    session: AsyncSession, draft: WorkflowVersion, payload: PublishRequest, lock: bool = False
 ) -> _PublishPlan:
     new_stages = {
         stage.code: stage
@@ -403,7 +417,7 @@ async def _publish_plan(
     if not new_stages:
         raise AppError(ErrorCode.VALIDATION_ERROR, "В версии нет этапов.")
 
-    previous = await session.scalar(
+    published = (
         select(WorkflowVersion)
         .where(
             WorkflowVersion.template_id == draft.template_id,
@@ -412,6 +426,8 @@ async def _publish_plan(
         .order_by(WorkflowVersion.version_no.desc())
         .limit(1)
     )
+    # Под блокировкой действующей схемы новые записи не успеют встать на неё во время переноса.
+    previous = await session.scalar(published.with_for_update() if lock else published)
     if previous is None:
         return _PublishPlan(None, [], new_stages, {}, set(), {})
 
@@ -516,8 +532,8 @@ async def publish_version(
 ) -> WorkflowVersion:
     """Публикует черновик и переводит на него открытые взаимодействия прежней схемы."""
     now = now or datetime.now(UTC)
-    draft = await _draft(session, version_id)
-    plan = await _publish_plan(session, draft, payload)
+    draft = await _draft(session, version_id, lock=True)
+    plan = await _publish_plan(session, draft, payload, lock=True)
     renamed = plan.renamed
     if renamed and user.role is not Role.ADMIN:
         names = ", ".join(f"«{old.name}» → «{new.name}»" for old, new in renamed)
@@ -568,10 +584,14 @@ async def _move_interactions(
     old_stages = {stage.id: stage for stage in plan.old_stages}
     interactions = list(
         await session.scalars(
-            select(Interaction).where(
+            select(Interaction)
+            .where(
                 Interaction.workflow_version_id == previous.id,
                 Interaction.status.in_(OPEN_STATUSES),
             )
+            # Параллельный переход по записи дождётся переноса, а перенос — его: этап не потеряется.
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
     )
     moved_by_owner: dict[uuid.UUID, Counter[tuple[str, str]]] = defaultdict(Counter)

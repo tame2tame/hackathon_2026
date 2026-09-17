@@ -45,4 +45,9 @@ class ClientCreate(BaseModel):
         # ИНН человека — лишние персональные данные: для обучения он не нужен.
         if self.kind == "person" and self.inn:
             raise ValueError("ИНН указывается только у организации")
+        # Двенадцать цифр — ИНН физического лица или ИП: это человек, а не организация.
+        if self.kind == "organization" and self.inn and len(self.inn) == 12:
+            raise ValueError(
+                "ИНН из 12 цифр — у ИП и физических лиц: заведите клиента как человека"
+            )
         return self

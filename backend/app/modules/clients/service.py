@@ -78,36 +78,61 @@ async def list_clients(
     )
 
 
-def _client_out(client: Client) -> ClientOut:
+def _client_out(client: Client, with_contacts: bool = True) -> ClientOut:
     return ClientOut(
         id=client.id,
         kind=cast(ClientKind, client.kind),
         name=client.name,
         inn=client.inn,
         city=client.city,
-        email=crypto.decrypt(client.email_enc),
-        phone=crypto.decrypt(client.phone_enc),
+        email=crypto.decrypt(client.email_enc) if with_contacts else None,
+        phone=crypto.decrypt(client.phone_enc) if with_contacts else None,
         archived_at=client.archived_at,
     )
+
+
+async def works_with(session: AsyncSession, user: CurrentUser, client: Client) -> bool:
+    """Свой клиент: администратор, создатель, его команда или владелец записи с этим клиентом."""
+    if user.role is Role.ADMIN or client.created_by == user.id:
+        return True
+    worked_with = apply_interaction_scope(
+        select(Interaction.id).where(Interaction.client_id == client.id), user
+    )
+    if await session.scalar(worked_with) is not None:
+        return True
+    if user.role is Role.MANAGER and user.team_id is not None and client.created_by is not None:
+        team = await session.scalar(
+            select(AppUser.id).where(
+                AppUser.id == client.created_by, AppUser.team_id == user.team_id
+            )
+        )
+        return team is not None
+    return False
 
 
 async def get_client(
     session: AsyncSession, user: CurrentUser, client_id: uuid.UUID, trace_id: str | None = None
 ) -> ClientOut:
-    """Карточка человека — обращение к персональным данным, поэтому просмотр пишется в аудит."""
+    """Карточка клиента.
+
+    Организации видны всем, чтобы не плодить дубли, но контакты — персональные данные: их
+    показывают только тем, кто с клиентом работает, и каждый такой просмотр пишется в аудит.
+    """
     client = await visible_client(session, user, client_id)
-    if client.kind == "person":
+    with_contacts = await works_with(session, user, client)
+    if with_contacts and (client.email_enc is not None or client.phone_enc is not None):
         session.add(
             AuditLog(
                 actor_user_id=user.id,
                 action="client.viewed",
                 entity_kind="client",
                 entity_id=client.id,
+                after={"kind": client.kind},
                 trace_id=trace_id,
             )
         )
         await session.commit()
-    return _client_out(client)
+    return _client_out(client, with_contacts)
 
 
 async def create_client(

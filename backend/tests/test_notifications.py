@@ -20,7 +20,7 @@ from app.modules.notifications import channels
 from app.modules.notifications.models import NotificationDelivery
 from app.modules.notifications.service import MAX_ATTEMPTS, deliver_pending
 from mocks import messengers
-from tests.api import find, stage_id
+from tests.api import find, stage_id, user_id
 from tests.test_workflow_editor import draft_without, publish
 from tests.users import ALINA_ADMIN, ANNA_KAM, MIKHAIL_KAM, ROMAN_MANAGER, as_user
 
@@ -281,13 +281,16 @@ async def test_email_sender_writes_a_plain_letter(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
 
     await channels.EmailSender("smtp.example.com", 25, "radar@example.com").send(
-        channels.OutgoingMessage("roman.kovalev@example.com", "Заголовок", "Текст", "http://x/1")
+        channels.OutgoingMessage(
+            "roman.kovalev@example.com", "Заголовок\nс переносом", "Текст", "http://x/1"
+        )
     )
 
     [letter] = letters
     assert letter["To"] == "roman.kovalev@example.com"
-    assert letter["Subject"] == "Заголовок"
-    assert letter.get_content().strip() == "Заголовок\n\nТекст\n\nhttp://x/1"
+    # Перенос строки в теме разорвал бы письмо на заголовки.
+    assert letter["Subject"] == "Заголовок с переносом"
+    assert letter.get_content().strip() == "Заголовок\nс переносом\n\nТекст\n\nhttp://x/1"
 
 
 async def test_demo_manager_has_addresses_for_the_stubs(client: AsyncClient) -> None:
@@ -297,3 +300,157 @@ async def test_demo_manager_has_addresses_for_the_stubs(client: AsyncClient) -> 
     assert by_kind["telegram"]["address"] == "100200300"
     assert by_kind["email"]["address"] == ROMAN_MANAGER
     assert by_kind["max"]["address"] is None
+
+
+async def enable_channel(client: AsyncClient, kind: str, base_url: str) -> None:
+    response = await client.patch(
+        f"{ADMIN}/notification-channels/{kind}",
+        json={"is_enabled": True, "settings": {"base_url": base_url}},
+        headers=as_user(ALINA_ADMIN),
+    )
+    assert response.status_code == 200, response.text
+
+
+async def test_external_channels_do_not_carry_personal_data(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(channels, "http_transport", httpx.ASGITransport(app=messengers.app))
+    await enable_telegram(client)
+    await escalate(client)
+
+    await deliver_pending(session, datetime.now(UTC))
+
+    async with AsyncClient(
+        transport=httpx.ASGITransport(app=messengers.app), base_url="http://mock"
+    ) as mock:
+        received = (await mock.get("/sent", params={"channel": "telegram"})).json()
+    [text] = [item["text"] for item in received if item["address"] == "100200300"][-1:]
+    assert "Запись без изменений" in text
+    # Ни контрагента, ни ответственного наружу: подробности — за входом в систему.
+    assert "КФУ" not in text
+    assert "Анна" not in text
+    assert "Подробности — в «Радаре вузов»." in text
+
+
+async def test_broken_sender_does_not_block_the_rest_of_the_queue(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    delivered: list[str] = []
+
+    class Working:
+        async def send(self, message: channels.OutgoingMessage) -> None:
+            delivered.append(message.address)
+
+    class Broken:
+        async def send(self, message: channels.OutgoingMessage) -> None:
+            raise ValueError("отправитель сломался")
+
+    monkeypatch.setattr(
+        channels,
+        "sender_for",
+        lambda channel: Broken() if channel.kind == "telegram" else Working(),
+    )
+    await enable_telegram(client)
+    await enable_channel(client, "max", "http://mock-messengers")
+    address = await client.put(
+        "/api/v1/me/notification-addresses/max",
+        json={"address": "555000111"},
+        headers=as_user(ROMAN_MANAGER),
+    )
+    assert address.status_code == 200, address.text
+    await escalate(client)
+
+    stats = await deliver_pending(session, datetime.now(UTC))
+
+    assert (stats.sent, stats.retried, stats.failed) == (1, 1, 0)
+    assert delivered == ["555000111"]
+    by_channel = {
+        delivery.channel_kind: delivery
+        for delivery in await session.scalars(select(NotificationDelivery))
+    }
+    # Сбой одного канала не отменяет уже отправленное и не теряет саму доставку.
+    assert (by_channel["telegram"].status, by_channel["telegram"].last_error) == (
+        "pending",
+        "ValueError",
+    )
+    assert by_channel["max"].status == "sent"
+
+
+async def test_channel_address_must_be_allowed(client: AsyncClient) -> None:
+    response = await client.patch(
+        f"{ADMIN}/notification-channels/telegram",
+        json={"settings": {"base_url": "http://attacker.example.com/bot"}},
+        headers=as_user(ALINA_ADMIN),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["errors"][0]["field"] == "settings.base_url"
+
+
+async def test_changing_the_address_unbinds_the_secret(client: AsyncClient) -> None:
+    before = await client.get(f"{ADMIN}/notification-channels", headers=as_user(ALINA_ADMIN))
+
+    changed = await client.patch(
+        f"{ADMIN}/notification-channels/telegram",
+        json={"settings": {"base_url": "http://mock-messengers"}},
+        headers=as_user(ALINA_ADMIN),
+    )
+
+    telegram = next(item for item in before.json() if item["kind"] == "telegram")
+    assert telegram["secret_ref"] == "NOTIFY_TELEGRAM_TOKEN"
+    # Адрес сменился — прежний токен к нему не привязан.
+    assert changed.json()["secret_ref"] is None
+
+
+async def test_smtp_password_is_not_sent_without_tls() -> None:
+    sender = channels.EmailSender(
+        "mailpit", 1025, "radar@example.com", username="radar", password="секрет"
+    )
+
+    with pytest.raises(channels.DeliveryError, match="STARTTLS"):
+        await sender.send(channels.OutgoingMessage("roman@example.com", "Тема", "Текст"))
+
+
+async def test_escalation_skips_a_recipient_who_cannot_see_the_record(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    roman = await user_id(session, ROMAN_MANAGER)
+    kfu = await find(client, ANNA_KAM, search="КФУ")
+
+    rule = await client.post(
+        f"{ADMIN}/access-rules",
+        json={
+            "subject_user_id": str(roman),
+            "effect": "deny",
+            "scope_kind": "university",
+            "scope_id": kfu["university"]["id"],
+        },
+        headers=as_user(ALINA_ADMIN),
+    )
+    notified = await escalate(client)
+
+    assert rule.status_code == 201, rule.text
+    assert notified == 1
+    # Руководителю запись закрыта правилом доступа: уведомление ушло администратору.
+    assert (await feed(client, ROMAN_MANAGER))["total"] == 0
+    assert (await feed(client, ALINA_ADMIN))["items"][0]["interaction_id"] == kfu["id"]
+
+
+async def test_bulk_transition_sends_one_summary_to_the_owner(client: AsyncClient) -> None:
+    kfu = await find(client, ANNA_KAM, search="КФУ")
+
+    response = await client.post(
+        "/api/v1/interactions/bulk-transitions",
+        json={
+            "interaction_ids": [kfu["id"]],
+            "to_stage_code": "documents_exchange",
+            "comment": "Готовим документы по всем встречам",
+        },
+        headers=as_user(ROMAN_MANAGER),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["succeeded"] == 1
+    [item] = (await feed(client, ANNA_KAM))["items"]
+    assert item["title"] == "Записи переведены на этап «Обмен документами»"
+    assert item["body"] == "Роман Ковалёв перевёл(а) групповым переходом ваших записей: 1."

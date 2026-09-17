@@ -10,10 +10,12 @@ import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 import httpx
 from starlette.concurrency import run_in_threadpool
 
+from app.core.config import get_settings
 from app.modules.notifications.models import NotificationChannel
 
 TIMEOUT_SECONDS = 10.0
@@ -47,6 +49,20 @@ class OutgoingMessage:
 
 class Sender(Protocol):
     async def send(self, message: OutgoingMessage) -> None: ...
+
+
+def host_of(channel: NotificationChannel) -> str | None:
+    """Куда канал отправляет: хост API мессенджера или почтового сервера."""
+    settings = channel.settings or {}
+    if channel.kind == "email":
+        host = settings.get("host")
+        return str(host).casefold() if host else None
+    parsed = urlsplit(str(settings.get("base_url", "")))
+    return parsed.hostname.casefold() if parsed.hostname else None
+
+
+def host_allowed(host: str | None) -> bool:
+    return host is not None and host in get_settings().notify_allowed_host_list
 
 
 def secret(channel: NotificationChannel) -> str | None:
@@ -119,10 +135,13 @@ class EmailSender:
         self._starttls = starttls
 
     def _send_sync(self, message: OutgoingMessage) -> None:
+        if self._username and self._password and not self._starttls:
+            raise DeliveryError("Пароль SMTP не отправляется без STARTTLS")
         email = EmailMessage()
         email["From"] = self._sender
         email["To"] = message.address
-        email["Subject"] = message.title
+        # Перенос строки в теме разорвал бы письмо на заголовки: склеиваем в одну строку.
+        email["Subject"] = " ".join(message.title.split())
         email.set_content(message.text())
         with smtplib.SMTP(self._host, self._port, timeout=TIMEOUT_SECONDS) as smtp:
             if self._starttls:
@@ -134,12 +153,17 @@ class EmailSender:
     async def send(self, message: OutgoingMessage) -> None:
         try:
             await run_in_threadpool(self._send_sync, message)
+        except DeliveryError:
+            raise
         except (OSError, smtplib.SMTPException) as error:
             raise DeliveryError(type(error).__name__) from error
 
 
 def sender_for(channel: NotificationChannel) -> Sender:
     settings = channel.settings or {}
+    if not host_allowed(host_of(channel)):
+        # Адрес мог быть изменён мимо API — прямо в базе; наружу такой канал не ходит.
+        raise DeliveryError("Адрес канала не входит в список разрешённых")
     base_url = str(settings.get("base_url", ""))
     match channel.kind:
         case "telegram":
