@@ -34,6 +34,10 @@ CRM для сотрудников ИТ Школы Ростелекома (кей
 
 ## 2. Компоненты
 
+Три диаграммы — связей, программно-аппаратной архитектуры и базы данных — лежат в
+[`docs/architecture/DIAGRAMS.md`](docs/architecture/DIAGRAMS.md); полная модель для Archi —
+[`docs/architecture/model.xml`](docs/architecture/model.xml).
+
 | Сервис | Технология | Назначение |
 |---|---|---|
 | `web` | nginx | Отдаёт SPA, проксирует `/api` и `/auth`, TLS на стенде |
