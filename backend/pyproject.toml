@@ -31,6 +31,8 @@ dependencies = [
     # arq требует redis[hiredis]<6, поэтому линия 5.x — общая для клиента и воркера.
     "redis[hiredis]~=5.3",
     "arq~=0.28",
+    # Файлы в S3-совместимом хранилище (MinIO на стенде, Yandex Object Storage в облаке).
+    "minio~=7.2",
 ]
 
 [project.optional-dependencies]

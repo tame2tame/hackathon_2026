@@ -75,7 +75,10 @@ jobs:
         run: |
           pip install pip-audit
           pip install -e backend
-          pip-audit --strict --desc
+          # Свой пакет не опубликован на PyPI, и --strict падал бы на нём самом:
+          # проверяем закреплённые версии всех остальных пакетов окружения.
+          pip freeze --exclude-editable > /tmp/requirements.txt
+          pip-audit --strict --desc -r /tmp/requirements.txt --disable-pip --no-deps
       - name: Секреты в истории
         run: |
           docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \

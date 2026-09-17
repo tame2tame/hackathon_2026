@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel
 from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.core.db import SessionDep
@@ -19,6 +20,7 @@ from app.core.errors import (
     install_error_handlers,
 )
 from app.core.security import DEV_USER_HEADER
+from app.core.storage import get_storage
 from app.modules.admin.router import contacts_router as admin_contacts_router
 from app.modules.admin.router import router as admin_router
 from app.modules.analytics.router import router as analytics_router
@@ -49,6 +51,7 @@ class HealthOut(BaseModel):
     status: Literal["ok"]
     version: str
     database: Literal["ok"]
+    storage: Literal["ok"]
 
 
 def declare_problem_responses(schema: dict[str, Any]) -> dict[str, Any]:
@@ -90,12 +93,13 @@ def create_app() -> FastAPI:
     @app.get(
         "/api/health",
         tags=["system"],
-        summary="Состояние сервиса и базы данных",
+        summary="Состояние сервиса, базы данных и хранилища файлов",
         responses=error_responses(ErrorCode.INTERNAL_ERROR),
     )
     async def health(session: SessionDep) -> HealthOut:
         await session.execute(text("SELECT 1"))
-        return HealthOut(status="ok", version=settings.version, database="ok")
+        await run_in_threadpool(get_storage().check)
+        return HealthOut(status="ok", version=settings.version, database="ok", storage="ok")
 
     for router in (
         catalogs_router,

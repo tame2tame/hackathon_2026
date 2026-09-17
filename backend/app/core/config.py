@@ -34,8 +34,15 @@ class Settings(BaseSettings):
     public_url: str = "http://127.0.0.1:5173"
     # Ключ Fernet для email и телефонов контактов вуза; пустой означает «шифрование не настроено».
     pd_encryption_key: str = ""
-    # Каталог вложений; в облаке заменяется на S3 за тем же интерфейсом Storage.
+    # Хранилище файлов: local — каталог upload_dir, s3 — MinIO или другое S3-совместимое хранилище.
+    storage_backend: Literal["local", "s3"] = "local"
     upload_dir: str = "storage/uploads"
+    s3_endpoint: str = "127.0.0.1:9000"
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_bucket: str = "radar-vuzov"
+    s3_secure: bool = False
+    s3_region: str = ""
     max_upload_mb: int = 25
     log_level: str = "INFO"
     version: str = "0.1.0"
@@ -45,6 +52,12 @@ class Settings(BaseSettings):
         # Режим X-Dev-User обходит Keycloak, поэтому в продакшене он запрещён (ADR-011).
         if self.app_env == "production" and self.auth_mode == "dev":
             raise ValueError("AUTH_MODE=dev запрещён при APP_ENV=production")
+        return self
+
+    @model_validator(mode="after")
+    def require_s3_credentials(self) -> Self:
+        if self.storage_backend == "s3" and not (self.s3_access_key and self.s3_secret_key):
+            raise ValueError("STORAGE_BACKEND=s3 требует S3_ACCESS_KEY и S3_SECRET_KEY")
         return self
 
     @property

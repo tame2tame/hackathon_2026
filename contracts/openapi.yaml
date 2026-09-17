@@ -19,7 +19,7 @@ paths:
     get:
       tags:
       - system
-      summary: Состояние сервиса и базы данных
+      summary: Состояние сервиса, базы данных и хранилища файлов
       operationId: health_api_health_get
       responses:
         '200':
@@ -5619,11 +5619,16 @@ components:
           type: string
           const: ok
           title: Database
+        storage:
+          type: string
+          const: ok
+          title: Storage
       type: object
       required:
       - status
       - version
       - database
+      - storage
       title: HealthOut
     ImportBatchOut:
       properties:

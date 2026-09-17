@@ -39,6 +39,14 @@ sh ../infra/smoke.sh "$PUBLIC_URL"
 | `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_KEY` | Доступ по SSH к серверу стенда |
 | `PUBLIC_URL` | Адрес стенда для smoke-проверки и ежечасного контроля |
 
+## Хранилище файлов
+
+Вложения и отчёты хранятся в MinIO из того же профиля compose; логин и пароль — `MINIO_ROOT_USER`
+и `MINIO_ROOT_PASSWORD` в `.env`. Бакет `radar-vuzov` создаётся при первой загрузке файла, наружу
+MinIO не публикуется. Чтобы перейти на облачное S3-хранилище, достаточно поменять у `api` и `worker`
+переменные `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_SECURE=true` и, если нужно,
+`S3_REGION`.
+
 ## Заглушки внешних систем
 
 На стенде LMS, сайт и мессенджеры заменены заглушками из того же образа (`mock-lms`, `mock-site`,
