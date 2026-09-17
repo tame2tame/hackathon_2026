@@ -179,6 +179,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '304':
+          description: С прошлого запроса ничего не изменилось
       security:
       - HTTPBearer: []
   /api/v1/directions:
@@ -203,6 +205,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '304':
+          description: С прошлого запроса ничего не изменилось
       security:
       - HTTPBearer: []
   /api/v1/programs:
@@ -249,6 +253,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '304':
+          description: С прошлого запроса ничего не изменилось
   /api/v1/programs/{program_id}/priority:
     put:
       tags:
@@ -327,6 +333,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '304':
+          description: С прошлого запроса ничего не изменилось
       security:
       - HTTPBearer: []
   /api/v1/users:
@@ -1483,7 +1491,8 @@ paths:
       tags:
       - interactions
       summary: Карточка взаимодействия
-      description: История, допустимые переходы с требованиями и открытые сигналы.
+      description: 'История, допустимые переходы с требованиями и открытые сигналы. Ответ помечен ETag:
+        открытая заново карточка достаётся из кэша браузера, если на сервере ничего не менялось.'
       operationId: read_interaction_api_v1_interactions__interaction_id__get
       security:
       - HTTPBearer: []
@@ -1514,6 +1523,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '304':
+          description: С прошлого запроса ничего не изменилось
         '422':
           description: Validation Error
           content:
@@ -2112,6 +2123,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '304':
+          description: С прошлого запроса ничего не изменилось
         '422':
           description: Validation Error
           content:
@@ -3104,6 +3117,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '304':
+          description: С прошлого запроса ничего не изменилось
         '422':
           description: Validation Error
           content:
@@ -3229,6 +3244,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '304':
+          description: С прошлого запроса ничего не изменилось
   /api/v1/analytics/rating/weights:
     get:
       tags:

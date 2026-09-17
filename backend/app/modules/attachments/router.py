@@ -2,16 +2,18 @@ import uuid
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Form, Request, UploadFile, status
+from fastapi import APIRouter, File, Form, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.core.db import SessionDep
 from app.core.errors import ErrorCode, error_responses
+from app.core.http_cache import IMMUTABLE, NOT_MODIFIED, NOT_MODIFIED_RESPONSE, fresh_for_client
 from app.core.security import CurrentUserDep
 from app.modules.attachments.schemas import AttachmentOut
 from app.modules.attachments.service import (
+    find_attachment,
     list_attachments,
-    open_attachment,
+    open_file,
     read_chunks,
     upload_attachment,
 )
@@ -74,16 +76,22 @@ async def read_attachments(
             "description": "Файл вложения с исходным именем",
         },
         **error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
+        **NOT_MODIFIED_RESPONSE,
     },
 )
 async def read_attachment_file(
-    attachment_id: uuid.UUID, session: SessionDep, user: CurrentUserDep
-) -> StreamingResponse:
-    attachment, stream = await open_attachment(session, user, attachment_id)
+    request: Request, attachment_id: uuid.UUID, session: SessionDep, user: CurrentUserDep
+) -> Response:
+    attachment = await find_attachment(session, user, attachment_id)
+    # Файл вложения не меняется: его хэш и есть ETag, а повторное скачивание ни к чему.
+    etag = f'"{attachment.sha256}"'
+    headers = {"ETag": etag, "Cache-Control": IMMUTABLE}
+    if fresh_for_client(request, etag):
+        return Response(status_code=NOT_MODIFIED, headers=headers)
     # filename* — чтобы кириллические имена доходили без искажений.
-    disposition = f"attachment; filename*=UTF-8''{quote(attachment.file_name)}"
+    headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(attachment.file_name)}"
     return StreamingResponse(
-        read_chunks(stream),
+        read_chunks(await open_file(attachment)),
         media_type=attachment.mime_type,
-        headers={"Content-Disposition": disposition},
+        headers=headers,
     )

@@ -2,10 +2,13 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
+from pydantic import TypeAdapter
 
+from app.core.cache import RATING, RATING_TTL, invalidate
 from app.core.db import SessionDep
 from app.core.errors import AppError, ErrorCode, TraceIdDep, error_responses
+from app.core.http_cache import NOT_MODIFIED_RESPONSE, cached_json
 from app.core.roles import Role
 from app.core.security import CurrentUser, CurrentUserDep, require_roles
 from app.modules.analytics import stats
@@ -22,6 +25,7 @@ from app.modules.analytics.service import ensure_default_weights, rating, set_we
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 ManagerDep = Annotated[CurrentUser, Depends(require_roles(Role.MANAGER, Role.ADMIN))]
+RATING_OUT = TypeAdapter(RatingOut)
 
 
 def _weights_from_query(
@@ -50,9 +54,14 @@ def _weights_from_query(
         "Балл считается по заявкам, обучающимся и потокам с нормированием внутри направления. "
         "Вклад каждой метрики возвращается вместе с баллом, а неполные данные помечаются."
     ),
-    responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.VALIDATION_ERROR),
+    response_model=RatingOut,
+    responses={
+        **error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.VALIDATION_ERROR),
+        **NOT_MODIFIED_RESPONSE,
+    },
 )
 async def read_rating(
+    request: Request,
     session: SessionDep,
     _user: CurrentUserDep,
     entity: Annotated[RatingEntity, Query(description="Что сравниваем")] = "program",
@@ -65,9 +74,21 @@ async def read_rating(
     w_applications: Annotated[int | None, Query(ge=0, le=100)] = None,
     w_students: Annotated[int | None, Query(ge=0, le=100)] = None,
     w_streams: Annotated[int | None, Query(ge=0, le=100)] = None,
-) -> RatingOut:
+) -> Response:
     weights = _weights_from_query(w_applications, w_students, w_streams)
-    return await rating(session, entity, period_from, period_to, direction_id or [], weights, order)
+    directions = sorted(str(item) for item in direction_id or [])
+    # Рейтинг считается по всей витрине метрик и одинаков для всех, поэтому ключ — только запрос.
+    suffix = ":".join(
+        [entity, str(period_from), str(period_to), ",".join(directions), order, str(weights)]
+    )
+    return await cached_json(
+        request,
+        RATING,
+        suffix,
+        RATING_OUT,
+        lambda: rating(session, entity, period_from, period_to, direction_id or [], weights, order),
+        RATING_TTL,
+    )
 
 
 @router.get(
@@ -92,7 +113,9 @@ async def read_weights(session: SessionDep, _user: CurrentUserDep) -> WeightsOut
 async def put_weights(
     payload: WeightsUpdate, trace_id: TraceIdDep, session: SessionDep, user: ManagerDep
 ) -> WeightsOut:
-    return WeightsOut.model_validate(await set_weights(session, user, payload, trace_id))
+    weights = WeightsOut.model_validate(await set_weights(session, user, payload, trace_id))
+    await invalidate(RATING)
+    return weights
 
 
 GroupQuery = Annotated[

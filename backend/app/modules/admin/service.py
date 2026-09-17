@@ -9,7 +9,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import crypto
+from app.core import cache, crypto
 from app.core.errors import AppError, ErrorCode, FieldError
 from app.core.security import CurrentUser
 from app.modules.admin.models import AppSetting, DataAccessRule
@@ -468,6 +468,7 @@ async def create_catalog_item(
         )
     )
     await session.commit()
+    await cache.invalidate(cache.CATALOGS)
     return item
 
 
@@ -492,6 +493,7 @@ async def archive_catalog_item(
         _audit(admin, "admin.catalog_archived", model.__tablename__, item.id, trace_id=trace_id)
     )
     await session.commit()
+    await cache.invalidate(cache.CATALOGS)
     return item
 
 
@@ -569,6 +571,7 @@ async def create_group(
         )
     )
     await session.commit()
+    await cache.invalidate(cache.CATALOGS)
     return group
 
 
@@ -624,6 +627,7 @@ async def update_group(
         )
     )
     await session.commit()
+    await cache.invalidate(cache.CATALOGS)
     return group
 
 
@@ -644,4 +648,5 @@ async def archive_group(
         _audit(admin, "admin.group_archived", "counterparty_group", group.id, trace_id=trace_id)
     )
     await session.commit()
+    await cache.invalidate(cache.CATALOGS)
     return group

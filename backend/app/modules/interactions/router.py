@@ -2,10 +2,11 @@ import uuid
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from app.core.db import SessionDep
 from app.core.errors import ErrorCode, TraceIdDep, error_responses
+from app.core.http_cache import NOT_MODIFIED_RESPONSE, conditional
 from app.core.pagination import Page, PageQuery
 from app.core.security import CurrentUserDep
 from app.modules.interactions.schemas import (
@@ -119,13 +120,21 @@ async def post_interaction(
 @router.get(
     "/{interaction_id}",
     summary="Карточка взаимодействия",
-    description="История, допустимые переходы с требованиями и открытые сигналы.",
-    responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
+    description=(
+        "История, допустимые переходы с требованиями и открытые сигналы. Ответ помечен ETag: "
+        "открытая заново карточка достаётся из кэша браузера, если на сервере ничего не менялось."
+    ),
+    response_model=InteractionDetail,
+    responses={
+        **error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
+        **NOT_MODIFIED_RESPONSE,
+    },
 )
 async def read_interaction(
-    interaction_id: uuid.UUID, session: SessionDep, user: CurrentUserDep
-) -> InteractionDetail:
-    return await get_interaction_detail(session, user, interaction_id)
+    request: Request, interaction_id: uuid.UUID, session: SessionDep, user: CurrentUserDep
+) -> Response:
+    card = await get_interaction_detail(session, user, interaction_id)
+    return conditional(request, card.model_dump_json().encode())
 
 
 @router.post(

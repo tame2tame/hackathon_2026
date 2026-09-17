@@ -11,6 +11,7 @@ from datetime import UTC, date, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import cache
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, ErrorCode
 from app.core.roles import Role
@@ -378,6 +379,8 @@ async def sync_source(
         run.status = "done"
         run.stats = dict(stats)
         source.last_sync_at = now
+        # Витрина метрик обновилась: рейтинг из кэша уже не тот.
+        await cache.invalidate(cache.RATING)
     run.finished_at = datetime.now(UTC)
     await session.flush()
     return run

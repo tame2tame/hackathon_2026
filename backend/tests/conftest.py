@@ -32,6 +32,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, create_async_engine  # noqa: E402
 from sqlalchemy.pool import NullPool  # noqa: E402
 
+from app.core.cache import get_cache  # noqa: E402
 from app.core.db import get_session  # noqa: E402
 from app.demo import seed_demo  # noqa: E402
 from app.main import create_app  # noqa: E402
@@ -55,6 +56,12 @@ def database() -> None:
     command.downgrade(config, "base")
     command.upgrade(config, "head")
     asyncio.run(_seed())
+
+
+@pytest.fixture(autouse=True)
+def cache() -> None:
+    """Кэш живёт в памяти процесса, а база откатывается после теста: чистим и его."""
+    get_cache.cache_clear()
 
 
 @pytest.fixture

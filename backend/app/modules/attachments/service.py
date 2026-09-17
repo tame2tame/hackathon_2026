@@ -144,13 +144,10 @@ async def list_attachments(
     return list(attachments)
 
 
-async def open_attachment(
-    session: AsyncSession,
-    user: CurrentUser,
-    attachment_id: uuid.UUID,
-    storage: Storage | None = None,
-) -> tuple[Attachment, BinaryIO]:
-    storage = storage or get_storage()
+async def find_attachment(
+    session: AsyncSession, user: CurrentUser, attachment_id: uuid.UUID
+) -> Attachment:
+    """Вложение в области видимости пользователя; чужое — 404 (ADR-007)."""
     attachment = await session.scalar(
         apply_interaction_scope(
             select(Attachment)
@@ -161,11 +158,16 @@ async def open_attachment(
     )
     if attachment is None:
         raise AppError(ErrorCode.NOT_FOUND, ATTACHMENT_NOT_FOUND)
+    return attachment
+
+
+async def open_file(attachment: Attachment, storage: Storage | None = None) -> BinaryIO:
+    storage = storage or get_storage()
     try:
-        stream = await run_in_threadpool(storage.open, attachment.storage_key)
+        stream: BinaryIO = await run_in_threadpool(storage.open, attachment.storage_key)
     except OSError as error:
         raise AppError(ErrorCode.NOT_FOUND, ATTACHMENT_NOT_FOUND) from error
-    return attachment, stream
+    return stream
 
 
 def read_chunks(stream: BinaryIO) -> Iterator[bytes]:

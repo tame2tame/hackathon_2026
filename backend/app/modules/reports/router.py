@@ -1,11 +1,18 @@
 import uuid
 from urllib.parse import quote
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from app.core.db import SessionDep
 from app.core.errors import ErrorCode, error_responses
+from app.core.http_cache import (
+    IMMUTABLE,
+    NOT_MODIFIED,
+    NOT_MODIFIED_RESPONSE,
+    etag_of,
+    fresh_for_client,
+)
 from app.core.security import CurrentUserDep
 from app.modules.attachments.service import read_chunks
 from app.modules.reports.renderers import MEDIA_TYPES
@@ -67,18 +74,23 @@ async def read_report(
     responses={
         200: {"content": {"application/octet-stream": {}}, "description": "Файл отчёта"},
         **error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
+        **NOT_MODIFIED_RESPONSE,
     },
 )
 async def read_report_file(
-    report_id: uuid.UUID, session: SessionDep, user: CurrentUserDep
-) -> StreamingResponse:
-    job, stream = await open_report_file(session, user, report_id)
+    request: Request, report_id: uuid.UUID, session: SessionDep, user: CurrentUserDep
+) -> Response:
+    job = await get_job(session, user, report_id)
+    # Готовый отчёт не перестраивается: тот же запуск — тот же файл.
+    etag = etag_of(f"{job.id}:{job.finished_at}")
+    headers = {"ETag": etag, "Cache-Control": IMMUTABLE}
+    if fresh_for_client(request, etag):
+        return Response(status_code=NOT_MODIFIED, headers=headers)
     file_name = f"Взаимодействия-{job.created_at:%Y-%m-%d}.{job.format}"
     media_type = MEDIA_TYPES[job.format]
     if job.format == "csv":
         media_type = f"{media_type}; charset={job.params.get('encoding', 'utf-8')}"
+    headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(file_name)}"
     return StreamingResponse(
-        read_chunks(stream),
-        media_type=media_type,
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(file_name)}"},
+        read_chunks(await open_report_file(job)), media_type=media_type, headers=headers
     )

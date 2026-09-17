@@ -17,6 +17,7 @@ from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import cache
 from app.core.config import get_settings
 from app.core.errors import AppError, ErrorCode, FieldError
 from app.core.security import CurrentUser
@@ -482,6 +483,7 @@ async def import_catalog(
         )
     )
     await session.commit()
+    await cache.invalidate(cache.CATALOGS)
     return outcome
 
 

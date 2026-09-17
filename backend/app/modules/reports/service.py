@@ -154,15 +154,12 @@ async def get_job(session: AsyncSession, user: CurrentUser, job_id: uuid.UUID) -
     return job
 
 
-async def open_report_file(
-    session: AsyncSession, user: CurrentUser, job_id: uuid.UUID, storage: Storage | None = None
-) -> tuple[ReportJob, BinaryIO]:
+async def open_report_file(job: ReportJob, storage: Storage | None = None) -> BinaryIO:
     storage = storage or get_storage()
-    job = await get_job(session, user, job_id)
     if job.status != "done" or not job.file_key:
         raise AppError(ErrorCode.NOT_FOUND, "Файл ещё не готов.")
     try:
-        stream = await run_in_threadpool(storage.open, job.file_key)
+        stream: BinaryIO = await run_in_threadpool(storage.open, job.file_key)
     except OSError as error:
         raise AppError(ErrorCode.NOT_FOUND, "Файл отчёта не найден.") from error
-    return job, stream
+    return stream

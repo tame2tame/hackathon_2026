@@ -1,10 +1,13 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
+from pydantic import TypeAdapter
 
+from app.core.cache import CATALOG_TTL, CATALOGS, RATING, invalidate
 from app.core.db import SessionDep
 from app.core.errors import ErrorCode, TraceIdDep, error_responses
+from app.core.http_cache import NOT_MODIFIED_RESPONSE, cached_json
 from app.core.pagination import Page, PageQuery
 from app.core.roles import Role
 from app.core.security import CurrentUser, CurrentUserDep, require_roles
@@ -35,6 +38,13 @@ ManagerDep = Annotated[CurrentUser, Depends(require_roles(Role.MANAGER, Role.ADM
 
 AUTH_ERRORS = error_responses(ErrorCode.AUTH_REQUIRED)
 LIST_ERRORS = error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.VALIDATION_ERROR)
+# Справочники одинаковы для всех и меняются редко: ответ лежит в кэше сервера, а у клиента
+# проверяется по ETag (FR-13).
+CACHED_LIST = {**AUTH_ERRORS, **NOT_MODIFIED_RESPONSE}
+GROUPS = TypeAdapter(list[CounterpartyGroupOut])
+DIRECTIONS = TypeAdapter(list[DirectionRef])
+PROGRAMS = TypeAdapter(list[ProgramRef])
+PRODUCTS = TypeAdapter(list[ProductRef])
 
 
 @router.get("/me", summary="Профиль текущего пользователя", responses=AUTH_ERRORS)
@@ -72,24 +82,48 @@ async def read_university(
     "/counterparty-groups",
     summary="Группы контрагентов",
     description="Вузы (B2B), частные лица (B2C) и группы, которые завёл администратор.",
-    responses=AUTH_ERRORS,
+    response_model=list[CounterpartyGroupOut],
+    responses=CACHED_LIST,
 )
-async def read_groups(session: SessionDep, _user: CurrentUserDep) -> list[CounterpartyGroupOut]:
-    return await list_groups(session)
+async def read_groups(request: Request, session: SessionDep, _user: CurrentUserDep) -> Response:
+    return await cached_json(
+        request, CATALOGS, "groups", GROUPS, lambda: list_groups(session), CATALOG_TTL
+    )
 
 
-@router.get("/directions", summary="ИТ-направления", responses=AUTH_ERRORS)
-async def read_directions(session: SessionDep, _user: CurrentUserDep) -> list[DirectionRef]:
-    return await list_directions(session)
+@router.get(
+    "/directions",
+    summary="ИТ-направления",
+    response_model=list[DirectionRef],
+    responses=CACHED_LIST,
+)
+async def read_directions(request: Request, session: SessionDep, _user: CurrentUserDep) -> Response:
+    return await cached_json(
+        request, CATALOGS, "directions", DIRECTIONS, lambda: list_directions(session), CATALOG_TTL
+    )
 
 
-@router.get("/programs", summary="ИТ-программы", responses=LIST_ERRORS)
+@router.get(
+    "/programs",
+    summary="ИТ-программы",
+    response_model=list[ProgramRef],
+    responses={**LIST_ERRORS, **NOT_MODIFIED_RESPONSE},
+)
 async def read_programs(
+    request: Request,
     session: SessionDep,
     _user: CurrentUserDep,
     direction_id: Annotated[list[uuid.UUID] | None, Query(description="ИТ-направление")] = None,
-) -> list[ProgramRef]:
-    return await list_programs(session, direction_id)
+) -> Response:
+    suffix = "programs:" + ",".join(sorted(str(item) for item in direction_id or []))
+    return await cached_json(
+        request,
+        CATALOGS,
+        suffix,
+        PROGRAMS,
+        lambda: list_programs(session, direction_id),
+        CATALOG_TTL,
+    )
 
 
 @router.put(
@@ -114,12 +148,22 @@ async def put_program_priority(
     session: SessionDep,
     user: ManagerDep,
 ) -> ProgramRef:
-    return await set_program_priority(session, user, program_id, payload.priority, trace_id)
+    program = await set_program_priority(session, user, program_id, payload.priority, trace_id)
+    await invalidate(CATALOGS)
+    await invalidate(RATING)
+    return program
 
 
-@router.get("/products", summary="ИТ-продукты", responses=AUTH_ERRORS)
-async def read_products(session: SessionDep, _user: CurrentUserDep) -> list[ProductRef]:
-    return await list_products(session)
+@router.get(
+    "/products",
+    summary="ИТ-продукты",
+    response_model=list[ProductRef],
+    responses=CACHED_LIST,
+)
+async def read_products(request: Request, session: SessionDep, _user: CurrentUserDep) -> Response:
+    return await cached_json(
+        request, CATALOGS, "products", PRODUCTS, lambda: list_products(session), CATALOG_TTL
+    )
 
 
 @router.get("/users", summary="Пользователи для фильтра «ответственный»", responses=AUTH_ERRORS)
