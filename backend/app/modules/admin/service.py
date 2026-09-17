@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import crypto
@@ -19,12 +19,15 @@ from app.modules.admin.schemas import (
     CatalogItemCreate,
     ContactCreate,
     ContactOut,
+    CounterpartyGroupCreate,
+    CounterpartyGroupUpdate,
     SettingOut,
 )
 from app.modules.audit.models import AuditLog
 from app.modules.catalogs.models import (
     AppUser,
     ContactPerson,
+    CounterpartyGroup,
     Direction,
     Product,
     Program,
@@ -35,6 +38,8 @@ from app.modules.catalogs.models import (
 from app.modules.interactions.models import Interaction
 from app.modules.radar.service import recompute_signals
 from app.modules.radar.settings import RADAR_THRESHOLDS_KEY, RadarThresholdsSetting
+from app.modules.workflow.models import WorkflowTemplate
+from app.modules.workflow.service import published_version
 
 CATALOGS: dict[str, type[University | Direction | Program | Vendor | Product]] = {
     "universities": University,
@@ -483,3 +488,155 @@ async def archive_catalog_item(
     )
     await session.commit()
     return item
+
+
+async def _published_template(session: AsyncSession, template_id: uuid.UUID) -> WorkflowTemplate:
+    template = await session.get(WorkflowTemplate, template_id)
+    if (
+        template is None
+        or template.archived_at is not None
+        or await published_version(session, template_id) is None
+    ):
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Процесс не найден или ещё не опубликован.",
+            errors=[
+                FieldError(field="workflow_template_id", message="Нужен опубликованный процесс")
+            ],
+        )
+    return template
+
+
+async def _open_interactions(session: AsyncSession, group_id: uuid.UUID) -> int:
+    count = await session.scalar(
+        select(func.count())
+        .select_from(Interaction)
+        .where(Interaction.group_id == group_id, Interaction.status.in_(("active", "paused")))
+    )
+    return count or 0
+
+
+def _group_state(group: CounterpartyGroup) -> dict[str, Any]:
+    return {
+        "code": group.code,
+        "name": group.name,
+        "workflow_template_id": str(group.workflow_template_id),
+        "position": group.position,
+    }
+
+
+async def create_group(
+    session: AsyncSession,
+    admin: CurrentUser,
+    payload: CounterpartyGroupCreate,
+    trace_id: str | None = None,
+) -> CounterpartyGroup:
+    taken = await session.scalar(
+        select(CounterpartyGroup.id).where(
+            or_(CounterpartyGroup.code == payload.code, CounterpartyGroup.name == payload.name)
+        )
+    )
+    if taken is not None:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Группа с таким кодом или названием уже есть.",
+            errors=[FieldError(field="code", message="Код или название заняты")],
+        )
+    await _published_template(session, payload.workflow_template_id)
+    group = CounterpartyGroup(
+        code=payload.code,
+        name=payload.name,
+        description=payload.description,
+        workflow_template_id=payload.workflow_template_id,
+        position=payload.position,
+    )
+    session.add(group)
+    await session.flush()
+    session.add(
+        _audit(
+            admin,
+            "admin.group_created",
+            "counterparty_group",
+            group.id,
+            None,
+            _group_state(group),
+            trace_id,
+        )
+    )
+    await session.commit()
+    return group
+
+
+async def update_group(
+    session: AsyncSession,
+    admin: CurrentUser,
+    group_id: uuid.UUID,
+    payload: CounterpartyGroupUpdate,
+    trace_id: str | None = None,
+) -> CounterpartyGroup:
+    group = await session.get(CounterpartyGroup, group_id)
+    if group is None:
+        raise AppError(ErrorCode.NOT_FOUND, "Группа контрагентов не найдена.")
+    before = _group_state(group)
+    if payload.name is not None and payload.name != group.name:
+        if await session.scalar(
+            select(CounterpartyGroup.id).where(CounterpartyGroup.name == payload.name)
+        ):
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                "Группа с таким названием уже есть.",
+                errors=[FieldError(field="name", message="Название занято")],
+            )
+        group.name = payload.name
+    if "description" in payload.model_fields_set:
+        group.description = payload.description
+    if payload.position is not None:
+        group.position = payload.position
+    if (
+        payload.workflow_template_id is not None
+        and payload.workflow_template_id != group.workflow_template_id
+    ):
+        await _published_template(session, payload.workflow_template_id)
+        # Процесс у группы один: открытые записи не могут остаться на прежнем.
+        open_count = await _open_interactions(session, group.id)
+        if open_count:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"В группе {open_count} открытых записей: меняйте сам процесс в редакторе, "
+                "тогда записи перейдут на новую схему.",
+                errors=[FieldError(field="workflow_template_id", message="Есть открытые записи")],
+            )
+        group.workflow_template_id = payload.workflow_template_id
+    session.add(
+        _audit(
+            admin,
+            "admin.group_changed",
+            "counterparty_group",
+            group.id,
+            before,
+            _group_state(group),
+            trace_id,
+        )
+    )
+    await session.commit()
+    return group
+
+
+async def archive_group(
+    session: AsyncSession, admin: CurrentUser, group_id: uuid.UUID, trace_id: str | None = None
+) -> CounterpartyGroup:
+    group = await session.get(CounterpartyGroup, group_id)
+    if group is None:
+        raise AppError(ErrorCode.NOT_FOUND, "Группа контрагентов не найдена.")
+    open_count = await _open_interactions(session, group.id)
+    if open_count:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            f"В группе {open_count} открытых записей: сначала завершите их или отмените.",
+        )
+    group.archived_at = datetime.now(UTC)
+    session.add(
+        _audit(admin, "admin.group_archived", "counterparty_group", group.id, trace_id=trace_id)
+    )
+    await session.commit()
+    return group

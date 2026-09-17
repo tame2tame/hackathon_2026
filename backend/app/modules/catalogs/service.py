@@ -12,8 +12,16 @@ from app.core.pagination import Page, PageParams
 from app.core.roles import Role
 from app.core.scope import apply_interaction_scope, scope_name
 from app.core.security import CurrentUser
-from app.modules.catalogs.models import AppUser, Direction, Product, Program, University
+from app.modules.catalogs.models import (
+    AppUser,
+    CounterpartyGroup,
+    Direction,
+    Product,
+    Program,
+    University,
+)
 from app.modules.catalogs.schemas import (
+    CounterpartyGroupOut,
     DirectionRef,
     MeOut,
     ProductRef,
@@ -123,6 +131,15 @@ async def get_university(
         raise AppError(ErrorCode.NOT_FOUND, "Вуз не найден или недоступен.")
     university, interactions, signals = row.tuple()
     return _university_out(university, interactions, signals)
+
+
+async def list_groups(session: AsyncSession) -> list[CounterpartyGroupOut]:
+    groups = await session.scalars(
+        select(CounterpartyGroup)
+        .where(CounterpartyGroup.archived_at.is_(None))
+        .order_by(CounterpartyGroup.position, CounterpartyGroup.name)
+    )
+    return [CounterpartyGroupOut.model_validate(group) for group in groups]
 
 
 async def list_directions(session: AsyncSession) -> list[DirectionRef]:

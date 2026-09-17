@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.catalogs.schemas import GroupRef
+
 
 class StageRef(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -65,6 +67,18 @@ class NormUpdate(BaseModel):
 
 class WorkflowTemplateCreate(BaseModel):
     name: str = Field(max_length=200, min_length=3)
+
+
+class WorkflowSummaryOut(BaseModel):
+    """Шаблон процесса: действующая схема, черновик изменений и группы, которые по нему работают."""
+
+    id: uuid.UUID
+    name: str
+    is_default: bool
+    published_version_id: uuid.UUID | None
+    version_no: int | None
+    draft_version_id: uuid.UUID | None = Field(description="Черновик изменений, если начат")
+    groups: list[GroupRef]
 
 
 class WorkflowTemplateOut(BaseModel):

@@ -8,6 +8,7 @@ from app.core.errors import ErrorCode, error_responses
 from app.core.pagination import Page, PageQuery
 from app.core.security import CurrentUserDep
 from app.modules.catalogs.schemas import (
+    CounterpartyGroupOut,
     DirectionRef,
     MeOut,
     ProductRef,
@@ -19,6 +20,7 @@ from app.modules.catalogs.service import (
     get_me,
     get_university,
     list_directions,
+    list_groups,
     list_products,
     list_programs,
     list_universities,
@@ -60,6 +62,16 @@ async def read_university(
     university_id: uuid.UUID, session: SessionDep, user: CurrentUserDep
 ) -> UniversityOut:
     return await get_university(session, user, university_id)
+
+
+@router.get(
+    "/counterparty-groups",
+    summary="Группы контрагентов",
+    description="Вузы (B2B), частные лица (B2C) и группы, которые завёл администратор.",
+    responses=AUTH_ERRORS,
+)
+async def read_groups(session: SessionDep, _user: CurrentUserDep) -> list[CounterpartyGroupOut]:
+    return await list_groups(session)
 
 
 @router.get("/directions", summary="ИТ-направления", responses=AUTH_ERRORS)

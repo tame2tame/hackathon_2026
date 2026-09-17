@@ -1,4 +1,4 @@
-"""Демо-стенд v1: 96 вузов, около 350 взаимодействий, год истории и месячные показатели.
+"""Демо-стенд v1: 96 вузов, около 350 взаимодействий, год истории, месячные показатели и B2C.
 
 Стенд детерминирован: один и тот же `random.Random(SEED)` даёт одинаковые данные, поэтому демо
 воспроизводится и на чужой машине. Шесть связок v0 остаются без изменений, а проблемы для радара
@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import crypto
 from app.core.roles import Role
 from app.core.storage import Storage, get_storage
 from app.demo import seed_demo
@@ -32,11 +33,19 @@ from app.modules.catalogs.models import (
     Vendor,
     product_direction,
 )
+from app.modules.clients.models import Client
 from app.modules.interactions.models import Attachment, Contract, Interaction, Transition
 from app.modules.metrics.models import METRIC_KINDS, ProgramMetric
 from app.modules.radar.service import recompute_signals
-from app.modules.workflow.defaults import BASE_STAGES, ensure_default_workflow
+from app.modules.workflow.defaults import (
+    B2C_STAGES,
+    BASE_STAGES,
+    INDIVIDUALS_GROUP,
+    UNIVERSITIES_GROUP,
+    ensure_groups,
+)
 from app.modules.workflow.models import Stage
+from app.modules.workflow.service import GroupProcess, group_process
 
 SEED = 2026
 UNIVERSITY_TOTAL = 96
@@ -49,6 +58,15 @@ OVERDUE_SIGNING = 7
 MISSING_DOCUMENT = 4
 STALLED = 3
 PLANTED = OVERDUE_SIGNING + MISSING_DOCUMENT + STALLED
+
+# Частные лица (B2C): люди и организации со своей командой КАМов.
+B2C_PERSONS = 30
+B2C_ORGANIZATIONS = 10
+B2C_TOTAL = B2C_PERSONS + B2C_ORGANIZATIONS
+B2C_KAM_TOTAL = 3
+B2C_TEAM = "Частные клиенты"
+# Заявки без ответа дольше двух норм — единственная заложенная проблема B2C.
+B2C_OVERDUE_APPLICATION = 2
 
 PDF_BYTES = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
 
@@ -93,17 +111,20 @@ UNIVERSITY_KINDS = (
 REGIONS = ("Центр", "Северо-Запад", "Поволжье", "Юг", "Урал", "Сибирь", "Дальний Восток")
 
 # Программа → (направление, вендор, продукт). Первые четыре совпадают с демо-данными v0.
-PROGRAMS_V1: tuple[tuple[str, str, str, str], ...] = (
+# Программы бывают продуктозависимыми (DevOps — «Базис», управление проектами — «Яга»)
+# и продуктонезависимыми: у последних вендора и продукта нет.
+PROGRAMS_V1: tuple[tuple[str, str, str | None, str | None], ...] = (
     ("DevOps-инженерия", "devops", "Базис", "Базис"),
     ("Мобильная разработка", "mobile", "Открытая мобильная платформа", "ОС Аврора"),
     ("Анализ данных", "data_analysis", "Loginom", "Loginom"),
     ("Веб-разработка", "web", "Акола", "Акола"),
     ("Контейнеризация и оркестрация", "devops", "Ред Софт", "РЕД ОС"),
     ("Инженерия данных", "data_analysis", "Postgres Professional", "Postgres Pro"),
-    ("Управление ИТ-проектами", "project_management", "Новые облачные технологии", "МойОфис"),
+    ("Управление ИТ-проектами", "project_management", "Ростелеком", "Яга"),
     ("Машинное обучение", "ai", "Т1", "Сфера"),
     ("Распределённые реестры", "blockchain", "Диасофт", "Digital Q"),
     ("Промышленное проектирование", "web", "Аскон", "Компас-3D"),
+    ("Основы программирования на Python", "web", None, None),
 )
 
 TEAMS = ("Центр и Северо-Запад", "Поволжье и Юг", "Урал и Сибирь")
@@ -119,6 +140,20 @@ LAST_NAMES = (
 )  # fmt: skip
 
 QUIET_STAGES = ("contact_search", "communication", "meeting", "documents_exchange", "classes")
+
+# Вымышленные организации; ИНН начинается с несуществующего кода региона 00.
+ORGANIZATION_NAMES = (
+    "ООО «Кодовая мастерская»",
+    "АО «Северный вычислительный центр»",
+    "ООО «Цифровая мануфактура»",
+    "ООО «Учебные системы»",
+    "АО «Городские сети связи»",
+    "ООО «Облачная лаборатория»",
+    "ООО «Проектное бюро данных»",
+    "НКО «Код для всех»",
+    "ООО «Инженерные решения»",
+    "АО «Региональный технопарк»",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,7 +221,7 @@ def plans(rng: random.Random, count: int) -> list[Plan]:
 
 async def _catalogs(
     session: AsyncSession, rng: random.Random
-) -> tuple[list[University], list[tuple[Program, Product]]]:
+) -> tuple[list[University], list[tuple[Program, Product | None]]]:
     directions = {
         direction.code: direction for direction in await session.scalars(select(Direction))
     }
@@ -197,8 +232,19 @@ async def _catalogs(
         (link.program_id, link.product_id) for link in await session.scalars(select(ProgramProduct))
     }
 
-    pairs: list[tuple[Program, Product]] = []
+    pairs: list[tuple[Program, Product | None]] = []
     for program_name, direction_code, vendor_name, product_name in PROGRAMS_V1:
+        if program_name not in programs:
+            programs[program_name] = Program(
+                direction_id=directions[direction_code].id, name=program_name
+            )
+            session.add(programs[program_name])
+            await session.flush()
+        program = programs[program_name]
+        if vendor_name is None or product_name is None:
+            pairs.append((program, None))
+            continue
+
         if vendor_name not in vendors:
             vendors[vendor_name] = Vendor(name=vendor_name)
             session.add(vendors[vendor_name])
@@ -206,14 +252,9 @@ async def _catalogs(
         if product_name not in products:
             products[product_name] = Product(vendor_id=vendors[vendor_name].id, name=product_name)
             session.add(products[product_name])
-        if program_name not in programs:
-            programs[program_name] = Program(
-                direction_id=directions[direction_code].id, name=program_name
-            )
-            session.add(programs[program_name])
-        await session.flush()
+            await session.flush()
 
-        program, product = programs[program_name], products[product_name]
+        product = products[product_name]
         if (program.id, product.id) not in linked:
             session.add(
                 ProgramProduct(program_id=program.id, product_id=product.id, is_default=True)
@@ -237,32 +278,46 @@ async def _catalogs(
     return fresh + existing, pairs
 
 
-async def _people(session: AsyncSession) -> list[AppUser]:
-    """Три команды и двадцать КАМов сверх четырёх пользователей демо-данных v0."""
+async def _people(session: AsyncSession) -> tuple[list[AppUser], list[AppUser]]:
+    """Команды КАМов: три по вузам и одна по частным клиентам.
+
+    Возвращает КАМов вузов (вместе с двумя из демо-данных v0) и КАМов частных клиентов.
+    """
     teams = {team.name: team for team in await session.scalars(select(Team))}
-    for name in TEAMS:
+    for name in (*TEAMS, B2C_TEAM):
         if name not in teams:
             teams[name] = Team(name=name)
             session.add(teams[name])
     await session.flush()
 
     known = {user.email for user in await session.scalars(select(AppUser))}
-    kams: list[AppUser] = []
-    for index in range(KAM_TOTAL):
-        email = f"kam{index + 1:02d}@example.com"
+    wanted = [
+        (f"kam{index + 1:02d}@example.com", index, TEAMS[index % len(TEAMS)])
+        for index in range(KAM_TOTAL)
+    ]
+    # Имена КАМов частных клиентов берутся с конца списков, чтобы не повторять КАМов вузов.
+    wanted += [
+        (f"b2c{index + 1:02d}@example.com", len(FIRST_NAMES) - 1 - index, B2C_TEAM)
+        for index in range(B2C_KAM_TOTAL)
+    ]
+    for email, name_index, team_name in wanted:
         if email in known:
             continue
-        user = AppUser(
-            email=email,
-            full_name=f"{FIRST_NAMES[index]} {LAST_NAMES[index]}",
-            role=Role.KAM.value,
-            team_id=teams[TEAMS[index % len(TEAMS)]].id,
+        session.add(
+            AppUser(
+                email=email,
+                full_name=f"{FIRST_NAMES[name_index]} {LAST_NAMES[name_index]}",
+                role=Role.KAM.value,
+                team_id=teams[team_name].id,
+            )
         )
-        session.add(user)
-        kams.append(user)
     await session.flush()
-    all_kams = await session.scalars(select(AppUser).where(AppUser.role == Role.KAM.value))
-    return list(all_kams)
+    all_kams = list(await session.scalars(select(AppUser).where(AppUser.role == Role.KAM.value)))
+    b2c_team_id = teams[B2C_TEAM].id
+    return (
+        [kam for kam in all_kams if kam.team_id != b2c_team_id],
+        [kam for kam in all_kams if kam.team_id == b2c_team_id],
+    )
 
 
 def _history(
@@ -273,12 +328,16 @@ def _history(
     entered_at: datetime,
     actor_id: uuid.UUID,
     rng: random.Random,
-) -> None:
-    """Путь от первого этапа до текущего, уложенный в год до входа на текущий этап."""
+) -> datetime:
+    """Путь от первого этапа до текущего, уложенный в год до входа на текущий этап.
+
+    Возвращает дату первого перехода: с неё запись и ведётся.
+    """
     path = [stage.code for stage in BASE_STAGES if stage.code != "documents_revision"]
     passed = path[: path.index(stage_code) + 1]
     step_days = max(1, (HISTORY_MONTHS * 30) // max(1, len(passed)))
     occurred_at = entered_at - timedelta(days=step_days * (len(passed) - 1))
+    started_at = occurred_at
     previous: Stage | None = None
     for code in passed:
         stage = stages[code]
@@ -296,6 +355,7 @@ def _history(
         )
         previous = stage
         occurred_at += timedelta(days=rng.randint(max(1, step_days - 2), step_days + 2))
+    return started_at
 
 
 def _document(
@@ -355,6 +415,126 @@ def _metrics(
                 )
 
 
+def _clients(session: AsyncSession, created_by: uuid.UUID) -> list[Client]:
+    """Вымышленные люди и организации. Контакты шифруются, если ключ задан."""
+    encrypt = crypto.is_configured()
+    clients: list[Client] = []
+    for index in range(B2C_PERSONS):
+        # Одинаковая чётность индексов даёт согласованные по роду имя и фамилию.
+        first, last = (
+            FIRST_NAMES[index % len(FIRST_NAMES)],
+            LAST_NAMES[(index * 7) % len(LAST_NAMES)],
+        )
+        clients.append(
+            Client(
+                kind="person",
+                name=f"{last} {first}",
+                city=CITIES[index % len(CITIES)],
+                email_enc=crypto.encrypt(f"student{index + 1:03d}@example.com")
+                if encrypt
+                else None,
+                phone_enc=crypto.encrypt(f"+7 900 000-{index:02d}-00") if encrypt else None,
+                created_by=created_by,
+            )
+        )
+    for index, name in enumerate(ORGANIZATION_NAMES[:B2C_ORGANIZATIONS]):
+        clients.append(
+            Client(
+                kind="organization",
+                name=name,
+                inn=f"00{index + 1:08d}",
+                city=CITIES[(index * 3) % len(CITIES)],
+                created_by=created_by,
+            )
+        )
+    session.add_all(clients)
+    return clients
+
+
+def _b2c_history(
+    session: AsyncSession,
+    interaction: Interaction,
+    process: GroupProcess,
+    stage_code: str,
+    entered_at: datetime,
+    actor_id: uuid.UUID,
+    rng: random.Random,
+) -> datetime:
+    """Путь по процессу B2C до текущего этапа; возвращает дату первого перехода."""
+    path = [stage.code for stage in B2C_STAGES]
+    passed = path[: path.index(stage_code) + 1]
+    steps = [rng.randint(2, 9) for _ in passed[:-1]]
+    occurred_at = entered_at - timedelta(days=sum(steps))
+    started_at = occurred_at
+    previous: Stage | None = None
+    for index, code in enumerate(passed):
+        stage = process.stages[code]
+        session.add(
+            Transition(
+                interaction_id=interaction.id,
+                from_stage_id=previous.id if previous else None,
+                to_stage_id=stage.id,
+                occurred_at=occurred_at,
+                actor_user_id=actor_id,
+                comment="Заявка принята" if previous is None else "Этап пройден",
+                source="import",
+            )
+        )
+        previous = stage
+        if index < len(steps):
+            occurred_at += timedelta(days=steps[index])
+    return started_at
+
+
+async def _seed_b2c(
+    session: AsyncSession,
+    now: datetime,
+    rng: random.Random,
+    pairs: Sequence[tuple[Program, Product | None]],
+    kams: Sequence[AppUser],
+) -> list[uuid.UUID]:
+    """Записи частных лиц по своему процессу; проблем ровно B2C_OVERDUE_APPLICATION."""
+    group = (await ensure_groups(session))[INDIVIDUALS_GROUP]
+    process = await group_process(session, group)
+    norms = {stage.code: stage.norm_days for stage in B2C_STAGES}
+    quiet = [stage.code for stage in B2C_STAGES if stage.kind != "final"]
+    clients = _clients(session, kams[0].id)
+    await session.flush()
+
+    created: list[uuid.UUID] = []
+    for index, client in enumerate(clients):
+        program, product = pairs[index % len(pairs)]
+        owner = kams[index % len(kams)]
+        if index < B2C_OVERDUE_APPLICATION:
+            # Больше двух норм «Заявки» (3 дня): высокая просрочка без других сигналов.
+            stage_code, days = "application", rng.randint(7, 12)
+        else:
+            stage_code = rng.choice(quiet)
+            norm = norms[stage_code] or 1
+            # Меньше половины нормы: ни просрочки, ни сигнала «нет документа».
+            days = rng.randint(0, max(0, (norm - 1) // 2))
+        entered_at = now - timedelta(days=days)
+        interaction = Interaction(
+            group_id=group.id,
+            client_id=client.id,
+            program_id=program.id,
+            product_id=product.id if product else None,
+            workflow_version_id=process.version.id,
+            current_stage_id=process.stages[stage_code].id,
+            stage_entered_at=entered_at,
+            owner_user_id=owner.id,
+            source="demo",
+            last_activity_at=now - timedelta(days=min(days, rng.randint(0, 10))),
+        )
+        session.add(interaction)
+        await session.flush()
+        interaction.created_at = _b2c_history(
+            session, interaction, process, stage_code, entered_at, owner.id, rng
+        )
+        created.append(interaction.id)
+    return created
+
+
 async def seed_full(session: AsyncSession, now: datetime) -> bool:
     """Загружает стенд v1. Возвращает False, если он уже загружен."""
     if await session.scalar(select(ProgramMetric.id).limit(1)) is not None:
@@ -362,18 +542,18 @@ async def seed_full(session: AsyncSession, now: datetime) -> bool:
 
     rng = random.Random(SEED)  # noqa: S311 — демо-данные, а не криптография
     await seed_demo(session, now)
-    version = await ensure_default_workflow(session)
-    stages = {
-        stage.code: stage
-        for stage in await session.scalars(select(Stage).where(Stage.version_id == version.id))
-    }
+    group = (await ensure_groups(session))[UNIVERSITIES_GROUP]
+    process = await group_process(session, group)
+    version, stages = process.version, process.stages
     universities, pairs = await _catalogs(session, rng)
-    kams = await _people(session)
+    kams, b2c_kams = await _people(session)
     storage = get_storage()
 
     taken = {
         (interaction.university_id, interaction.program_id, interaction.product_id)
-        for interaction in await session.scalars(select(Interaction))
+        for interaction in await session.scalars(
+            select(Interaction).where(Interaction.university_id.is_not(None))
+        )
     }
     created: list[uuid.UUID] = []
     metric_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
@@ -382,7 +562,7 @@ async def seed_full(session: AsyncSession, now: datetime) -> bool:
         # Проблемные записи получают свой вуз по порядку, чтобы их не отсеяло совпадение тройки.
         university = universities[index] if index < PLANTED else rng.choice(universities)
         program, product = pairs[index % len(pairs)] if index < PLANTED else rng.choice(pairs)
-        key = (university.id, program.id, product.id)
+        key = (university.id, program.id, product.id if product else None)
         if key in taken:
             continue
         taken.add(key)
@@ -405,9 +585,10 @@ async def seed_full(session: AsyncSession, now: datetime) -> bool:
             await session.flush()
 
         interaction = Interaction(
+            group_id=group.id,
             university_id=university.id,
             program_id=program.id,
-            product_id=product.id,
+            product_id=product.id if product else None,
             contract_id=contract.id if contract else None,
             workflow_version_id=version.id,
             current_stage_id=stages[plan.stage_code].id,
@@ -418,13 +599,18 @@ async def seed_full(session: AsyncSession, now: datetime) -> bool:
         )
         session.add(interaction)
         await session.flush()
-        _history(session, interaction, stages, plan.stage_code, entered_at, owner.id, rng)
+        # Дата создания совпадает с первым переходом: иначе отчёт за прошлый период
+        # не увидел бы запись, которая тогда уже велась.
+        interaction.created_at = _history(
+            session, interaction, stages, plan.stage_code, entered_at, owner.id, rng
+        )
         if plan.document:
             session.add(_document(storage, interaction, stages[plan.stage_code], owner.id, now))
         created.append(interaction.id)
         metric_pairs.add((university.id, program.id))
 
     _metrics(session, sorted(metric_pairs), now, rng)
+    created += await _seed_b2c(session, now, rng, pairs, b2c_kams)
     await session.flush()
     await recompute_signals(session, created, now)
     return True

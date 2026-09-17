@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.core.roles import Role
 
 Effect = Literal["allow", "deny"]
-ScopeKind = Literal["university", "direction", "program"]
+ScopeKind = Literal["university", "direction", "program", "group"]
 
 
 class AdminUserOut(BaseModel):
@@ -118,6 +118,23 @@ class CatalogItemCreate(BaseModel):
     city: str | None = Field(default=None, max_length=120)
     direction_id: uuid.UUID | None = Field(default=None, description="Только для программ")
     vendor_id: uuid.UUID | None = Field(default=None, description="Только для продуктов")
+
+
+class CounterpartyGroupCreate(BaseModel):
+    code: str = Field(min_length=2, max_length=60, pattern=r"^[a-z][a-z0-9_]*$")
+    name: str = Field(min_length=2, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    workflow_template_id: uuid.UUID = Field(description="Опубликованный процесс группы")
+    position: int = Field(default=0, ge=0, le=1000, description="Порядок в списках")
+
+
+class CounterpartyGroupUpdate(BaseModel):
+    """Пропущенное поле не меняется. Процесс группы с открытыми записями не заменяется."""
+
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    workflow_template_id: uuid.UUID | None = None
+    position: int | None = Field(default=None, ge=0, le=1000)
 
 
 class CatalogItemOut(BaseModel):

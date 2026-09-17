@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base, Timestamps, UUIDPrimaryKey
 
 EFFECTS = ("allow", "deny")
-SCOPE_KINDS = ("university", "direction", "program")
+SCOPE_KINDS = ("university", "direction", "program", "group")
 
 
 class DataAccessRule(UUIDPrimaryKey, Timestamps, Base):
@@ -20,7 +20,9 @@ class DataAccessRule(UUIDPrimaryKey, Timestamps, Base):
     __tablename__ = "data_access_rule"
     __table_args__ = (
         CheckConstraint("effect IN ('allow', 'deny')", name="effect"),
-        CheckConstraint("scope_kind IN ('university', 'direction', 'program')", name="scope_kind"),
+        CheckConstraint(
+            "scope_kind IN ('university', 'direction', 'program', 'group')", name="scope_kind"
+        ),
         # Правило адресовано либо конкретному сотруднику, либо роли — но не обоим сразу.
         CheckConstraint(
             "(subject_user_id IS NULL) <> (subject_role IS NULL)", name="subject_exactly_one"

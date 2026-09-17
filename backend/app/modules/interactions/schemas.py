@@ -6,7 +6,15 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.errors import ErrorCode
-from app.modules.catalogs.schemas import ProductRef, ProgramRef, UniversityRef, UserRef
+from app.modules.catalogs.schemas import (
+    CounterpartyRef,
+    GroupRef,
+    ProductRef,
+    ProgramRef,
+    UniversityRef,
+    UserRef,
+)
+from app.modules.clients.schemas import ClientRef
 from app.modules.radar.rules import Severity, SignalKind
 from app.modules.radar.schemas import SignalOut
 from app.modules.workflow.schemas import AllowedTransitionOut, StageRef
@@ -31,9 +39,12 @@ class SignalBrief(BaseModel):
 
 class InteractionListItem(BaseModel):
     id: uuid.UUID
-    university: UniversityRef
+    group: GroupRef = Field(description="Группа контрагентов: от неё зависит процесс")
+    counterparty: CounterpartyRef = Field(description="Вуз или клиент — одной ссылкой")
+    university: UniversityRef | None = Field(description="Вуз, если контрагент — вуз")
+    client: ClientRef | None = Field(description="Клиент, если контрагент — не вуз")
     program: ProgramRef
-    product: ProductRef
+    product: ProductRef | None = Field(description="Пусто у продуктонезависимой программы")
     owner: UserRef
     stage: StageRef
     stage_entered_at: datetime
@@ -61,6 +72,22 @@ class InteractionDetail(InteractionListItem):
     history: list[TransitionOut]
     allowed_transitions: list[AllowedTransitionOut]
     signals: list[SignalOut]
+
+
+class InteractionCreate(BaseModel):
+    """Новая запись вручную. Контрагент — ровно один: вуз или клиент."""
+
+    group_id: uuid.UUID
+    university_id: uuid.UUID | None = None
+    client_id: uuid.UUID | None = None
+    program_id: uuid.UUID
+    product_id: uuid.UUID | None = Field(
+        default=None, description="Продукт из программы; у продуктонезависимой программы пусто"
+    )
+    owner_id: uuid.UUID | None = Field(
+        default=None, description="Ответственный; по умолчанию — тот, кто создаёт запись"
+    )
+    comment: str = Field(default="", max_length=4000, description="Попадёт в первую запись истории")
 
 
 class TransitionCreate(BaseModel):

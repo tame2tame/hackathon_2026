@@ -7,19 +7,37 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import Select, and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.interfaces import LoaderOption
 
 from app.core.errors import AppError, ErrorCode, FieldError
-from app.core.events import INTERACTION_TRANSITIONED, get_event_bus
+from app.core.events import INTERACTION_CREATED, INTERACTION_TRANSITIONED, get_event_bus
 from app.core.pagination import Page, PageParams
 from app.core.roles import Role
 from app.core.scope import apply_interaction_scope, visible_interaction
 from app.core.security import CurrentUser
 from app.modules.audit.models import AuditLog
-from app.modules.catalogs.models import AppUser, Product, Program, University
-from app.modules.catalogs.schemas import ProductRef, ProgramRef, UniversityRef, UserRef
+from app.modules.catalogs.models import (
+    AppUser,
+    CounterpartyGroup,
+    Product,
+    Program,
+    ProgramProduct,
+    University,
+)
+from app.modules.catalogs.schemas import (
+    CounterpartyRef,
+    GroupRef,
+    ProductRef,
+    ProgramRef,
+    UniversityRef,
+    UserRef,
+)
+from app.modules.clients.models import Client
+from app.modules.clients.schemas import ClientRef
+from app.modules.clients.service import visible_client
 from app.modules.interactions.models import (
     AssignmentChange,
     Attachment,
@@ -34,6 +52,7 @@ from app.modules.interactions.schemas import (
     BulkResult,
     BulkTransitionRequest,
     ContractOut,
+    InteractionCreate,
     InteractionDetail,
     InteractionListItem,
     NoteOut,
@@ -49,13 +68,15 @@ from app.modules.radar.schemas import SignalOut
 from app.modules.radar.service import like_pattern, open_signals_by_interaction, recompute_signals
 from app.modules.workflow.models import Stage, StageNorm, WorkflowVersion
 from app.modules.workflow.schemas import StageRef
-from app.modules.workflow.service import allowed_transitions, get_transition_rule
+from app.modules.workflow.service import allowed_transitions, get_transition_rule, group_process
 
 NOT_FOUND_DETAIL = "Взаимодействие не найдено или недоступно."
 
 
 @dataclass(slots=True)
 class InteractionFilters:
+    group_id: list[uuid.UUID] = field(default_factory=list)
+    client_id: list[uuid.UUID] = field(default_factory=list)
     university_id: list[uuid.UUID] = field(default_factory=list)
     direction_id: list[uuid.UUID] = field(default_factory=list)
     program_id: list[uuid.UUID] = field(default_factory=list)
@@ -70,7 +91,9 @@ class InteractionFilters:
 
 def _card_options() -> list[LoaderOption]:
     return [
+        joinedload(Interaction.group),
         joinedload(Interaction.university),
+        joinedload(Interaction.client),
         joinedload(Interaction.program).joinedload(Program.direction),
         joinedload(Interaction.product).joinedload(Product.vendor),
         joinedload(Interaction.owner),
@@ -86,6 +109,10 @@ def apply_filters[S: Select[Any]](stmt: S, filters: InteractionFilters) -> S:
     period = period_condition(filters.period_from, filters.period_to)
     if period is not None:
         stmt = stmt.where(period)
+    if filters.group_id:
+        stmt = stmt.where(Interaction.group_id.in_(filters.group_id))
+    if filters.client_id:
+        stmt = stmt.where(Interaction.client_id.in_(filters.client_id))
     if filters.university_id:
         stmt = stmt.where(Interaction.university_id.in_(filters.university_id))
     if filters.program_id:
@@ -125,6 +152,9 @@ def apply_filters[S: Select[Any]](stmt: S, filters: InteractionFilters) -> S:
                         )
                     )
                 ),
+                Interaction.client_id.in_(
+                    select(Client.id).where(Client.name.ilike(pattern, escape="\\"))
+                ),
                 Interaction.program_id.in_(
                     select(Program.id).where(Program.name.ilike(pattern, escape="\\"))
                 ),
@@ -161,9 +191,14 @@ def _list_item(
 ) -> InteractionListItem:
     return InteractionListItem(
         id=interaction.id,
-        university=UniversityRef.model_validate(interaction.university),
+        group=GroupRef.model_validate(interaction.group),
+        counterparty=CounterpartyRef.model_validate(interaction.counterparty),
+        university=UniversityRef.model_validate(interaction.university)
+        if interaction.university
+        else None,
+        client=ClientRef.model_validate(interaction.client) if interaction.client else None,
         program=ProgramRef.model_validate(interaction.program),
-        product=ProductRef.model_validate(interaction.product),
+        product=ProductRef.model_validate(interaction.product) if interaction.product else None,
         owner=UserRef.model_validate(interaction.owner),
         stage=StageRef.model_validate(interaction.current_stage),
         stage_entered_at=interaction.stage_entered_at,
@@ -241,6 +276,201 @@ async def get_interaction_detail(
         allowed_transitions=await allowed_transitions(session, interaction.current_stage_id),
         signals=[SignalOut.from_model(s) for s in signals],
     )
+
+
+async def _group(session: AsyncSession, group_id: uuid.UUID) -> CounterpartyGroup:
+    group = await session.get(CounterpartyGroup, group_id)
+    if group is None or group.archived_at is not None:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Группа контрагентов не найдена или в архиве.",
+            errors=[FieldError(field="group_id", message="Неизвестная группа")],
+        )
+    return group
+
+
+async def _counterparty(
+    session: AsyncSession, user: CurrentUser, payload: InteractionCreate
+) -> tuple[uuid.UUID | None, uuid.UUID | None]:
+    if payload.university_id is not None and payload.client_id is None:
+        university = await session.get(University, payload.university_id)
+        if university is None or university.archived_at is not None:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                "Вуз не найден или в архиве.",
+                errors=[FieldError(field="university_id", message="Неизвестный вуз")],
+            )
+        return university.id, None
+    if payload.client_id is not None and payload.university_id is None:
+        client = await visible_client(session, user, payload.client_id)
+        if client.archived_at is not None:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                "Клиент в архиве.",
+                errors=[FieldError(field="client_id", message="Клиент в архиве")],
+            )
+        return None, client.id
+    raise AppError(
+        ErrorCode.VALIDATION_ERROR,
+        "Укажите контрагента: вуз или клиента, но не обоих сразу.",
+        errors=[FieldError(field="university_id", message="Нужен ровно один контрагент")],
+    )
+
+
+async def _program_and_product(
+    session: AsyncSession, program_id: uuid.UUID, product_id: uuid.UUID | None
+) -> Program:
+    """Продуктозависимой программе нужен её продукт; у продуктонезависимой его может не быть."""
+    program = await session.get(Program, program_id)
+    if program is None or program.archived_at is not None:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Программа не найдена или в архиве.",
+            errors=[FieldError(field="program_id", message="Неизвестная программа")],
+        )
+    linked = set(
+        await session.scalars(
+            select(ProgramProduct.product_id).where(ProgramProduct.program_id == program.id)
+        )
+    )
+    if product_id is None:
+        if linked:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                f"Программа «{program.name}» идёт с продуктом: выберите его.",
+                errors=[FieldError(field="product_id", message="Нужен продукт программы")],
+            )
+        return program
+    product = await session.get(Product, product_id)
+    if product is None or product.archived_at is not None:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Продукт не найден или в архиве.",
+            errors=[FieldError(field="product_id", message="Неизвестный продукт")],
+        )
+    if linked and product.id not in linked:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            f"Продукт «{product.name}» не входит в программу «{program.name}».",
+            errors=[FieldError(field="product_id", message="Продукт не из этой программы")],
+        )
+    return program
+
+
+async def create_interaction(
+    session: AsyncSession,
+    user: CurrentUser,
+    payload: InteractionCreate,
+    trace_id: str | None = None,
+    now: datetime | None = None,
+) -> InteractionDetail:
+    """Новая запись на первом этапе процесса своей группы."""
+    now = now or datetime.now(UTC)
+    group = await _group(session, payload.group_id)
+    process = await group_process(session, group)
+    version, start = process.version, process.start
+    university_id, client_id = await _counterparty(session, user, payload)
+    program = await _program_and_product(session, payload.program_id, payload.product_id)
+    owner_id = payload.owner_id or user.id
+    if owner_id != user.id:
+        _ensure_can_assign(user)
+        await _assignable_user(session, user, owner_id)
+
+    same_counterparty = (
+        Interaction.university_id == university_id
+        if university_id is not None
+        else Interaction.client_id == client_id
+    )
+    duplicate = await session.scalar(
+        select(Interaction.id).where(
+            same_counterparty,
+            Interaction.program_id == program.id,
+            Interaction.product_id.is_not_distinct_from(payload.product_id),
+            Interaction.status != "cancelled",
+        )
+    )
+    if duplicate is not None:
+        raise AppError(
+            ErrorCode.INTERACTION_DUPLICATE,
+            "С этим контрагентом по этой программе и продукту запись уже ведётся.",
+        )
+
+    interaction = Interaction(
+        group_id=group.id,
+        university_id=university_id,
+        client_id=client_id,
+        program_id=program.id,
+        product_id=payload.product_id,
+        workflow_version_id=version.id,
+        current_stage_id=start.id,
+        stage_entered_at=now,
+        owner_user_id=owner_id,
+        source="manual",
+        last_activity_at=now,
+    )
+    try:
+        async with session.begin_nested():
+            session.add(interaction)
+            await session.flush()
+    except IntegrityError as error:
+        # Запись успели завести параллельно: уникальный индекс не пустил второй экземпляр.
+        raise AppError(
+            ErrorCode.INTERACTION_DUPLICATE,
+            "С этим контрагентом по этой программе и продукту запись уже ведётся.",
+        ) from error
+
+    visible = await session.scalar(
+        apply_interaction_scope(
+            select(Interaction.id).where(Interaction.id == interaction.id), user
+        )
+    )
+    if visible is None:
+        raise AppError(
+            ErrorCode.AUTH_FORBIDDEN,
+            "Правила доступа не позволяют вести записи с этим контрагентом или в этой группе.",
+        )
+    comment = payload.comment.strip()
+    session.add(
+        Transition(
+            interaction_id=interaction.id,
+            from_stage_id=None,
+            to_stage_id=start.id,
+            occurred_at=now,
+            actor_user_id=user.id,
+            comment=comment or "Взаимодействие создано",
+            source="manual",
+        )
+    )
+    session.add(
+        AuditLog(
+            actor_user_id=user.id,
+            action="interaction.created",
+            entity_kind="interaction",
+            entity_id=interaction.id,
+            after={
+                "group": group.code,
+                "university_id": str(university_id) if university_id else None,
+                "client_id": str(client_id) if client_id else None,
+                "program_id": str(program.id),
+                "product_id": str(payload.product_id) if payload.product_id else None,
+                "owner_user_id": str(owner_id),
+            },
+            trace_id=trace_id,
+        )
+    )
+    await session.flush()
+    await recompute_signals(session, [interaction.id], now)
+    await session.commit()
+    await get_event_bus().publish(
+        INTERACTION_CREATED,
+        {
+            "interaction_id": str(interaction.id),
+            "group_code": group.code,
+            "stage_code": start.code,
+        },
+        owner_user_id=owner_id,
+    )
+    return await get_interaction_detail(session, user, interaction.id, now)
 
 
 def _transition_out(transition: Transition) -> TransitionOut:

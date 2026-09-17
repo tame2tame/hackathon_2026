@@ -8,15 +8,15 @@ from app.core.db import get_sessionmaker
 from app.demo import seed_demo
 from app.demo_full import seed_full
 from app.modules.integrations.service import ensure_sources
-from app.modules.workflow.defaults import ensure_default_workflow
+from app.modules.workflow.defaults import ensure_groups
 
 
 async def run(workflow_only: bool, full: bool) -> str:
     async with get_sessionmaker()() as session:
         if workflow_only:
-            await ensure_default_workflow(session)
+            await ensure_groups(session)
             await session.commit()
-            return "Базовый workflow готов."
+            return "Процессы и группы контрагентов готовы."
         if full:
             created = await seed_full(session, datetime.now(UTC))
             await ensure_sources(session)
@@ -30,7 +30,7 @@ async def run(workflow_only: bool, full: bool) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--workflow-only", action="store_true", help="Создать только базовый workflow"
+        "--workflow-only", action="store_true", help="Только процессы и группы B2B и B2C"
     )
     parser.add_argument(
         "--full", action="store_true", help="Полный стенд: 96 вузов, ~350 взаимодействий, метрики"

@@ -26,13 +26,15 @@ from app.modules.workflow.schemas import (
     VersionOut,
     VersionPatch,
     WorkflowOut,
+    WorkflowSummaryOut,
     WorkflowTemplateCreate,
     WorkflowTemplateOut,
 )
 from app.modules.workflow.service import (
     accept_suggestion,
-    get_default_workflow,
+    get_workflow,
     list_norms,
+    list_workflows,
     set_norm,
 )
 
@@ -55,7 +57,7 @@ EDITOR_ERRORS = (
     responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
 )
 async def read_default_workflow(session: SessionDep, _user: CurrentUserDep) -> WorkflowOut:
-    return await get_default_workflow(session)
+    return await get_workflow(session)
 
 
 @router.get(
@@ -102,6 +104,83 @@ async def post_accept_suggestion(
     stage_code: str, trace_id: TraceIdDep, session: SessionDep, user: ManagerDep
 ) -> StageNormOut:
     return await accept_suggestion(session, user, stage_code, trace_id=trace_id)
+
+
+@router.get(
+    "",
+    summary="Процессы и группы, которые по ним работают",
+    description="У каждой группы контрагентов свой процесс; черновик изменений виден, если начат.",
+    responses=error_responses(ErrorCode.AUTH_REQUIRED),
+)
+async def read_workflows(session: SessionDep, _user: CurrentUserDep) -> list[WorkflowSummaryOut]:
+    return await list_workflows(session)
+
+
+@router.get(
+    "/{template_id}",
+    summary="Действующая схема процесса",
+    responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
+)
+async def read_workflow(
+    template_id: uuid.UUID, session: SessionDep, _user: CurrentUserDep
+) -> WorkflowOut:
+    return await get_workflow(session, template_id)
+
+
+@router.get(
+    "/{template_id}/norms",
+    summary="Нормы этапов процесса с подсказками по истории",
+    responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
+)
+async def read_template_norms(
+    template_id: uuid.UUID, session: SessionDep, _user: CurrentUserDep
+) -> list[StageNormOut]:
+    return await list_norms(session, template_id)
+
+
+@router.put(
+    "/{template_id}/norms/{stage_code}",
+    summary="Задать норму этапа процесса вручную",
+    responses=error_responses(
+        ErrorCode.AUTH_REQUIRED,
+        ErrorCode.AUTH_FORBIDDEN,
+        ErrorCode.NOT_FOUND,
+        ErrorCode.VALIDATION_ERROR,
+    ),
+)
+async def put_template_norm(
+    template_id: uuid.UUID,
+    stage_code: str,
+    payload: NormUpdate,
+    trace_id: TraceIdDep,
+    session: SessionDep,
+    user: ManagerDep,
+) -> StageNormOut:
+    return await set_norm(
+        session, user, stage_code, payload.norm_days, trace_id=trace_id, template_id=template_id
+    )
+
+
+@router.post(
+    "/{template_id}/norms/{stage_code}/accept-suggestion",
+    summary="Принять подсказку нормы этапа процесса",
+    responses=error_responses(
+        ErrorCode.AUTH_REQUIRED,
+        ErrorCode.AUTH_FORBIDDEN,
+        ErrorCode.NOT_FOUND,
+        ErrorCode.VALIDATION_ERROR,
+    ),
+)
+async def post_template_accept_suggestion(
+    template_id: uuid.UUID,
+    stage_code: str,
+    trace_id: TraceIdDep,
+    session: SessionDep,
+    user: ManagerDep,
+) -> StageNormOut:
+    return await accept_suggestion(
+        session, user, stage_code, trace_id=trace_id, template_id=template_id
+    )
 
 
 @router.post(

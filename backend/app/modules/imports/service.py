@@ -28,11 +28,10 @@ from app.modules.imports.models import ImportBatch, ImportProfile, ImportRow
 from app.modules.imports.schemas import ApplyResult
 from app.modules.interactions.models import Contract, Interaction, InteractionNote, Transition
 from app.modules.radar.service import recompute_signals
-from app.modules.workflow.defaults import ensure_default_workflow
-from app.modules.workflow.models import Stage
+from app.modules.workflow.defaults import universities_group
+from app.modules.workflow.service import GroupProcess, group_process
 
 PREVIEW_ROWS = 20
-START_STAGE_CODE = "contact_search"
 BATCH_NOT_FOUND = "Загрузка не найдена."
 
 
@@ -78,6 +77,7 @@ class Catalog:
     default_programs: dict[uuid.UUID, uuid.UUID]
     users: dict[str, AppUser]
     interactions: dict[tuple[uuid.UUID, uuid.UUID, uuid.UUID], Interaction]
+    group_id: uuid.UUID
 
 
 async def load_catalog(session: AsyncSession) -> Catalog:
@@ -107,11 +107,20 @@ async def load_catalog(session: AsyncSession) -> Catalog:
         mapping.normalize(user.full_name): user
         for user in await session.scalars(select(AppUser).where(AppUser.is_active.is_(True)))
     }
+    # Выгрузка заказчика описывает работу с вузами, поэтому сравнивается только с записями вузов.
     interactions = {
         (i.university_id, i.program_id, i.product_id): i
-        for i in await session.scalars(select(Interaction).where(Interaction.status != "cancelled"))
+        for i in await session.scalars(
+            select(Interaction).where(
+                Interaction.status != "cancelled",
+                Interaction.university_id.is_not(None),
+                Interaction.product_id.is_not(None),
+            )
+        )
+        if i.university_id is not None and i.product_id is not None
     }
-    return Catalog(universities, products, default_programs, users, interactions)
+    group = await universities_group(session)
+    return Catalog(universities, products, default_programs, users, interactions, group.id)
 
 
 def resolve_row(values: RowValues, catalog: Catalog) -> tuple[str, str | None]:
@@ -318,11 +327,7 @@ async def apply_batch(
             ErrorCode.VALIDATION_ERROR, "Сначала задайте соответствие колонок и посмотрите итог."
         )
 
-    version = await ensure_default_workflow(session)
-    stages = {
-        stage.code: stage
-        for stage in await session.scalars(select(Stage).where(Stage.version_id == version.id))
-    }
+    process = await group_process(session, await universities_group(session))
     catalog = await load_catalog(session)
     counter: Counter[str] = Counter()
     touched: list[uuid.UUID] = []
@@ -332,9 +337,7 @@ async def apply_batch(
             counter[row.resolution] += 1
             continue
         values = row_values(row.raw, batch.column_map)
-        interaction, created = await _apply_row(
-            session, user, catalog, stages, values, version.id, now
-        )
+        interaction, created = await _apply_row(session, user, catalog, process, values, now)
         counter["created" if created else "updated"] += 1
         touched.append(interaction.id)
 
@@ -369,9 +372,8 @@ async def _apply_row(
     session: AsyncSession,
     user: CurrentUser,
     catalog: Catalog,
-    stages: dict[str, Stage],
+    process: GroupProcess,
     values: RowValues,
-    version_id: uuid.UUID,
     now: datetime,
 ) -> tuple[Interaction, bool]:
     university = await _university(session, catalog, values.university)
@@ -393,18 +395,22 @@ async def _apply_row(
         interaction.version += 1
         return interaction, False
 
-    stage = stages[mapping.stage_for_status(values.transfer_status) or START_STAGE_CODE]
+    # Статус из файла ведёт на этап базового процесса; если его в схеме нет — на первый этап.
+    stage = process.stages.get(
+        mapping.stage_for_status(values.transfer_status) or "", process.start
+    )
     entered_at = (
         datetime.combine(values.license_signed_at, datetime.min.time(), tzinfo=UTC)
         if values.license_signed_at
         else now
     )
     interaction = Interaction(
+        group_id=catalog.group_id,
         university_id=university.id,
         program_id=program_id,
         product_id=product.id,
         contract_id=contract.id if contract else None,
-        workflow_version_id=version_id,
+        workflow_version_id=process.version.id,
         current_stage_id=stage.id,
         stage_entered_at=entered_at,
         owner_user_id=owner_id,

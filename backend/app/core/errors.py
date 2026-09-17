@@ -24,6 +24,7 @@ class ErrorCode(StrEnum):
     AUTH_FORBIDDEN = "AUTH_FORBIDDEN"
     NOT_FOUND = "NOT_FOUND"
     INTERACTION_VERSION_CONFLICT = "INTERACTION_VERSION_CONFLICT"
+    INTERACTION_DUPLICATE = "INTERACTION_DUPLICATE"
     WF_TRANSITION_NOT_ALLOWED = "WF_TRANSITION_NOT_ALLOWED"
     WF_COMMENT_REQUIRED = "WF_COMMENT_REQUIRED"
     WF_ATTACHMENT_REQUIRED = "WF_ATTACHMENT_REQUIRED"
@@ -43,6 +44,7 @@ _CATALOG: dict[ErrorCode, tuple[int, str]] = {
     ErrorCode.AUTH_FORBIDDEN: (403, "Недостаточно прав"),
     ErrorCode.NOT_FOUND: (404, "Не найдено"),
     ErrorCode.INTERACTION_VERSION_CONFLICT: (409, "Запись уже изменена"),
+    ErrorCode.INTERACTION_DUPLICATE: (409, "Такая запись уже ведётся"),
     ErrorCode.WF_TRANSITION_NOT_ALLOWED: (409, "Переход недоступен"),
     ErrorCode.WF_COMMENT_REQUIRED: (422, "Нужен комментарий"),
     ErrorCode.WF_ATTACHMENT_REQUIRED: (422, "Нужен документ"),

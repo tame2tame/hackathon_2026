@@ -91,28 +91,42 @@ async def put_weights(
     return WeightsOut.model_validate(await set_weights(session, user, payload, trace_id))
 
 
+GroupQuery = Annotated[
+    uuid.UUID | None, Query(description="Группа контрагентов; по умолчанию — вузы")
+]
+
+
 @router.get(
     "/stats/funnel",
-    summary="Воронка по этапам",
-    responses=error_responses(ErrorCode.AUTH_REQUIRED),
+    summary="Воронка по этапам процесса группы",
+    responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
 )
-async def read_funnel(session: SessionDep, user: CurrentUserDep) -> ChartOut:
-    return await stats.funnel(session, user)
+async def read_funnel(
+    session: SessionDep, user: CurrentUserDep, group_id: GroupQuery = None
+) -> ChartOut:
+    return await stats.funnel(session, user, group_id)
 
 
 @router.get(
     "/stats/stage-durations",
-    summary="Средняя длительность этапов",
-    responses=error_responses(ErrorCode.AUTH_REQUIRED),
+    summary="Средняя длительность этапов процесса группы",
+    responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
 )
-async def read_stage_durations(session: SessionDep, user: CurrentUserDep) -> ChartOut:
-    return await stats.stage_durations(session, user)
+async def read_stage_durations(
+    session: SessionDep, user: CurrentUserDep, group_id: GroupQuery = None
+) -> ChartOut:
+    return await stats.stage_durations(session, user, group_id)
 
 
 @router.get(
     "/stats/distribution",
     summary="Распределение по направлениям",
+    description="Без группы — по всем группам сразу.",
     responses=error_responses(ErrorCode.AUTH_REQUIRED),
 )
-async def read_distribution(session: SessionDep, user: CurrentUserDep) -> ChartOut:
-    return await stats.distribution(session, user)
+async def read_distribution(
+    session: SessionDep,
+    user: CurrentUserDep,
+    group_id: Annotated[uuid.UUID | None, Query(description="Группа контрагентов")] = None,
+) -> ChartOut:
+    return await stats.distribution(session, user, group_id)

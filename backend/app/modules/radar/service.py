@@ -16,6 +16,7 @@ from app.core.scope import apply_interaction_scope
 from app.core.security import CurrentUser
 from app.modules.catalogs.models import AppUser, Product, Program, University
 from app.modules.catalogs.schemas import UserRef
+from app.modules.clients.models import Client
 from app.modules.interactions.models import Attachment, Contract, Interaction
 from app.modules.interactions.period import period_condition
 from app.modules.radar.models import RadarSignal
@@ -38,6 +39,7 @@ from app.modules.workflow.models import Stage, StageNorm, WorkflowVersion
 
 @dataclass(slots=True)
 class SignalFilters:
+    group_id: list[uuid.UUID] = field(default_factory=list)
     kind: list[str] = field(default_factory=list)
     severity: list[str] = field(default_factory=list)
     owner_id: list[uuid.UUID] = field(default_factory=list)
@@ -204,6 +206,8 @@ async def signals_summary(
         .group_by(AppUser.id, AppUser.full_name, RadarSignal.kind)
     )
     stmt = apply_interaction_scope(stmt, user)
+    if filters.group_id:
+        stmt = stmt.where(Interaction.group_id.in_(filters.group_id))
     if filters.kind:
         stmt = stmt.where(RadarSignal.kind.in_(filters.kind))
     if filters.owner_id:
@@ -239,6 +243,8 @@ async def list_signals(
         .where(RadarSignal.resolved_at.is_(None), Interaction.status != "cancelled")
     )
     stmt = apply_interaction_scope(stmt, user)
+    if filters.group_id:
+        stmt = stmt.where(Interaction.group_id.in_(filters.group_id))
     if filters.kind:
         stmt = stmt.where(RadarSignal.kind.in_(filters.kind))
     if filters.severity:
@@ -262,6 +268,9 @@ async def list_signals(
                         )
                     )
                 ),
+                Interaction.client_id.in_(
+                    select(Client.id).where(Client.name.ilike(pattern, escape="\\"))
+                ),
                 Interaction.program_id.in_(
                     select(Program.id).where(Program.name.ilike(pattern, escape="\\"))
                 ),
@@ -274,7 +283,9 @@ async def list_signals(
     total = await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = await session.execute(
         stmt.options(
+            joinedload(Interaction.group),
             joinedload(Interaction.university),
+            joinedload(Interaction.client),
             joinedload(Interaction.program).joinedload(Program.direction),
             joinedload(Interaction.product).joinedload(Product.vendor),
             joinedload(Interaction.owner),

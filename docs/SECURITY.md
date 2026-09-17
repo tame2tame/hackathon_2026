@@ -30,7 +30,9 @@
 | Мера | Как сделано | Где |
 |---|---|---|
 | Email и телефон контактов шифруются | Fernet по ключу `PD_ENCRYPTION_KEY`; без ключа контакт с ПДн не сохраняется | [`backend/app/core/crypto.py`](../backend/app/core/crypto.py) |
-| Просмотр ПДн фиксируется | Запись `contact.viewed` в аудит; в журнал попадает факт и количество, не сами данные | [`backend/app/modules/admin/service.py`](../backend/app/modules/admin/service.py) |
+| Email и телефон клиентов B2C шифруются тем же ключом | ИНН хранится только у организаций: у человека это лишние персональные данные | [`backend/app/modules/clients/service.py`](../backend/app/modules/clients/service.py) |
+| Просмотр ПДн фиксируется | Записи `contact.viewed` и `client.viewed` в аудит; в журнал попадает факт, не сами данные | [`backend/app/modules/admin/service.py`](../backend/app/modules/admin/service.py) |
+| Человека видят только те, кто с ним работает | Карточку клиента-человека видят создатель, владельцы его записей, руководитель их команды и администратор; организации видны всем, чтобы не заводить дубли | [`backend/app/modules/clients/service.py`](../backend/app/modules/clients/service.py) |
 | ПДн не попадают в логи и тексты ошибок | Ошибки отдаются кодом каталога и `trace_id`; стек — только в журнал сервера | [`backend/app/core/errors.py`](../backend/app/core/errors.py) |
 | В репозитории только синтетические данные | Демо-пользователи на `example.com`, фикстуры генерируются | [`backend/app/demo.py`](../backend/app/demo.py) |
 

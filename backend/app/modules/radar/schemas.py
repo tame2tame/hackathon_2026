@@ -6,7 +6,15 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.catalogs.schemas import ProductRef, ProgramRef, UniversityRef, UserRef
+from app.modules.catalogs.schemas import (
+    CounterpartyRef,
+    GroupRef,
+    ProductRef,
+    ProgramRef,
+    UniversityRef,
+    UserRef,
+)
+from app.modules.clients.schemas import ClientRef
 from app.modules.radar.messages import signal_message
 from app.modules.radar.models import RadarSignal
 from app.modules.radar.rules import Severity, SignalKind
@@ -43,9 +51,12 @@ class InteractionRef(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    university: UniversityRef
+    group: GroupRef
+    counterparty: CounterpartyRef
+    university: UniversityRef | None
+    client: ClientRef | None
     program: ProgramRef
-    product: ProductRef
+    product: ProductRef | None
     owner: UserRef
 
 

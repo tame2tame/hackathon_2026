@@ -2,14 +2,17 @@
 
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.errors import AppError, ErrorCode
+from app.core.errors import AppError, ErrorCode, FieldError
 from app.core.security import CurrentUser
 from app.modules.audit.models import AuditLog
+from app.modules.catalogs.models import CounterpartyGroup
+from app.modules.catalogs.schemas import GroupRef
 from app.modules.interactions.models import Transition
 from app.modules.radar.norms import suggest_norm
 from app.modules.workflow.models import (
@@ -26,7 +29,48 @@ from app.modules.workflow.schemas import (
     StageRef,
     TransitionRuleOut,
     WorkflowOut,
+    WorkflowSummaryOut,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class GroupProcess:
+    version: WorkflowVersion
+    stages: dict[str, Stage]
+    start: Stage
+
+
+async def published_version(
+    session: AsyncSession, template_id: uuid.UUID
+) -> WorkflowVersion | None:
+    version: WorkflowVersion | None = await session.scalar(
+        select(WorkflowVersion)
+        .where(WorkflowVersion.template_id == template_id, WorkflowVersion.status == "published")
+        .order_by(WorkflowVersion.version_no.desc())
+        .limit(1)
+    )
+    return version
+
+
+async def group_process(session: AsyncSession, group: CounterpartyGroup) -> GroupProcess:
+    """Действующая схема процесса группы, её этапы по коду и первый этап."""
+    version = await published_version(session, group.workflow_template_id)
+    stages = (
+        {
+            stage.code: stage
+            for stage in await session.scalars(select(Stage).where(Stage.version_id == version.id))
+        }
+        if version is not None
+        else {}
+    )
+    if version is None or not stages:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            f"У группы «{group.name}» нет опубликованного процесса.",
+            errors=[FieldError(field="group_id", message="Нет процесса")],
+        )
+    start = min(stages.values(), key=lambda stage: (stage.kind != "start", stage.position))
+    return GroupProcess(version, stages, start)
 
 
 async def norms_by_stage_code(session: AsyncSession, template_id: uuid.UUID) -> dict[str, int]:
@@ -38,17 +82,33 @@ async def norms_by_stage_code(session: AsyncSession, template_id: uuid.UUID) -> 
     return {code: days for code, days in rows.tuples()}
 
 
-async def get_default_workflow(session: AsyncSession) -> WorkflowOut:
-    version = await session.scalar(
+async def _version_of(session: AsyncSession, template_id: uuid.UUID | None) -> WorkflowVersion:
+    """Действующая схема шаблона; без шаблона — базового процесса работы с вузами."""
+    stmt = (
         select(WorkflowVersion)
         .join(WorkflowTemplate, WorkflowTemplate.id == WorkflowVersion.template_id)
-        .where(WorkflowTemplate.is_default.is_(True), WorkflowVersion.status == "published")
+        .where(WorkflowVersion.status == "published")
         .order_by(WorkflowVersion.version_no.desc())
         .options(selectinload(WorkflowVersion.stages), selectinload(WorkflowVersion.template))
         .limit(1)
     )
+    if template_id is None:
+        stmt = stmt.where(WorkflowTemplate.is_default.is_(True))
+    else:
+        stmt = stmt.where(WorkflowTemplate.id == template_id)
+    version = await session.scalar(stmt)
     if version is None:
-        raise AppError(ErrorCode.NOT_FOUND, "Базовый workflow не создан: выполните make seed.")
+        detail = (
+            "Базовый workflow не создан: выполните make seed."
+            if template_id is None
+            else "Процесс не найден или ещё не опубликован."
+        )
+        raise AppError(ErrorCode.NOT_FOUND, detail)
+    return version
+
+
+async def get_workflow(session: AsyncSession, template_id: uuid.UUID | None = None) -> WorkflowOut:
+    version = await _version_of(session, template_id)
     norms = await norms_by_stage_code(session, version.template_id)
     rules = await session.scalars(
         select(StageTransitionRule).where(StageTransitionRule.version_id == version.id)
@@ -83,6 +143,45 @@ async def get_default_workflow(session: AsyncSession) -> WorkflowOut:
     )
 
 
+async def list_workflows(session: AsyncSession) -> list[WorkflowSummaryOut]:
+    """Шаблоны процессов с действующей схемой, черновиком и группами, которые по ним работают."""
+    templates = list(
+        await session.scalars(
+            select(WorkflowTemplate)
+            .where(WorkflowTemplate.archived_at.is_(None))
+            .order_by(WorkflowTemplate.is_default.desc(), WorkflowTemplate.name)
+        )
+    )
+    versions = list(
+        await session.scalars(
+            select(WorkflowVersion)
+            .where(WorkflowVersion.status.in_(("published", "draft")))
+            .order_by(WorkflowVersion.version_no)
+        )
+    )
+    published = {v.template_id: v for v in versions if v.status == "published"}
+    drafts = {v.template_id: v for v in versions if v.status == "draft"}
+    groups: dict[uuid.UUID, list[GroupRef]] = defaultdict(list)
+    for group in await session.scalars(
+        select(CounterpartyGroup)
+        .where(CounterpartyGroup.archived_at.is_(None))
+        .order_by(CounterpartyGroup.position, CounterpartyGroup.name)
+    ):
+        groups[group.workflow_template_id].append(GroupRef.model_validate(group))
+    return [
+        WorkflowSummaryOut(
+            id=template.id,
+            name=template.name,
+            is_default=template.is_default,
+            published_version_id=published[template.id].id if template.id in published else None,
+            version_no=published[template.id].version_no if template.id in published else None,
+            draft_version_id=drafts[template.id].id if template.id in drafts else None,
+            groups=groups[template.id],
+        )
+        for template in templates
+    ]
+
+
 async def allowed_transitions(
     session: AsyncSession, from_stage_id: uuid.UUID
 ) -> list[AllowedTransitionOut]:
@@ -115,21 +214,10 @@ async def get_transition_rule(
     return rule
 
 
-async def _default_version(session: AsyncSession) -> WorkflowVersion:
-    version = await session.scalar(
-        select(WorkflowVersion)
-        .join(WorkflowTemplate, WorkflowTemplate.id == WorkflowVersion.template_id)
-        .where(WorkflowTemplate.is_default.is_(True), WorkflowVersion.status == "published")
-        .order_by(WorkflowVersion.version_no.desc())
-        .limit(1)
-    )
-    if version is None:
-        raise AppError(ErrorCode.NOT_FOUND, "Базовый workflow не создан: выполните make seed.")
-    return version
-
-
-async def _norm(session: AsyncSession, stage_code: str) -> tuple[StageNorm, Stage]:
-    version = await _default_version(session)
+async def _norm(
+    session: AsyncSession, stage_code: str, template_id: uuid.UUID | None
+) -> tuple[StageNorm, Stage]:
+    version = await _version_of(session, template_id)
     stage = await session.scalar(
         select(Stage).where(Stage.version_id == version.id, Stage.code == stage_code)
     )
@@ -155,8 +243,10 @@ def _norm_out(norm: StageNorm, stage: Stage) -> StageNormOut:
     )
 
 
-async def list_norms(session: AsyncSession) -> list[StageNormOut]:
-    version = await _default_version(session)
+async def list_norms(
+    session: AsyncSession, template_id: uuid.UUID | None = None
+) -> list[StageNormOut]:
+    version = await _version_of(session, template_id)
     rows = await session.execute(
         select(StageNorm, Stage)
         .join(
@@ -175,8 +265,9 @@ async def set_norm(
     stage_code: str,
     norm_days: int,
     trace_id: str | None = None,
+    template_id: uuid.UUID | None = None,
 ) -> StageNormOut:
-    norm, stage = await _norm(session, stage_code)
+    norm, stage = await _norm(session, stage_code, template_id)
     before = {"norm_days": norm.norm_days, "source": norm.source}
     norm.norm_days = norm_days
     norm.source = "manual"
@@ -196,16 +287,29 @@ async def set_norm(
 
 
 async def refresh_suggestions(session: AsyncSession) -> int:
-    """Считает подсказки норм по завершённым этапам. Возвращает число обновлённых норм."""
-    version = await _default_version(session)
+    """Считает подсказки норм по завершённым этапам всех процессов. Возвращает число обновлённых."""
+    updated = 0
+    for version in await session.scalars(
+        select(WorkflowVersion).where(WorkflowVersion.status == "published")
+    ):
+        updated += await _refresh_template(session, version)
+    await session.flush()
+    return updated
+
+
+async def _refresh_template(session: AsyncSession, version: WorkflowVersion) -> int:
     # Длительность этапа — промежуток между переходом на него и следующим переходом.
+    # Этапы сопоставляются по коду: нормы шаблона переживают смену схемы.
     next_at = func.lead(Transition.occurred_at).over(
         partition_by=Transition.interaction_id, order_by=Transition.occurred_at
+    )
+    template_versions = select(WorkflowVersion.id).where(
+        WorkflowVersion.template_id == version.template_id
     )
     rows = await session.execute(
         select(Stage.code, Transition.occurred_at, next_at.label("next_at"))
         .join(Stage, Stage.id == Transition.to_stage_id)
-        .where(Stage.version_id == version.id)
+        .where(Stage.version_id.in_(template_versions))
     )
     durations: dict[str, list[int]] = defaultdict(list)
     for code, occurred_at, next_occurred in rows.tuples():
@@ -224,15 +328,18 @@ async def refresh_suggestions(session: AsyncSession) -> int:
         norm.suggested_percentile_days = suggestion.percentile_days
         norm.sample_size = suggestion.sample_size
         updated += 1
-    await session.flush()
     return updated
 
 
 async def accept_suggestion(
-    session: AsyncSession, user: CurrentUser, stage_code: str, trace_id: str | None = None
+    session: AsyncSession,
+    user: CurrentUser,
+    stage_code: str,
+    trace_id: str | None = None,
+    template_id: uuid.UUID | None = None,
 ) -> StageNormOut:
     """Принять подсказку: нормой становится 80-й перцентиль, в который укладывается большинство."""
-    norm, stage = await _norm(session, stage_code)
+    norm, stage = await _norm(session, stage_code, template_id)
     if norm.suggested_percentile_days is None:
         raise AppError(
             ErrorCode.VALIDATION_ERROR,

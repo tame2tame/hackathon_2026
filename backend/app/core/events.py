@@ -20,6 +20,7 @@ STREAM_KEY = "radar:events"
 STREAM_MAXLEN = 1000
 HEARTBEAT_SECONDS = 15
 
+INTERACTION_CREATED = "interaction.created"
 INTERACTION_TRANSITIONED = "interaction.transitioned"
 SIGNAL_OPENED = "signal.opened"
 SIGNAL_RESOLVED = "signal.resolved"
@@ -27,6 +28,7 @@ IMPORT_APPLIED = "import.applied"
 REPORT_UPDATED = "report.updated"
 
 EVENT_KINDS = (
+    INTERACTION_CREATED,
     INTERACTION_TRANSITIONED,
     SIGNAL_OPENED,
     SIGNAL_RESOLVED,

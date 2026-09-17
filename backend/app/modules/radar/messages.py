@@ -14,6 +14,9 @@ DOCUMENT_LABELS = {
     "signed_contract": "подписанный договор",
     "transfer_act": "акт передачи",
     "training_confirmation": "подтверждение обучения",
+    "signed_offer": "подписанная оферта",
+    "payment_confirmation": "подтверждение оплаты",
+    "certificate": "сертификат об окончании",
 }
 
 

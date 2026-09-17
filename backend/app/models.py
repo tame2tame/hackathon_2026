@@ -7,6 +7,7 @@ from app.modules.audit.models import AuditLog
 from app.modules.catalogs.models import (
     AppUser,
     ContactPerson,
+    CounterpartyGroup,
     Direction,
     Product,
     Program,
@@ -16,6 +17,7 @@ from app.modules.catalogs.models import (
     Vendor,
     product_direction,
 )
+from app.modules.clients.models import Client
 from app.modules.imports.models import ImportBatch, ImportProfile, ImportRow
 from app.modules.integrations.models import IntegrationSource, SiteApplication, SyncRun
 from app.modules.interactions.models import (
@@ -45,8 +47,10 @@ __all__ = [
     "Attachment",
     "AuditLog",
     "Base",
+    "Client",
     "ContactPerson",
     "Contract",
+    "CounterpartyGroup",
     "DataAccessRule",
     "Direction",
     "ImportBatch",

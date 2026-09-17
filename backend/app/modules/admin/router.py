@@ -18,11 +18,14 @@ from app.modules.admin.schemas import (
     CatalogItemOut,
     ContactCreate,
     ContactOut,
+    CounterpartyGroupCreate,
+    CounterpartyGroupUpdate,
     SettingOut,
     SettingUpdate,
     TeamCreate,
     TeamOut,
 )
+from app.modules.catalogs.schemas import CounterpartyGroupOut
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 # Контакты вуза видят все, кому доступен вуз, поэтому они живут вне админского префикса.
@@ -180,6 +183,53 @@ async def post_catalog_archive(
 ) -> CatalogItemOut:
     item = await service.archive_catalog_item(session, admin, kind, item_id, trace_id)
     return CatalogItemOut(id=item.id, name=item.name, archived_at=item.archived_at)
+
+
+@router.post(
+    "/counterparty-groups",
+    status_code=status.HTTP_201_CREATED,
+    summary="Добавить группу контрагентов",
+    description="Новая группа работает по уже опубликованному процессу.",
+    responses=error_responses(*ADMIN_ERRORS),
+)
+async def post_group(
+    payload: CounterpartyGroupCreate, trace_id: TraceIdDep, session: SessionDep, admin: AdminDep
+) -> CounterpartyGroupOut:
+    group = await service.create_group(session, admin, payload, trace_id)
+    return CounterpartyGroupOut.model_validate(group)
+
+
+@router.patch(
+    "/counterparty-groups/{group_id}",
+    summary="Изменить группу контрагентов",
+    description=(
+        "Название, описание, порядок и процесс. Процесс группы с открытыми записями не "
+        "заменяется: его меняют в редакторе, и записи переходят на новую схему."
+    ),
+    responses=error_responses(*ADMIN_ERRORS),
+)
+async def patch_group(
+    group_id: uuid.UUID,
+    payload: CounterpartyGroupUpdate,
+    trace_id: TraceIdDep,
+    session: SessionDep,
+    admin: AdminDep,
+) -> CounterpartyGroupOut:
+    group = await service.update_group(session, admin, group_id, payload, trace_id)
+    return CounterpartyGroupOut.model_validate(group)
+
+
+@router.post(
+    "/counterparty-groups/{group_id}/archive",
+    summary="Архивировать группу контрагентов",
+    description="Только без открытых записей: история закрытых остаётся.",
+    responses=error_responses(*ADMIN_ERRORS),
+)
+async def post_group_archive(
+    group_id: uuid.UUID, trace_id: TraceIdDep, session: SessionDep, admin: AdminDep
+) -> CounterpartyGroupOut:
+    group = await service.archive_group(session, admin, group_id, trace_id)
+    return CounterpartyGroupOut.model_validate(group)
 
 
 @contacts_router.get(

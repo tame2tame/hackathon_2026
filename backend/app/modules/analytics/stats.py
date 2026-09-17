@@ -3,19 +3,22 @@
 Каждый график отдаётся вместе с настройками ECharts, поэтому интерфейс и PDF рисуют одно и то же.
 """
 
+import uuid
 from collections import defaultdict
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import AppError, ErrorCode
 from app.core.scope import apply_interaction_scope
 from app.core.security import CurrentUser
 from app.modules.analytics.schemas import ChartOut
-from app.modules.catalogs.models import Direction, Program
+from app.modules.catalogs.models import CounterpartyGroup, Direction, Program
 from app.modules.interactions.models import Interaction, Transition
-from app.modules.workflow.defaults import ensure_default_workflow
+from app.modules.workflow.defaults import universities_group
 from app.modules.workflow.models import Stage
+from app.modules.workflow.service import GroupProcess, group_process
 
 
 def _bar_option(
@@ -39,14 +42,33 @@ def _chart(title: str, pairs: list[tuple[str, int]], color: str = "#2f6fed") -> 
     )
 
 
-async def funnel(session: AsyncSession, user: CurrentUser) -> ChartOut:
+async def _group(
+    session: AsyncSession, group_id: uuid.UUID | None
+) -> tuple[CounterpartyGroup, GroupProcess]:
+    """Группа графика; без неё — вузы, как было до появления групп."""
+    group = (
+        await session.get(CounterpartyGroup, group_id)
+        if group_id is not None
+        else await universities_group(session)
+    )
+    if group is None:
+        raise AppError(ErrorCode.NOT_FOUND, "Группа контрагентов не найдена.")
+    return group, await group_process(session, group)
+
+
+async def funnel(
+    session: AsyncSession, user: CurrentUser, group_id: uuid.UUID | None = None
+) -> ChartOut:
     """Сколько активных взаимодействий стоит на каждом этапе — в порядке этапов процесса."""
-    version = await ensure_default_workflow(session)
+    group, process = await _group(session, group_id)
     stmt = (
         select(Stage.name, Stage.position, func.count(Interaction.id))
         .select_from(Stage)
-        .outerjoin(Interaction, Interaction.current_stage_id == Stage.id)
-        .where(Stage.version_id == version.id)
+        .outerjoin(
+            Interaction,
+            and_(Interaction.current_stage_id == Stage.id, Interaction.group_id == group.id),
+        )
+        .where(Stage.version_id == process.version.id)
         .group_by(Stage.name, Stage.position)
         .order_by(Stage.position)
     )
@@ -54,9 +76,11 @@ async def funnel(session: AsyncSession, user: CurrentUser) -> ChartOut:
     return _chart("Взаимодействия по этапам", [(name, count) for name, _, count in rows])
 
 
-async def stage_durations(session: AsyncSession, user: CurrentUser) -> ChartOut:
+async def stage_durations(
+    session: AsyncSession, user: CurrentUser, group_id: uuid.UUID | None = None
+) -> ChartOut:
     """Средняя длительность завершённых этапов в днях: видно, где процесс вязнет."""
-    version = await ensure_default_workflow(session)
+    group, process = await _group(session, group_id)
     next_at = func.lead(Transition.occurred_at).over(
         partition_by=Transition.interaction_id, order_by=Transition.occurred_at
     )
@@ -65,7 +89,7 @@ async def stage_durations(session: AsyncSession, user: CurrentUser) -> ChartOut:
         .select_from(Transition)
         .join(Stage, Stage.id == Transition.to_stage_id)
         .join(Interaction, Interaction.id == Transition.interaction_id)
-        .where(Stage.version_id == version.id)
+        .where(Stage.version_id == process.version.id, Interaction.group_id == group.id)
     )
     rows = (await session.execute(apply_interaction_scope(stmt, user))).tuples().all()
 
@@ -81,8 +105,10 @@ async def stage_durations(session: AsyncSession, user: CurrentUser) -> ChartOut:
     return _chart("Средняя длительность этапа, дней", pairs, color="#e07b39")
 
 
-async def distribution(session: AsyncSession, user: CurrentUser) -> ChartOut:
-    """Распределение взаимодействий по ИТ-направлениям."""
+async def distribution(
+    session: AsyncSession, user: CurrentUser, group_id: uuid.UUID | None = None
+) -> ChartOut:
+    """Распределение взаимодействий по ИТ-направлениям; без группы — по всем группам."""
     stmt = (
         select(Direction.name, func.count(Interaction.id))
         .select_from(Interaction)
@@ -92,5 +118,7 @@ async def distribution(session: AsyncSession, user: CurrentUser) -> ChartOut:
         .group_by(Direction.name)
         .order_by(func.count(Interaction.id).desc())
     )
+    if group_id is not None:
+        stmt = stmt.where(Interaction.group_id == group_id)
     rows = (await session.execute(apply_interaction_scope(stmt, user))).tuples().all()
     return _chart("Взаимодействия по направлениям", list(rows), color="#3c9a5f")

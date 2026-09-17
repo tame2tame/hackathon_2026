@@ -12,6 +12,7 @@ from app.modules.interactions.schemas import (
     BulkOwnerRequest,
     BulkResult,
     BulkTransitionRequest,
+    InteractionCreate,
     InteractionDetail,
     InteractionListItem,
     NoteCreate,
@@ -25,6 +26,7 @@ from app.modules.interactions.service import (
     bulk_change_owner,
     bulk_transitions,
     change_owner,
+    create_interaction,
     create_note,
     create_transition,
     get_interaction_detail,
@@ -36,6 +38,8 @@ router = APIRouter(prefix="/api/v1/interactions", tags=["interactions"])
 
 
 def _interaction_filters(
+    group_id: Annotated[list[uuid.UUID] | None, Query(description="Группа контрагентов")] = None,
+    client_id: Annotated[list[uuid.UUID] | None, Query(description="Клиент вне вузов")] = None,
     university_id: Annotated[list[uuid.UUID] | None, Query(description="Вуз")] = None,
     direction_id: Annotated[list[uuid.UUID] | None, Query(description="ИТ-направление")] = None,
     program_id: Annotated[list[uuid.UUID] | None, Query(description="ИТ-программа")] = None,
@@ -46,10 +50,12 @@ def _interaction_filters(
     period_from: Annotated[date | None, Query(description="Начало периода, UTC")] = None,
     period_to: Annotated[date | None, Query(description="Конец периода, UTC")] = None,
     search: Annotated[
-        str | None, Query(max_length=100, description="Вуз, программа или продукт")
+        str | None, Query(max_length=100, description="Контрагент, программа или продукт")
     ] = None,
 ) -> InteractionFilters:
     return InteractionFilters(
+        group_id=group_id or [],
+        client_id=client_id or [],
         university_id=university_id or [],
         direction_id=direction_id or [],
         program_id=program_id or [],
@@ -75,6 +81,32 @@ async def read_interactions(
     filters: Annotated[InteractionFilters, Depends(_interaction_filters)],
 ) -> Page[InteractionListItem]:
     return await list_interactions(session, user, filters, page)
+
+
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Завести взаимодействие вручную",
+    description=(
+        "Запись встаёт на первый этап процесса своей группы. Контрагент — ровно один: вуз или "
+        "клиент. Продуктозависимой программе нужен её продукт. Назначить другого ответственного "
+        "может руководитель в пределах команды или администратор."
+    ),
+    responses=error_responses(
+        ErrorCode.AUTH_REQUIRED,
+        ErrorCode.AUTH_FORBIDDEN,
+        ErrorCode.NOT_FOUND,
+        ErrorCode.VALIDATION_ERROR,
+        ErrorCode.INTERACTION_DUPLICATE,
+    ),
+)
+async def post_interaction(
+    payload: InteractionCreate,
+    trace_id: TraceIdDep,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> InteractionDetail:
+    return await create_interaction(session, user, payload, trace_id=trace_id)
 
 
 @router.get(

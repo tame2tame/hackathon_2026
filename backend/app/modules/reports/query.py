@@ -8,7 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.scope import apply_interaction_scope
 from app.core.security import CurrentUser
-from app.modules.catalogs.models import AppUser, Direction, Product, Program, University
+from app.modules.catalogs.models import (
+    AppUser,
+    CounterpartyGroup,
+    Direction,
+    Product,
+    Program,
+    University,
+)
+from app.modules.clients.models import Client
 from app.modules.interactions.models import Contract, Interaction, Transition
 from app.modules.interactions.service import InteractionFilters, apply_filters
 from app.modules.radar.models import RadarSignal
@@ -56,6 +64,8 @@ def _base_query(
     )
     stmt = (
         select(
+            CounterpartyGroup.name,
+            func.coalesce(University.name, Client.name),
             University.name,
             Direction.name,
             Program.name,
@@ -69,10 +79,12 @@ def _base_query(
             open_signals.c.kinds,
         )
         .select_from(Interaction)
-        .join(University, University.id == Interaction.university_id)
+        .join(CounterpartyGroup, CounterpartyGroup.id == Interaction.group_id)
+        .outerjoin(University, University.id == Interaction.university_id)
+        .outerjoin(Client, Client.id == Interaction.client_id)
         .join(Program, Program.id == Interaction.program_id)
         .join(Direction, Direction.id == Program.direction_id)
-        .join(Product, Product.id == Interaction.product_id)
+        .outerjoin(Product, Product.id == Interaction.product_id)
         .join(AppUser, AppUser.id == Interaction.owner_user_id)
         .outerjoin(Contract, Contract.id == Interaction.contract_id)
         .outerjoin(stage_at, stage_at.c.interaction_id == Interaction.id)
@@ -104,11 +116,18 @@ async def build_rows(
     now = now or datetime.now(UTC)
     end = _period_end(filters, now)
     rows = await session.execute(
-        _base_query(user, filters, end).order_by(University.name, Program.name, Product.name)
+        _base_query(user, filters, end).order_by(
+            CounterpartyGroup.position,
+            func.coalesce(University.name, Client.name),
+            Program.name,
+            Product.name,
+        )
     )
 
     result: list[list[str]] = []
     for (
+        group,
+        counterparty,
         university,
         direction,
         program,
@@ -123,10 +142,12 @@ async def build_rows(
     ) in rows.tuples():
         since = entered_at or stage_entered_at
         values = {
-            "university": university,
+            "group": group,
+            "counterparty": counterparty,
+            "university": university or "",
             "direction": direction,
             "program": program,
-            "product": product,
+            "product": product or "",
             "stage": stage or "",
             "owner": owner,
             "contract": contract_number or "",

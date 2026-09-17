@@ -34,6 +34,9 @@ def _rule_condition(rule: AccessRule) -> ColumnElement[bool]:
             return Interaction.university_id == rule.scope_id
         case "program":
             return Interaction.program_id == rule.scope_id
+        case "group":
+            # Например, команда B2B не видит частных лиц, а команда B2C — вузы.
+            return Interaction.group_id == rule.scope_id
         case _:
             return Interaction.program_id.in_(
                 select(Program.id).where(Program.direction_id == rule.scope_id)

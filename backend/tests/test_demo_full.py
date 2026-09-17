@@ -8,6 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.demo_full import (
+    B2C_KAM_TOTAL,
+    B2C_OVERDUE_APPLICATION,
+    B2C_TOTAL,
     HISTORY_MONTHS,
     INTERACTION_TOTAL,
     MISSING_DOCUMENT,
@@ -41,14 +44,21 @@ async def test_stand_is_loaded_once(session: AsyncSession) -> None:
     assert await seed_full(session, datetime.now(UTC)) is True
 
     universities = await session.scalar(select(func.count()).select_from(University))
-    interactions = await session.scalar(select(func.count()).select_from(Interaction))
+    with_universities = await session.scalar(
+        select(func.count()).select_from(Interaction).where(Interaction.university_id.is_not(None))
+    )
+    with_clients = await session.scalar(
+        select(func.count()).select_from(Interaction).where(Interaction.client_id.is_not(None))
+    )
     kams = await session.scalar(
         select(func.count()).select_from(AppUser).where(AppUser.role == "kam")
     )
     assert universities == UNIVERSITY_TOTAL
-    assert kams == 22  # двадцать новых КАМов и двое из демо-данных v0
+    # Двадцать КАМов вузов, двое из демо-данных v0 и команда частных клиентов.
+    assert kams == 22 + B2C_KAM_TOTAL
     # Часть планов отсеивается совпадением тройки «вуз × программа × продукт».
-    assert INTERACTION_TOTAL * 0.8 <= (interactions or 0) <= INTERACTION_TOTAL + 6
+    assert INTERACTION_TOTAL * 0.8 <= (with_universities or 0) <= INTERACTION_TOTAL + 6
+    assert with_clients == B2C_TOTAL
 
     assert await seed_full(session, datetime.now(UTC)) is False
 
@@ -61,7 +71,7 @@ async def test_radar_finds_exactly_the_planted_problems(session: AsyncSession) -
     added = await open_signals(session) - before
     assert added == Counter(
         {
-            "stage_overdue": OVERDUE_SIGNING,
+            "stage_overdue": OVERDUE_SIGNING + B2C_OVERDUE_APPLICATION,
             "missing_document": MISSING_DOCUMENT,
             "inactivity": STALLED,
         }

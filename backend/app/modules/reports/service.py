@@ -26,6 +26,7 @@ TITLE = "Взаимодействия с вузами"
 
 def filters_of(payload: ReportCreate) -> InteractionFilters:
     return InteractionFilters(
+        group_id=payload.group_id,
         university_id=payload.university_id,
         direction_id=payload.direction_id,
         program_id=payload.program_id,

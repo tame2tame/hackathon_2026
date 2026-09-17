@@ -1,6 +1,7 @@
-"""Взаимодействия (вуз × программа × продукт), договоры, история переходов, заметки, вложения."""
+"""Взаимодействия (контрагент × программа × продукт), договоры, история, заметки, вложения."""
 
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime
 
 from sqlalchemy import (
@@ -18,7 +19,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base, Timestamps, UUIDPrimaryKey
-from app.modules.catalogs.models import AppUser, Product, Program, University
+from app.modules.catalogs.models import AppUser, CounterpartyGroup, Product, Program, University
+from app.modules.clients.models import Client
 from app.modules.workflow.models import Stage, WorkflowVersion
 
 
@@ -39,33 +41,65 @@ class Contract(UUIDPrimaryKey, Timestamps, Base):
     transfer_status: Mapped[str | None] = mapped_column(String(120))
 
 
+@dataclass(frozen=True, slots=True)
+class Counterparty:
+    kind: str
+    id: uuid.UUID
+    name: str
+    short_name: str
+
+
 class Interaction(UUIDPrimaryKey, Timestamps, Base):
-    """Центральная запись (ADR-001): один вуз по одной ИТ-программе с конкретным ИТ-продуктом."""
+    """Центральная запись (ADR-001, ADR-015): контрагент группы по ИТ-программе и продукту.
+
+    Контрагент — ровно один: вуз или клиент. Продукт необязателен: программы бывают
+    продуктонезависимыми.
+    """
 
     __tablename__ = "interaction"
     __table_args__ = (
-        # Одна активная связка на тройку; отменённые не мешают завести её заново.
+        # Одна активная связка на контрагента, программу и продукт; пустой продукт — тоже значение.
+        # Отменённые записи не мешают завести связку заново.
         Index(
-            "uq_interaction_active_triple",
+            "uq_interaction_active_university",
             "university_id",
             "program_id",
             "product_id",
             unique=True,
-            postgresql_where=text("status <> 'cancelled'"),
+            postgresql_where=text("status <> 'cancelled' AND university_id IS NOT NULL"),
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index(
+            "uq_interaction_active_client",
+            "client_id",
+            "program_id",
+            "product_id",
+            unique=True,
+            postgresql_where=text("status <> 'cancelled' AND client_id IS NOT NULL"),
+            postgresql_nulls_not_distinct=True,
         ),
         Index("ix_interaction_owner_status", "owner_user_id", "status"),
         Index("ix_interaction_stage_entered", "current_stage_id", "stage_entered_at"),
         CheckConstraint("status IN ('active', 'paused', 'completed', 'cancelled')", name="status"),
         CheckConstraint("source IN ('manual', 'import', 'site', 'lms', 'demo')", name="source"),
+        CheckConstraint(
+            "(university_id IS NULL) <> (client_id IS NULL)", name="counterparty_exactly_one"
+        ),
     )
 
-    university_id: Mapped[uuid.UUID] = mapped_column(
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("counterparty_group.id", ondelete="RESTRICT"), index=True
+    )
+    university_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("university.id", ondelete="RESTRICT"), index=True
+    )
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("client.id", ondelete="RESTRICT"), index=True
     )
     program_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("program.id", ondelete="RESTRICT"), index=True
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("product.id", ondelete="RESTRICT"), index=True
     )
     contract_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -85,13 +119,25 @@ class Interaction(UUIDPrimaryKey, Timestamps, Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
-    university: Mapped[University] = relationship(lazy="raise")
+    group: Mapped[CounterpartyGroup] = relationship(lazy="raise")
+    university: Mapped[University | None] = relationship(lazy="raise")
+    client: Mapped[Client | None] = relationship(lazy="raise")
     program: Mapped[Program] = relationship(lazy="raise")
-    product: Mapped[Product] = relationship(lazy="raise")
+    product: Mapped[Product | None] = relationship(lazy="raise")
     contract: Mapped[Contract | None] = relationship(lazy="raise")
     workflow_version: Mapped[WorkflowVersion] = relationship(lazy="raise")
     current_stage: Mapped[Stage] = relationship(lazy="raise")
     owner: Mapped[AppUser] = relationship(lazy="raise")
+
+    @property
+    def counterparty(self) -> Counterparty:
+        """Вуз или клиент; связь должна быть загружена вместе с записью."""
+        if self.university_id is not None and self.university is not None:
+            university = self.university
+            return Counterparty("university", university.id, university.name, university.short_name)
+        if self.client is None:
+            raise ValueError("У взаимодействия нет контрагента")
+        return Counterparty(self.client.kind, self.client.id, self.client.name, self.client.name)
 
 
 class InteractionContact(Base):

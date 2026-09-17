@@ -31,13 +31,12 @@ from app.modules.integrations.models import IntegrationSource, SiteApplication, 
 from app.modules.interactions.models import Interaction, Transition
 from app.modules.metrics.models import ProgramMetric
 from app.modules.radar.service import recompute_signals
-from app.modules.workflow.defaults import ensure_default_workflow
-from app.modules.workflow.models import Stage
+from app.modules.workflow.defaults import universities_group
+from app.modules.workflow.service import GroupProcess, group_process
 
 LMS_NAME = "LMS ИТ Школы"
 SITE_NAME = "Сайт ИТ Школы"
 HOURLY_CRON = "0 * * * *"
-START_STAGE_CODE = "contact_search"
 SOURCE_NOT_FOUND = "Источник не найден."
 
 
@@ -171,9 +170,8 @@ async def _match_application(
     record: ApplicationRecord,
     universities: dict[str, University],
     programs: dict[str, Program],
-    stages: dict[str, Stage],
-    version_id: uuid.UUID,
-    now: datetime,
+    group_id: uuid.UUID,
+    process: GroupProcess,
 ) -> tuple[SiteApplication, uuid.UUID | None]:
     """Привязывает заявку к взаимодействию, создавая его при необходимости."""
     application = await session.scalar(
@@ -201,26 +199,34 @@ async def _match_application(
 
     application.university_id = university.id
     application.program_id = program.id
-    product_id = await session.scalar(
-        select(ProgramProduct.product_id).where(
-            ProgramProduct.program_id == program.id, ProgramProduct.is_default.is_(True)
+    links = (
+        (
+            await session.execute(
+                select(ProgramProduct.product_id, ProgramProduct.is_default).where(
+                    ProgramProduct.program_id == program.id
+                )
+            )
         )
+        .tuples()
+        .all()
     )
-    if product_id is None:
+    product_id = next((linked for linked, is_default in links if is_default), None)
+    if links and product_id is None:
+        # У программы есть продукты, но какой из них по умолчанию — неизвестно: решит человек.
         return application, None
 
     interaction = await session.scalar(
         select(Interaction).where(
             Interaction.university_id == university.id,
             Interaction.program_id == program.id,
-            Interaction.product_id == product_id,
+            Interaction.product_id.is_not_distinct_from(product_id),
             Interaction.status != "cancelled",
         )
     )
     created_id: uuid.UUID | None = None
     if interaction is None:
         interaction = await _interaction_from_application(
-            session, record, university.id, program.id, product_id, stages, version_id
+            session, record, university.id, program.id, product_id, group_id, process
         )
         if interaction is None:
             # Некому вести вуз: заявка остаётся в очереди, а не висит без ответственного.
@@ -237,17 +243,19 @@ async def _interaction_from_application(
     record: ApplicationRecord,
     university_id: uuid.UUID,
     program_id: uuid.UUID,
-    product_id: uuid.UUID,
-    stages: dict[str, Stage],
-    version_id: uuid.UUID,
+    product_id: uuid.UUID | None,
+    group_id: uuid.UUID,
+    process: GroupProcess,
 ) -> Interaction | None:
     """Заводит взаимодействие по заявке. Даты берутся из заявки: она и есть начало работы."""
     owner = await _owner_for(session, university_id)
     if owner is None:
         return None
 
-    stage = stages[START_STAGE_CODE]
+    stage = process.start
+    version_id = process.version.id
     interaction = Interaction(
+        group_id=group_id,
         university_id=university_id,
         program_id=program_id,
         product_id=product_id,
@@ -282,18 +290,16 @@ async def _save_applications(
     now: datetime,
 ) -> Counter[str]:
     universities, programs = await _catalog_ids(session)
-    version = await ensure_default_workflow(session)
-    stages = {
-        stage.code: stage
-        for stage in await session.scalars(select(Stage).where(Stage.version_id == version.id))
-    }
+    # Заявки с сайта — от вузов, поэтому записи заводятся в группе вузов по её процессу.
+    group = await universities_group(session)
+    process = await group_process(session, group)
     counter: Counter[str] = Counter()
     created: list[uuid.UUID] = []
     monthly: dict[tuple[uuid.UUID, uuid.UUID, date], int] = defaultdict(int)
 
     for record in records:
         application, created_id = await _match_application(
-            session, record, universities, programs, stages, version.id, now
+            session, record, universities, programs, group.id, process
         )
         counter[application.match_status] += 1
         if created_id is not None:

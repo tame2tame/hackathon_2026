@@ -2,7 +2,7 @@
 
 Версия 0 от 15.09.2026 — **черновик на согласование** бэкендом и фронтендом. После согласования меняется только PR с одобрением обоих людей; каждое изменение архитектуры — запись в разделе «Решения».
 
-CRM для сотрудников ИТ Школы Ростелекома (кейс №6 ЛЦТ 2026). Ведёт каждое взаимодействие с вузом по настраиваемому workflow из 14 этапов, сама находит, где процесс застрял (радар), и показывает, какие программы востребованы (рейтинг).
+CRM для сотрудников ИТ Школы Ростелекома (кейс №6 ЛЦТ 2026). Ведёт взаимодействия с вузами (B2B, настраиваемый workflow из 14 этапов) и с частными лицами (B2C, свой процесс), сама находит, где процесс застрял (радар), и показывает, какие программы востребованы (рейтинг).
 
 ## 1. Решения
 
@@ -22,6 +22,7 @@ CRM для сотрудников ИТ Школы Ростелекома (кей
 | ADR-012 | Фронтенд использует keycloak-js, openapi-typescript (типы из контракта), MSW (моки по тому же контракту) и Prettier для генерируемых файлов | Предложение фронтенда от 16.09; свои реализации этих задач дороже и хуже. Ждёт подтверждения в общем PR |
 | ADR-013 | PDF отчёта строит `fpdf2` напрямую, без headless-браузера. Шрифт с кириллицей берётся из системы (`fonts-dejavu-core` в образе) | Chromium с Playwright добавляет около 400 МБ к образу и секунды на старт ради табличного файла. Цена вопроса — графики ECharts в PDF: их пока нет, в интерфейсе и JSON они остаются |
 | ADR-014 | Процесс один на всех: изменения готовятся черновиком и при публикации применяются ко всем открытым записям. Записи с удалённого этапа сами переходят на ближайший предыдущий этап, а если его нет — на следующий; предпросмотр публикации показывает это до подтверждения. Переименование этапа — только администратор. У каждого перехода вперёд есть возврат на шаг назад с комментарием | Уточнения жюри 17.09 ([`docs/JURY_QA.md`](docs/JURY_QA.md)): версии не должны путать подразделения, изменение процесса не должно останавливать работу, переименование статусов чувствительно, а бюрократический процесс требует возвратов |
+| ADR-015 | Взаимодействия делятся на **группы контрагентов** со своим процессом: «Вузы (B2B)» по базовому пути из ТЗ и «Частные лица (B2C)» по своему; администратор добавляет новые группы. Контрагент записи — ровно один: вуз или клиент (`client` — физическое или юридическое лицо). Продукт необязателен: программы бывают продуктозависимыми и продуктонезависимыми. Расширяет ADR-001 | Уточнения жюри 17.09: B2C «прямо в цель» — обучение частных и юридических лиц идёт по своему workflow; процесс меняется для группы целиком; программа управления проектами идёт с «Ягой», а часть программ — без продукта |
 
 ## 2. Компоненты
 
@@ -70,6 +71,10 @@ backend/
 ### Каталоги
 
 ```text
+counterparty_group id, code UNIQUE, name UNIQUE, description, workflow_template_id → workflow_template,
+                   position, archived_at                  -- вузы (B2B), частные лица (B2C) и новые группы
+client            id, kind (person|organization), name, inn UNIQUE WHERE inn IS NOT NULL, city,
+                   email_enc, phone_enc, created_by → app_user, archived_at          -- ПДн людей
 university        id, name UNIQUE, short_name, region, city, is_priority2030, archived_at
 direction         id, code UNIQUE, name
 program           id, direction_id → direction, name, lms_course_ref
@@ -122,10 +127,13 @@ stage_norm            id, template_id, stage_code, norm_days, source (manual|sug
 ```text
 contract           id, university_id → university, number, signed_at, license_signed_at, license_valid_until,
                    license_term_years, transfer_status, UNIQUE(university_id, number)
-interaction        id, university_id, program_id, product_id, contract_id → contract, workflow_version_id,
+interaction        id, group_id → counterparty_group, university_id | client_id (ровно один), program_id,
+                   product_id (может быть пуст), contract_id → contract, workflow_version_id,
                    current_stage_id → stage, stage_entered_at, owner_user_id → app_user,
                    status (active|paused|completed|cancelled), source (manual|import|site|lms|demo),
-                   version, last_activity_at, UNIQUE(university_id, program_id, product_id) WHERE status <> 'cancelled'
+                   version, last_activity_at,
+                   UNIQUE NULLS NOT DISTINCT (university_id, program_id, product_id) WHERE status <> 'cancelled',
+                   UNIQUE NULLS NOT DISTINCT (client_id, program_id, product_id) WHERE status <> 'cancelled'
 interaction_contact PK(interaction_id, contact_person_id), role
 transition         id, interaction_id, from_stage_id, to_stage_id, occurred_at, actor_user_id, comment,
                    source (manual|bulk|import|integration|migration)        -- только INSERT
@@ -135,6 +143,8 @@ attachment         id, interaction_id, transition_id, stage_id, document_type, f
 assignment_change  id, interaction_id, from_user_id, to_user_id, changed_by, changed_at, reason
 ```
 
+- Группа определяет процесс: запись встаёт на первый этап действующей схемы процесса своей группы, нормы и радар берутся из того же шаблона. Процесс группы с открытыми записями не заменяется — его меняют в редакторе, и записи переходят на новую схему (ADR-014).
+- Процесс «Частные лица (B2C)»: заявка → консультация → договор-оферта → оплата → зачисление в LMS → обучение → итоговая аттестация → завершено. Выход с оферты, оплаты и аттестации требует документа (подписанная оферта, подтверждение оплаты, сертификат).
 - Статус взаимодействия: рабочее состояние — `active`. `completed` и `paused` ставит человек через администрирование; переход на финальный этап сам по себе ничего не завершает.
 
 ### Импорт, интеграции, аналитика, аудит
@@ -154,7 +164,7 @@ radar_signal       id, interaction_id, kind, severity (low|medium|high), detecte
 rating_weight_set  id, name, w_applications, w_students, w_streams, is_default   -- сумма весов 100
 report_job         id, requested_by, params jsonb, status, progress, file_key, error_code
 saved_view         id, user_id, page, name, filters jsonb, columns jsonb
-data_access_rule   id, subject_user_id | subject_role, effect (allow|deny), scope_kind, scope_id
+data_access_rule   id, subject_user_id | subject_role, effect (allow|deny), scope_kind (university|direction|program|group), scope_id
 audit_log          id bigserial, occurred_at, actor_user_id, action, entity_kind, entity_id, before, after, trace_id  -- только INSERT
 app_setting        key, value jsonb                    -- пороги радара, веса по умолчанию
 ```
@@ -172,6 +182,7 @@ app_setting        key, value jsonb                    -- пороги рада�
 - Keycloak: realm `radar-vuzov`, публичный клиент `radar-web` (Authorization Code + PKCE), аудитория API `radar-api`, роли в claim `realm_access.roles`.
 - При первом входе пользователь создаётся в `app_user` по `sub` и email из токена; роль берётся из токена, команда — из БД.
 - Область видимости применяет сервисный слой ко всем запросам; запись вне области — `404 NOT_FOUND`.
+- Правила доступа администратора адресуют вуз, направление, программу или группу контрагентов: так команда B2B не видит частных лиц, а команда B2C — вузы.
 - Страницы и доступ к разделам по ролям — [`docs/FRONTEND_PAGES.md`](docs/FRONTEND_PAGES.md).
 
 ## 5. API
@@ -188,6 +199,10 @@ app_setting        key, value jsonb                    -- пороги рада�
 | `GET /api/v1/me` | Профиль: id, ФИО, роль, команда, область видимости |
 | `GET /api/v1/universities`, `/{id}` | Вузы со счётчиками взаимодействий и открытых сигналов |
 | `GET /api/v1/directions`, `/programs`, `/products`, `/users` | Справочники |
+| `GET /api/v1/counterparty-groups` | Группы контрагентов и их процессы |
+| `GET`, `POST /api/v1/clients`, `GET /api/v1/clients/{id}` | Клиенты вне вузов; организации видны всем, люди — тем, кто с ними работает; просмотр карточки человека пишется в аудит |
+| `GET /api/v1/workflows` | Процессы: действующая схема, черновик изменений, группы |
+| `GET /api/v1/workflows/{template_id}`, `/norms`, `PUT /norms/{stage_code}`, `POST /norms/{stage_code}/accept-suggestion` | Схема и нормы процесса любой группы |
 | `GET /api/v1/workflows/default` | Опубликованная версия базового workflow с этапами и правилами |
 | `POST /api/v1/workflows` | Новый шаблон процесса |
 | `POST /api/v1/workflows/{template_id}/versions` | Черновик версии копией последней |
@@ -195,7 +210,8 @@ app_setting        key, value jsonb                    -- пороги рада�
 | `PATCH /api/v1/stages/{id}` | Переименование этапа в действующей схеме — только администратор |
 | `POST /api/v1/workflow-versions/{id}/publish-preview` | Предпросмотр публикации для окна подтверждения: переименования, удалённые этапы, куда и сколько записей переедет |
 | `POST /api/v1/workflow-versions/{id}/publish` | Публикация: все открытые записи переходят на новую схему, с удалённых этапов — на соседний |
-| `GET /api/v1/interactions` | Взаимодействия с фильтрами: вуз, программа, продукт, КАМ, этап, дни на этапе, версия, открытые сигналы |
+| `GET /api/v1/interactions` | Взаимодействия с фильтрами: группа, клиент, вуз, программа, продукт, КАМ, этап, дни на этапе, версия, открытые сигналы |
+| `POST /api/v1/interactions` | Запись вручную: группа, вуз или клиент, программа, продукт, ответственный; встаёт на первый этап процесса группы |
 | `GET /api/v1/interactions/{id}` | Карточка: договор, история, допустимые переходы с требованиями, сигналы |
 | `POST /api/v1/interactions/{id}/transitions` | Переход: `to_stage_id`, `comment`, `expected_version`, `attachment_ids` |
 | `GET`, `POST /api/v1/interactions/{id}/notes` | Заметки по записи; заметка снимает сигнал о простое |
@@ -228,6 +244,7 @@ app_setting        key, value jsonb                    -- пороги рада�
 | `GET`, `PUT /api/v1/admin/settings` | Настройки приложения |
 | `GET /api/v1/admin/audit` | Журнал аудита с фильтрами |
 | `POST /api/v1/admin/catalogs/{kind}`, `/{id}/archive` | Каталоги: добавление и архивирование |
+| `POST`, `PATCH /api/v1/admin/counterparty-groups`, `POST /{id}/archive` | Группы контрагентов: добавление, процесс группы, архив без открытых записей |
 | `GET`, `POST /api/v1/universities/{id}/contacts` | Контакты вуза; просмотр пишется в аудит |
 | `GET /api/v1/events` | Поток событий `text/event-stream` |
 | `GET /api/v1/workflows/default/norms` | Нормы этапов с подсказками по истории |
@@ -269,6 +286,7 @@ app_setting        key, value jsonb                    -- пороги рада�
 | `AUTH_FORBIDDEN` | 403 | Роль не позволяет действие |
 | `NOT_FOUND` | 404 | Записи нет или она вне области видимости |
 | `INTERACTION_VERSION_CONFLICT` | 409 | Запись уже изменил другой пользователь |
+| `INTERACTION_DUPLICATE` | 409 | С этим контрагентом по той же программе и продукту запись уже ведётся |
 | `WF_TRANSITION_NOT_ALLOWED` | 409 | Переход в выбранный этап не разрешён правилами |
 | `WF_COMMENT_REQUIRED` | 422 | Для перехода нужен комментарий |
 | `WF_ATTACHMENT_REQUIRED` | 422 | Для перехода нужен документ |

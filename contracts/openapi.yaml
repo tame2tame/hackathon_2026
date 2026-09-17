@@ -156,6 +156,31 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/counterparty-groups:
+    get:
+      tags:
+      - catalogs
+      summary: Группы контрагентов
+      description: Вузы (B2B), частные лица (B2C) и группы, которые завёл администратор.
+      operationId: read_groups_api_v1_counterparty_groups_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/CounterpartyGroupOut'
+                type: array
+                title: Response Read Groups Api V1 Counterparty Groups Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
   /api/v1/directions:
     get:
       tags:
@@ -272,6 +297,156 @@ paths:
                 $ref: '#/components/schemas/Problem'
       security:
       - HTTPBearer: []
+  /api/v1/clients:
+    get:
+      tags:
+      - clients
+      summary: 'Клиенты: физические и юридические лица'
+      description: Организации видны всем. Людей видит тот, кто их завёл, владельцы их записей и руководитель
+        команды. Email и телефон в списке не показываются.
+      operationId: read_clients_api_v1_clients_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: search
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          description: Имя, название или ИНН
+          title: Search
+        description: Имя, название или ИНН
+      - name: kind
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - person
+            - organization
+            type: string
+          - type: 'null'
+          description: Человек или организация
+          title: Kind
+        description: Человек или организация
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Номер страницы, с 1
+          default: 1
+          title: Page
+        description: Номер страницы, с 1
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          description: Размер страницы
+          default: 50
+          title: Page Size
+        description: Размер страницы
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_ClientListItem_'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      tags:
+      - clients
+      summary: Добавить клиента
+      description: Email и телефон шифруются перед записью в базу; ИНН — только у организации.
+      operationId: post_client_api_v1_clients_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/clients/{client_id}:
+    get:
+      tags:
+      - clients
+      summary: Карточка клиента
+      description: 'Просмотр карточки человека пишется в аудит: это обращение к персональным данным.'
+      operationId: read_client_api_v1_clients__client_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: client_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Client Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/workflows/default:
     get:
       tags:
@@ -429,6 +604,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
   /api/v1/workflows:
+    get:
+      tags:
+      - workflow
+      summary: Процессы и группы, которые по ним работают
+      description: У каждой группы контрагентов свой процесс; черновик изменений виден, если начат.
+      operationId: read_workflows_api_v1_workflows_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/WorkflowSummaryOut'
+                type: array
+                title: Response Read Workflows Api V1 Workflows Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
     post:
       tags:
       - workflow
@@ -473,6 +672,203 @@ paths:
                 $ref: '#/components/schemas/Problem'
       security:
       - HTTPBearer: []
+  /api/v1/workflows/{template_id}:
+    get:
+      tags:
+      - workflow
+      summary: Действующая схема процесса
+      operationId: read_workflow_api_v1_workflows__template_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Template Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/workflows/{template_id}/norms:
+    get:
+      tags:
+      - workflow
+      summary: Нормы этапов процесса с подсказками по истории
+      operationId: read_template_norms_api_v1_workflows__template_id__norms_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Template Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StageNormOut'
+                title: Response Read Template Norms Api V1 Workflows  Template Id  Norms Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/workflows/{template_id}/norms/{stage_code}:
+    put:
+      tags:
+      - workflow
+      summary: Задать норму этапа процесса вручную
+      operationId: put_template_norm_api_v1_workflows__template_id__norms__stage_code__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Template Id
+      - name: stage_code
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stage Code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NormUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageNormOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/workflows/{template_id}/norms/{stage_code}/accept-suggestion:
+    post:
+      tags:
+      - workflow
+      summary: Принять подсказку нормы этапа процесса
+      operationId: post_template_accept_suggestion_api_v1_workflows__template_id__norms__stage_code__accept_suggestion_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Template Id
+      - name: stage_code
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stage Code
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageNormOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/workflows/{template_id}/versions:
     post:
       tags:
@@ -791,6 +1187,32 @@ paths:
           default: 50
           title: Page Size
         description: Размер страницы
+      - name: group_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: Группа контрагентов
+          title: Group Id
+        description: Группа контрагентов
+      - name: client_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: Клиент вне вузов
+          title: Client Id
+        description: Клиент вне вузов
       - name: university_id
         in: query
         required: false
@@ -908,9 +1330,9 @@ paths:
           - type: string
             maxLength: 100
           - type: 'null'
-          description: Вуз, программа или продукт
+          description: Контрагент, программа или продукт
           title: Search
-        description: Вуз, программа или продукт
+        description: Контрагент, программа или продукт
       responses:
         '200':
           description: Successful Response
@@ -926,6 +1348,59 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '422':
           description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      tags:
+      - interactions
+      summary: Завести взаимодействие вручную
+      description: 'Запись встаёт на первый этап процесса своей группы. Контрагент — ровно один: вуз или
+        клиент. Продуктозависимой программе нужен её продукт. Назначить другого ответственного может руководитель
+        в пределах команды или администратор.'
+      operationId: post_interaction_api_v1_interactions_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InteractionCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InteractionDetail'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: INTERACTION_DUPLICATE
           content:
             application/problem+json:
               schema:
@@ -1839,6 +2314,19 @@ paths:
           default: 50
           title: Page Size
         description: Размер страницы
+      - name: group_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: Группа контрагентов
+          title: Group Id
+        description: Группа контрагентов
       - name: kind
         in: query
         required: false
@@ -1919,9 +2407,9 @@ paths:
           - type: string
             maxLength: 100
           - type: 'null'
-          description: Вуз, программа или продукт
+          description: Контрагент, программа или продукт
           title: Search
-        description: Вуз, программа или продукт
+        description: Контрагент, программа или продукт
       responses:
         '200':
           description: Successful Response
@@ -1951,6 +2439,19 @@ paths:
       security:
       - HTTPBearer: []
       parameters:
+      - name: group_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: Группа контрагентов
+          title: Group Id
+        description: Группа контрагентов
       - name: kind
         in: query
         required: false
@@ -2031,9 +2532,9 @@ paths:
           - type: string
             maxLength: 100
           - type: 'null'
-          description: Вуз, программа или продукт
+          description: Контрагент, программа или продукт
           title: Search
-        description: Вуз, программа или продукт
+        description: Контрагент, программа или продукт
       responses:
         '200':
           description: Successful Response
@@ -2082,8 +2583,8 @@ paths:
       - reports
       summary: Заказать отчёт
       description: 'Отчёт строится в фоне: ответ содержит id задания, дальше состояние смотрят в `GET
-        /api/v1/reports/{id}`. Колонки: university, direction, program, product, stage, owner, contract,
-        license_valid_until, days_on_stage, signals.'
+        /api/v1/reports/{id}`. Колонки: group, counterparty, university, direction, program, product,
+        stage, owner, contract, license_valid_until, days_on_stage, signals.'
       operationId: post_report_api_v1_reports_post
       requestBody:
         content:
@@ -2363,8 +2864,22 @@ paths:
     get:
       tags:
       - analytics
-      summary: Воронка по этапам
+      summary: Воронка по этапам процесса группы
       operationId: read_funnel_api_v1_analytics_stats_funnel_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: group_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Группа контрагентов; по умолчанию — вузы
+          title: Group Id
+        description: Группа контрагентов; по умолчанию — вузы
       responses:
         '200':
           description: Successful Response
@@ -2378,14 +2893,38 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
-      security:
-      - HTTPBearer: []
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/analytics/stats/stage-durations:
     get:
       tags:
       - analytics
-      summary: Средняя длительность этапов
+      summary: Средняя длительность этапов процесса группы
       operationId: read_stage_durations_api_v1_analytics_stats_stage_durations_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: group_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Группа контрагентов; по умолчанию — вузы
+          title: Group Id
+        description: Группа контрагентов; по умолчанию — вузы
       responses:
         '200':
           description: Successful Response
@@ -2399,14 +2938,39 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
-      security:
-      - HTTPBearer: []
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/analytics/stats/distribution:
     get:
       tags:
       - analytics
       summary: Распределение по направлениям
+      description: Без группы — по всем группам сразу.
       operationId: read_distribution_api_v1_analytics_stats_distribution_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: group_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Группа контрагентов
+          title: Group Id
+        description: Группа контрагентов
       responses:
         '200':
           description: Successful Response
@@ -2420,8 +2984,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
-      security:
-      - HTTPBearer: []
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/admin/users:
     get:
       tags:
@@ -3007,6 +3575,155 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/admin/counterparty-groups:
+    post:
+      tags:
+      - admin
+      summary: Добавить группу контрагентов
+      description: Новая группа работает по уже опубликованному процессу.
+      operationId: post_group_api_v1_admin_counterparty_groups_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CounterpartyGroupCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CounterpartyGroupOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/counterparty-groups/{group_id}:
+    patch:
+      tags:
+      - admin
+      summary: Изменить группу контрагентов
+      description: 'Название, описание, порядок и процесс. Процесс группы с открытыми записями не заменяется:
+        его меняют в редакторе, и записи переходят на новую схему.'
+      operationId: patch_group_api_v1_admin_counterparty_groups__group_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Group Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CounterpartyGroupUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CounterpartyGroupOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/admin/counterparty-groups/{group_id}/archive:
+    post:
+      tags:
+      - admin
+      summary: Архивировать группу контрагентов
+      description: 'Только без открытых записей: история закрытых остаётся.'
+      operationId: post_group_archive_api_v1_admin_counterparty_groups__group_id__archive_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Group Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CounterpartyGroupOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/universities/{university_id}/contacts:
     get:
       tags:
@@ -3202,6 +3919,7 @@ components:
           - university
           - direction
           - program
+          - group
           title: Scope Kind
         scope_id:
           type: string
@@ -3705,6 +4423,159 @@ components:
       - option
       title: ChartOut
       description: 'Данные и настройки ECharts: интерфейс и PDF рисуют график по одному описанию.'
+    ClientCreate:
+      properties:
+        kind:
+          type: string
+          enum:
+          - person
+          - organization
+          title: Kind
+        name:
+          type: string
+          maxLength: 300
+          minLength: 2
+          title: Name
+        inn:
+          anyOf:
+          - type: string
+            pattern: ^\d{10}$|^\d{12}$
+          - type: 'null'
+          title: Inn
+          description: 'ИНН организации: 10 или 12 цифр'
+        city:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: City
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+          - type: 'null'
+          title: Email
+        phone:
+          anyOf:
+          - type: string
+            maxLength: 40
+          - type: 'null'
+          title: Phone
+      type: object
+      required:
+      - kind
+      - name
+      title: ClientCreate
+    ClientListItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          enum:
+          - person
+          - organization
+          title: Kind
+        name:
+          type: string
+          title: Name
+          description: ФИО человека или наименование организации
+        inn:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Inn
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+      type: object
+      required:
+      - id
+      - kind
+      - name
+      - inn
+      - city
+      title: ClientListItem
+    ClientOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          enum:
+          - person
+          - organization
+          title: Kind
+        name:
+          type: string
+          title: Name
+          description: ФИО человека или наименование организации
+        inn:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Inn
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        phone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Phone
+        archived_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Archived At
+      type: object
+      required:
+      - id
+      - kind
+      - name
+      - inn
+      - city
+      - email
+      - phone
+      - archived_at
+      title: ClientOut
+      description: Карточка клиента. Email и телефон расшифровываются только по запросу карточки.
+    ClientRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          enum:
+          - person
+          - organization
+          title: Kind
+        name:
+          type: string
+          title: Name
+          description: ФИО человека или наименование организации
+      type: object
+      required:
+      - id
+      - kind
+      - name
+      title: ClientRef
     ContactCreate:
       properties:
         full_name:
@@ -3855,6 +4726,136 @@ components:
       - normalized
       - contribution
       title: ContributionOut
+    CounterpartyGroupCreate:
+      properties:
+        code:
+          type: string
+          maxLength: 60
+          minLength: 2
+          pattern: ^[a-z][a-z0-9_]*$
+          title: Code
+        name:
+          type: string
+          maxLength: 200
+          minLength: 2
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 1000
+          - type: 'null'
+          title: Description
+        workflow_template_id:
+          type: string
+          format: uuid
+          title: Workflow Template Id
+          description: Опубликованный процесс группы
+        position:
+          type: integer
+          maximum: 1000.0
+          minimum: 0.0
+          title: Position
+          description: Порядок в списках
+          default: 0
+      type: object
+      required:
+      - code
+      - name
+      - workflow_template_id
+      title: CounterpartyGroupCreate
+    CounterpartyGroupOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        code:
+          type: string
+          title: Code
+        name:
+          type: string
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        workflow_template_id:
+          type: string
+          format: uuid
+          title: Workflow Template Id
+          description: Процесс, по которому идут записи группы
+        position:
+          type: integer
+          title: Position
+      type: object
+      required:
+      - id
+      - code
+      - name
+      - description
+      - workflow_template_id
+      - position
+      title: CounterpartyGroupOut
+    CounterpartyGroupUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 200
+            minLength: 2
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 1000
+          - type: 'null'
+          title: Description
+        workflow_template_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Workflow Template Id
+        position:
+          anyOf:
+          - type: integer
+            maximum: 1000.0
+            minimum: 0.0
+          - type: 'null'
+          title: Position
+      type: object
+      title: CounterpartyGroupUpdate
+      description: Пропущенное поле не меняется. Процесс группы с открытыми записями не заменяется.
+    CounterpartyRef:
+      properties:
+        kind:
+          type: string
+          enum:
+          - university
+          - person
+          - organization
+          title: Kind
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        short_name:
+          type: string
+          title: Short Name
+          description: Сокращение вуза; у клиента совпадает с именем
+      type: object
+      required:
+      - kind
+      - id
+      - name
+      - short_name
+      title: CounterpartyRef
+      description: 'Контрагент записи: вуз, человек или организация — одной ссылкой для списков.'
     DirectionRef:
       properties:
         id:
@@ -3881,6 +4882,7 @@ components:
       - AUTH_FORBIDDEN
       - NOT_FOUND
       - INTERACTION_VERSION_CONFLICT
+      - INTERACTION_DUPLICATE
       - WF_TRANSITION_NOT_ALLOWED
       - WF_COMMENT_REQUIRED
       - WF_ATTACHMENT_REQUIRED
@@ -3906,6 +4908,24 @@ components:
       - field
       - message
       title: FieldError
+    GroupRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        code:
+          type: string
+          title: Code
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - id
+      - code
+      - name
+      title: GroupRef
     HTTPValidationError:
       properties:
         detail:
@@ -4072,18 +5092,83 @@ components:
       - schedule_cron
       - last_sync_at
       title: IntegrationSourceOut
+    InteractionCreate:
+      properties:
+        group_id:
+          type: string
+          format: uuid
+          title: Group Id
+        university_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: University Id
+        client_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Client Id
+        program_id:
+          type: string
+          format: uuid
+          title: Program Id
+        product_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Product Id
+          description: Продукт из программы; у продуктонезависимой программы пусто
+        owner_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Owner Id
+          description: Ответственный; по умолчанию — тот, кто создаёт запись
+        comment:
+          type: string
+          maxLength: 4000
+          title: Comment
+          description: Попадёт в первую запись истории
+          default: ''
+      type: object
+      required:
+      - group_id
+      - program_id
+      title: InteractionCreate
+      description: 'Новая запись вручную. Контрагент — ровно один: вуз или клиент.'
     InteractionDetail:
       properties:
         id:
           type: string
           format: uuid
           title: Id
+        group:
+          $ref: '#/components/schemas/GroupRef'
+          description: 'Группа контрагентов: от неё зависит процесс'
+        counterparty:
+          $ref: '#/components/schemas/CounterpartyRef'
+          description: Вуз или клиент — одной ссылкой
         university:
-          $ref: '#/components/schemas/UniversityRef'
+          anyOf:
+          - $ref: '#/components/schemas/UniversityRef'
+          - type: 'null'
+          description: Вуз, если контрагент — вуз
+        client:
+          anyOf:
+          - $ref: '#/components/schemas/ClientRef'
+          - type: 'null'
+          description: Клиент, если контрагент — не вуз
         program:
           $ref: '#/components/schemas/ProgramRef'
         product:
-          $ref: '#/components/schemas/ProductRef'
+          anyOf:
+          - $ref: '#/components/schemas/ProductRef'
+          - type: 'null'
+          description: Пусто у продуктонезависимой программы
         owner:
           $ref: '#/components/schemas/UserRef'
         stage:
@@ -4142,7 +5227,10 @@ components:
       type: object
       required:
       - id
+      - group
+      - counterparty
       - university
+      - client
       - program
       - product
       - owner
@@ -4166,12 +5254,29 @@ components:
           type: string
           format: uuid
           title: Id
+        group:
+          $ref: '#/components/schemas/GroupRef'
+          description: 'Группа контрагентов: от неё зависит процесс'
+        counterparty:
+          $ref: '#/components/schemas/CounterpartyRef'
+          description: Вуз или клиент — одной ссылкой
         university:
-          $ref: '#/components/schemas/UniversityRef'
+          anyOf:
+          - $ref: '#/components/schemas/UniversityRef'
+          - type: 'null'
+          description: Вуз, если контрагент — вуз
+        client:
+          anyOf:
+          - $ref: '#/components/schemas/ClientRef'
+          - type: 'null'
+          description: Клиент, если контрагент — не вуз
         program:
           $ref: '#/components/schemas/ProgramRef'
         product:
-          $ref: '#/components/schemas/ProductRef'
+          anyOf:
+          - $ref: '#/components/schemas/ProductRef'
+          - type: 'null'
+          description: Пусто у продуктонезависимой программы
         owner:
           $ref: '#/components/schemas/UserRef'
         stage:
@@ -4207,7 +5312,10 @@ components:
       type: object
       required:
       - id
+      - group
+      - counterparty
       - university
+      - client
       - program
       - product
       - owner
@@ -4226,18 +5334,33 @@ components:
           type: string
           format: uuid
           title: Id
+        group:
+          $ref: '#/components/schemas/GroupRef'
+        counterparty:
+          $ref: '#/components/schemas/CounterpartyRef'
         university:
-          $ref: '#/components/schemas/UniversityRef'
+          anyOf:
+          - $ref: '#/components/schemas/UniversityRef'
+          - type: 'null'
+        client:
+          anyOf:
+          - $ref: '#/components/schemas/ClientRef'
+          - type: 'null'
         program:
           $ref: '#/components/schemas/ProgramRef'
         product:
-          $ref: '#/components/schemas/ProductRef'
+          anyOf:
+          - $ref: '#/components/schemas/ProductRef'
+          - type: 'null'
         owner:
           $ref: '#/components/schemas/UserRef'
       type: object
       required:
       - id
+      - group
+      - counterparty
       - university
+      - client
       - program
       - product
       - owner
@@ -4361,6 +5484,29 @@ components:
       - owner_id
       - expected_version
       title: OwnerChange
+    Page_ClientListItem_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ClientListItem'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      title: Page[ClientListItem]
     Page_InteractionListItem_:
       properties:
         items:
@@ -4643,6 +5789,12 @@ components:
             format: date
           - type: 'null'
           title: Period To
+        group_id:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Group Id
         university_id:
           items:
             type: string
@@ -4690,8 +5842,8 @@ components:
           type: array
           minItems: 1
           title: Columns
-          description: 'Из набора: university, direction, program, product, stage, owner, contract, license_valid_until,
-            days_on_stage, signals'
+          description: 'Из набора: group, counterparty, university, direction, program, product, stage,
+            owner, contract, license_valid_until, days_on_stage, signals'
       type: object
       title: ReportCreate
       description: Те же фильтры, что у списка взаимодействий, плюс колонки и формат файла.
@@ -5747,6 +6899,52 @@ components:
       - stages
       - transitions
       title: WorkflowOut
+    WorkflowSummaryOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        is_default:
+          type: boolean
+          title: Is Default
+        published_version_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Published Version Id
+        version_no:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Version No
+        draft_version_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Draft Version Id
+          description: Черновик изменений, если начат
+        groups:
+          items:
+            $ref: '#/components/schemas/GroupRef'
+          type: array
+          title: Groups
+      type: object
+      required:
+      - id
+      - name
+      - is_default
+      - published_version_id
+      - version_no
+      - draft_version_id
+      - groups
+      title: WorkflowSummaryOut
+      description: 'Шаблон процесса: действующая схема, черновик изменений и группы, которые по нему работают.'
     WorkflowTemplateCreate:
       properties:
         name:

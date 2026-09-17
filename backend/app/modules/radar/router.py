@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/v1/signals", tags=["radar"])
 
 
 def _signal_filters(
+    group_id: Annotated[list[uuid.UUID] | None, Query(description="Группа контрагентов")] = None,
     kind: Annotated[list[SignalKind] | None, Query(description="Вид сигнала")] = None,
     severity: Annotated[list[Severity] | None, Query(description="Серьёзность")] = None,
     owner_id: Annotated[list[uuid.UUID] | None, Query(description="КАМ")] = None,
@@ -23,10 +24,11 @@ def _signal_filters(
     period_from: Annotated[date | None, Query(description="Начало периода, UTC")] = None,
     period_to: Annotated[date | None, Query(description="Конец периода, UTC")] = None,
     search: Annotated[
-        str | None, Query(max_length=100, description="Вуз, программа или продукт")
+        str | None, Query(max_length=100, description="Контрагент, программа или продукт")
     ] = None,
 ) -> SignalFilters:
     return SignalFilters(
+        group_id=group_id or [],
         kind=[k.value for k in kind or []],
         severity=[s.value for s in severity or []],
         owner_id=owner_id or [],

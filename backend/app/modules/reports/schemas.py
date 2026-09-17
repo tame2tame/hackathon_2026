@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Колонка → заголовок в файле. Порядок здесь задаёт порядок колонок по умолчанию.
 COLUMNS: dict[str, str] = {
+    "group": "Группа",
+    "counterparty": "Контрагент",
     "university": "Вуз",
     "direction": "Направление",
     "program": "Программа",
@@ -29,6 +31,7 @@ class ReportCreate(BaseModel):
     format: ReportFormat = "xlsx"
     period_from: date | None = None
     period_to: date | None = None
+    group_id: list[uuid.UUID] = Field(default_factory=list)
     university_id: list[uuid.UUID] = Field(default_factory=list)
     direction_id: list[uuid.UUID] = Field(default_factory=list)
     program_id: list[uuid.UUID] = Field(default_factory=list)

@@ -1,4 +1,4 @@
-"""Каталоги: вузы, направления, программы, вендоры, продукты, контакты, команды, пользователи."""
+"""Каталоги: группы контрагентов, вузы, программы, продукты, контакты, команды, пользователи."""
 
 import uuid
 from datetime import datetime
@@ -11,12 +11,32 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Table,
+    Text,
     UniqueConstraint,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base, Timestamps, UUIDPrimaryKey
+
+
+class CounterpartyGroup(UUIDPrimaryKey, Timestamps, Base):
+    """Группа контрагентов со своим процессом: вузы (B2B), частные лица (B2C) и новые группы.
+
+    Процесс привязан к группе, а не к записи: сменить его для группы значит сменить для всех
+    её записей, как и требует единый workflow.
+    """
+
+    __tablename__ = "counterparty_group"
+
+    code: Mapped[str] = mapped_column(String(60), unique=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    workflow_template_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workflow_template.id", ondelete="RESTRICT"), index=True
+    )
+    position: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class University(UUIDPrimaryKey, Timestamps, Base):

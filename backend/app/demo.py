@@ -24,8 +24,9 @@ from app.modules.catalogs.models import (
 )
 from app.modules.interactions.models import Contract, Interaction, Transition
 from app.modules.radar.service import recompute_signals
-from app.modules.workflow.defaults import BASE_STAGES, ensure_default_workflow
+from app.modules.workflow.defaults import BASE_STAGES, universities_group
 from app.modules.workflow.models import Stage
+from app.modules.workflow.service import group_process
 
 DEMO_USERS: tuple[tuple[str, str, Role], ...] = (
     ("anna.smirnova@example.com", "Анна Смирнова", Role.KAM),
@@ -127,11 +128,10 @@ async def seed_demo(session: AsyncSession, now: datetime) -> bool:
     if already is not None:
         return False
 
-    version = await ensure_default_workflow(session)
-    stages = {
-        stage.code: stage
-        for stage in await session.scalars(select(Stage).where(Stage.version_id == version.id))
-    }
+    # Группы и их процессы заводятся вместе с демо-данными: без них запись не создать.
+    group = await universities_group(session)
+    process = await group_process(session, group)
+    version, stages = process.version, process.stages
 
     users = await _seed_users(session)
     programs = await _seed_catalogs(session)
@@ -163,6 +163,7 @@ async def seed_demo(session: AsyncSession, now: datetime) -> bool:
 
         entered_at = now - timedelta(days=spec.days_on_stage)
         interaction = Interaction(
+            group_id=group.id,
             university_id=university.id,
             program_id=program.id,
             product_id=product.id,
