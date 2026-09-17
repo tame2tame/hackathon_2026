@@ -38,6 +38,7 @@ import { Button } from "./components/ui/button";
 import { roleNames, kinds } from "./lib/data";
 import { api } from "./api/runtime";
 import { ApiError } from "./api/client";
+import { interactionQueryOptions } from "./api/queries";
 import type {
   Me,
   Signal,
@@ -747,16 +748,13 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
 }
 function DetailPage() {
   const { id = "" } = useParams();
-  const result = useQuery({
-    queryKey: ["interaction", id],
-    queryFn: ({ signal }) => api.interaction(id, signal),
-  });
+  const result = useQuery(interactionQueryOptions(api, id));
   if (!result.data) return <QueryState query={result} />;
   if (result.isError)
     return (
       <ErrorState error={result.error} retry={() => void result.refetch()} />
     );
-  return <Detail card={result.data} />;
+  return <Detail key={id} card={result.data} />;
 }
 function Detail({ card }: { card: Card }) {
   const client = useQueryClient();
@@ -793,6 +791,8 @@ function Detail({ card }: { card: Card }) {
       setSuccess("Переход сохранён. История и сигналы обновлены.");
     },
   });
+  const conflict =
+    mutation.error instanceof ApiError && mutation.error.status === 409;
   return (
     <>
       <Link to="/interactions" className="back-link">
@@ -929,7 +929,13 @@ function Detail({ card }: { card: Card }) {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (target && !target.requires_attachment) mutation.mutate();
+                if (
+                  target &&
+                  !target.requires_attachment &&
+                  !conflict &&
+                  !mutation.isPending
+                )
+                  mutation.mutate();
               }}
             >
               <label className="form-label" htmlFor="target">
@@ -1010,6 +1016,7 @@ function Detail({ card }: { card: Card }) {
                 <Button
                   type="submit"
                   disabled={
+                    conflict ||
                     !target ||
                     target.requires_attachment ||
                     mutation.isPending ||

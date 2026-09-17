@@ -2,6 +2,12 @@ import { beforeAll, afterAll, afterEach, describe, expect, it } from "vitest";
 import { setupServer } from "msw/node";
 import { handlers, resetFixtures } from "./handlers";
 import { ApiClient } from "../api/client";
+import {
+  QueryClient,
+  QueryObserver,
+  focusManager,
+} from "@tanstack/react-query";
+import { interactionQueryOptions } from "../api/queries";
 import { uid } from "./fixtures";
 const server = setupServer(...handlers);
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -48,6 +54,48 @@ describe("клиент на MSW-контракте", () => {
     await expect(api().transition(card.id, payload)).rejects.toMatchObject({
       code: "INTERACTION_VERSION_CONFLICT",
     });
+  });
+  it("две вкладки: возврат фокуса не заменяет версию перед отправкой перехода", async () => {
+    const first = api();
+    const second = api();
+    const cache = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0 } },
+    });
+    const options = interactionQueryOptions(second, uid(200));
+    const observer = new QueryObserver(cache, options);
+    cache.mount();
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await cache.fetchQuery(options);
+      const card = await first.interaction(uid(200));
+      const payload = {
+        to_stage_id: card.allowed_transitions[0].to_stage.id,
+        comment: "Проверка двух вкладок",
+        expected_version: card.version,
+      };
+      await first.transition(card.id, payload);
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const visibleCard = observer.getCurrentResult().data!;
+      expect(visibleCard.version).toBe(card.version);
+      await expect(
+        second.transition(card.id, {
+          ...payload,
+          expected_version: visibleCard.version,
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        code: "INTERACTION_VERSION_CONFLICT",
+      });
+      await observer.refetch();
+      expect(observer.getCurrentResult().data!.version).toBe(card.version + 1);
+    } finally {
+      unsubscribe();
+      cache.unmount();
+      cache.clear();
+      focusManager.setFocused(undefined);
+    }
   });
   it("не скрывает лицензию после смены этапа", async () => {
     const card = await api().interaction(uid(201));
