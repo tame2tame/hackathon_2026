@@ -1,5 +1,10 @@
-"""Отчёт в файл: xlsx, xls, json и pdf. PDF строится без браузера (ADR-013)."""
+"""Отчёт в файл: xlsx, xls, csv, json и pdf. PDF строится без браузера (ADR-013).
 
+Табличные форматы открываются в Excel, поэтому значения, начинающиеся с `=`, `+`, `-` или `@`,
+экранируются апострофом: название вуза «=HYPERLINK(...)» не должно стать формулой у получателя.
+"""
+
+import csv
 import io
 import json
 from pathlib import Path
@@ -12,9 +17,18 @@ from openpyxl import Workbook
 MEDIA_TYPES = {
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "xls": "application/vnd.ms-excel",
+    "csv": "text/csv",
     "pdf": "application/pdf",
     "json": "application/json",
 }
+# Кодировка CSV → кодек Python. UTF-8 пишется с BOM: без него Excel открывает файл как cp1251.
+CSV_CODECS = {"utf-8": "utf-8-sig", "windows-1251": "cp1251"}
+FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def safe_cell(value: str) -> str:
+    return f"'{value}" if value.startswith(FORMULA_START) else value
+
 
 # Шрифт с кириллицей: в образе — пакет fonts-dejavu-core, на macOS — системный Arial Unicode.
 FONT_CANDIDATES = (
@@ -41,25 +55,39 @@ def find_font() -> Path:
     )
 
 
-def render(fmt: str, headers: list[str], rows: list[list[str]], title: str) -> bytes:
+def render(
+    fmt: str, headers: list[str], rows: list[list[str]], title: str, encoding: str = "utf-8"
+) -> bytes:
     match fmt:
         case "xlsx":
             return _xlsx(headers, rows, title)
         case "xls":
             return _xls(headers, rows, title)
+        case "csv":
+            return _csv(headers, rows, encoding)
         case "json":
             return _json(headers, rows)
         case _:
             return _pdf(headers, rows, title)
 
 
+def _csv(headers: list[str], rows: list[list[str]], encoding: str) -> bytes:
+    buffer = io.StringIO(newline="")
+    # Точка с запятой — разделитель Excel в русской локали; строка с переносом берётся в кавычки.
+    writer = csv.writer(buffer, delimiter=";", lineterminator="\r\n")
+    writer.writerow([safe_cell(header) for header in headers])
+    writer.writerows([[safe_cell(value) for value in row] for row in rows])
+    # Символ, которого нет в cp1251, заменяется «?», а не роняет отчёт; без потерь — UTF-8.
+    return buffer.getvalue().encode(CSV_CODECS[encoding], errors="replace")
+
+
 def _xlsx(headers: list[str], rows: list[list[str]], title: str) -> bytes:
     # write_only: строки уходят в файл по мере записи, не собираясь в памяти целиком.
     workbook = Workbook(write_only=True)
     sheet = workbook.create_sheet(title[:31])
-    sheet.append(headers)
+    sheet.append([safe_cell(header) for header in headers])
     for row in rows:
-        sheet.append(row)
+        sheet.append([safe_cell(value) for value in row])
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
@@ -70,10 +98,10 @@ def _xls(headers: list[str], rows: list[list[str]], title: str) -> bytes:
     sheet = workbook.add_sheet(title[:31])
     bold = xlwt.easyxf("font: bold on")
     for column, header in enumerate(headers):
-        sheet.write(0, column, header, bold)
+        sheet.write(0, column, safe_cell(header), bold)
     for row_no, row in enumerate(rows, start=1):
         for column, value in enumerate(row):
-            sheet.write(row_no, column, value)
+            sheet.write(row_no, column, safe_cell(value))
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()

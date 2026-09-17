@@ -4,6 +4,7 @@
 поэтому даты лицензий всегда считаются от переданного дня.
 """
 
+import csv
 import io
 import random
 from datetime import date, timedelta
@@ -143,6 +144,17 @@ def build_workbook(base_day: date | None = None) -> bytes:
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
+
+
+def build_csv(
+    base_day: date | None = None, encoding: str = "cp1251", delimiter: str = ";"
+) -> bytes:
+    """Та же выгрузка в CSV — так её отдают 1С и старые версии Excel."""
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, delimiter=delimiter, lineterminator="\r\n")
+    writer.writerow(HEADERS)
+    writer.writerows(_rows(base_day or date.today()))
+    return buffer.getvalue().encode(encoding)
 
 
 def main() -> None:

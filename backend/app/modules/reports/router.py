@@ -74,8 +74,11 @@ async def read_report_file(
 ) -> StreamingResponse:
     job, stream = await open_report_file(session, user, report_id)
     file_name = f"Взаимодействия-{job.created_at:%Y-%m-%d}.{job.format}"
+    media_type = MEDIA_TYPES[job.format]
+    if job.format == "csv":
+        media_type = f"{media_type}; charset={job.params.get('encoding', 'utf-8')}"
     return StreamingResponse(
         read_chunks(stream),
-        media_type=MEDIA_TYPES[job.format],
+        media_type=media_type,
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(file_name)}"},
     )

@@ -26,7 +26,11 @@ class RowPreview(BaseModel):
 class ImportBatchOut(BaseModel):
     id: uuid.UUID
     file_name: str
-    file_kind: str
+    file_kind: str = Field(description="xlsx, xls или csv")
+    encoding: str | None = Field(
+        description="Кодировка, в которой прочитан файл: указанная вручную или определённая"
+    )
+    delimiter: str | None = Field(description="Разделитель колонок CSV")
     status: str
     headers: list[str] = Field(description="Колонки файла в исходном порядке")
     column_map: dict[str, str] = Field(description="Поле модели → заголовок колонки")

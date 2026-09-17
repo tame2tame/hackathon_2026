@@ -166,6 +166,7 @@ async def create_batch(
     session: AsyncSession,
     user: CurrentUser,
     upload: UploadFile,
+    encoding: str | None = None,
     settings: Settings | None = None,
 ) -> ImportBatch:
     settings = settings or get_settings()
@@ -174,16 +175,17 @@ async def create_batch(
     if kind is None:
         raise AppError(
             ErrorCode.VALIDATION_ERROR,
-            "Поддерживаются только файлы xls и xlsx.",
-            errors=[FieldError(field="file", message="Нужен файл xls или xlsx")],
+            "Поддерживаются файлы xls, xlsx и csv.",
+            errors=[FieldError(field="file", message="Нужен файл xls, xlsx или csv")],
         )
     content = await upload.read()
     if len(content) > settings.max_upload_bytes:
         raise AppError(ErrorCode.FILE_TOO_LARGE, f"Файл больше {settings.max_upload_mb} МБ.")
-    if files.match(file_name, content[: files.SIGNATURE_BYTES]) is None:
+    # У текстового CSV нет сигнатуры: его проверяет разбор, а книги Excel — заголовок файла.
+    if kind != "csv" and files.match(file_name, content[: files.SIGNATURE_BYTES]) is None:
         raise AppError(ErrorCode.FILE_TYPE_NOT_ALLOWED, "Это не книга Excel.")
     try:
-        sheet = reader.read(file_name, content)
+        sheet = reader.read(file_name, content, encoding)
     except reader.SheetError as error:
         raise AppError(
             ErrorCode.VALIDATION_ERROR,
@@ -200,6 +202,8 @@ async def create_batch(
     batch = ImportBatch(
         file_name=file_name,
         file_kind=kind,
+        encoding=sheet.encoding,
+        delimiter=sheet.delimiter,
         status="uploaded",
         headers=sheet.headers,
         column_map={},

@@ -22,13 +22,17 @@ COLUMNS: dict[str, str] = {
     "signals": "Сигналы",
 }
 DEFAULT_COLUMNS = tuple(COLUMNS)
-ReportFormat = Literal["xlsx", "xls", "pdf", "json"]
+ReportFormat = Literal["xlsx", "xls", "csv", "pdf", "json"]
 
 
 class ReportCreate(BaseModel):
     """Те же фильтры, что у списка взаимодействий, плюс колонки и формат файла."""
 
     format: ReportFormat = "xlsx"
+    encoding: Literal["utf-8", "windows-1251"] = Field(
+        default="utf-8",
+        description="Кодировка CSV: utf-8 (с BOM, без потерь) или windows-1251 для старых программ",
+    )
     period_from: date | None = None
     period_to: date | None = None
     group_id: list[uuid.UUID] = Field(default_factory=list)

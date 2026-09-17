@@ -1,5 +1,11 @@
-"""Чтение выгрузок: xlsx через openpyxl, xls через xlrd. Значения приводятся к строкам."""
+"""Чтение выгрузок: xlsx через openpyxl, xls через xlrd, csv — с определением кодировки.
 
+Значения приводятся к строкам. Кодировка — самое частое место, где файл «слетает»: выгрузка из
+1С или старого Excel приходит в cp1251, из почтовых систем — в KOI8-R, из консольных утилит —
+в cp866. Поэтому кодировку можно задать вручную, а без неё она определяется по содержимому.
+"""
+
+import csv
 import io
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -11,21 +17,36 @@ import xlrd
 
 MAX_ROWS = 5000
 DATE_FORMATS = ("%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%d/%m/%Y")
+FILE_KINDS = {".xls": "xls", ".xlsx": "xlsx", ".csv": "csv"}
+
+# Кодировка из интерфейса → имя кодека Python. Порядок задаёт выбор при равной оценке.
+ENCODINGS = {
+    "utf-8": "utf-8",
+    "windows-1251": "cp1251",
+    "koi8-r": "koi8_r",
+    "cp866": "cp866",
+    "utf-16": "utf-16",
+}
+CYRILLIC_CANDIDATES = ("windows-1251", "koi8-r", "cp866")
+LOWER = frozenset("абвгдеёжзийклмнопрстуфхцчшщъыьэюя")
+UPPER = frozenset("АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ")
+DELIMITERS = ";,\t|"
 
 
 @dataclass(frozen=True, slots=True)
 class Sheet:
     headers: list[str]
     rows: list[dict[str, str]]
+    encoding: str | None = None
+    delimiter: str | None = None
 
 
 class SheetError(Exception):
-    """Файл не удалось разобрать: не тот формат или нет строки заголовков."""
+    """Файл не удалось разобрать: не тот формат, кодировка или нет строки заголовков."""
 
 
 def file_kind(file_name: str) -> str | None:
-    suffix = Path(file_name).suffix.lower()
-    return suffix[1:] if suffix in {".xls", ".xlsx"} else None
+    return FILE_KINDS.get(Path(file_name).suffix.lower())
 
 
 def _cell(value: Any) -> str:
@@ -41,7 +62,9 @@ def _cell(value: Any) -> str:
     return str(value).strip()
 
 
-def _sheet_from_rows(raw_rows: list[list[str]]) -> Sheet:
+def _sheet_from_rows(
+    raw_rows: list[list[str]], encoding: str | None = None, delimiter: str | None = None
+) -> Sheet:
     headers: list[str] = []
     rows: list[dict[str, str]] = []
     for raw in raw_rows:
@@ -57,7 +80,12 @@ def _sheet_from_rows(raw_rows: list[list[str]]) -> Sheet:
             break
     if not headers:
         raise SheetError("В файле не нашлась строка заголовков.")
-    return Sheet(headers=[header for header in headers if header], rows=rows)
+    return Sheet(
+        headers=[header for header in headers if header],
+        rows=rows,
+        encoding=encoding,
+        delimiter=delimiter,
+    )
 
 
 def _read_xlsx(content: bytes) -> list[list[str]]:
@@ -69,8 +97,12 @@ def _read_xlsx(content: bytes) -> list[list[str]]:
         workbook.close()
 
 
-def _read_xls(content: bytes) -> list[list[str]]:
-    book = xlrd.open_workbook(file_contents=content)
+def _read_xls(content: bytes, encoding: str | None) -> list[list[str]]:
+    # Кодировка нужна только старым книгам Excel 95 без кодовой страницы; в xls 97 и новее
+    # строки хранятся в Юникоде, и подсказка ни на что не влияет.
+    book = xlrd.open_workbook(
+        file_contents=content, encoding_override=ENCODINGS[encoding] if encoding else None
+    )
     try:
         sheet = book.sheet_by_index(0)
         rows: list[list[str]] = []
@@ -87,17 +119,94 @@ def _read_xls(content: bytes) -> list[list[str]]:
         book.release_resources()
 
 
-def read(file_name: str, content: bytes) -> Sheet:
+def _cyrillic_score(text: str) -> int:
+    """Русский текст в верной кодировке — в основном строчные буквы; в чужой — заглавные и мусор."""
+    lower = sum(1 for char in text if char in LOWER)
+    upper = sum(1 for char in text if char in UPPER)
+    return lower - upper
+
+
+def detect_encoding(content: bytes) -> str:
+    """Кодировка текста: по BOM, по строгому UTF-8, иначе лучшая из кириллических однобайтовых."""
+    if content.startswith(b"\xef\xbb\xbf"):
+        return "utf-8"
+    if content.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return "utf-16"
+    try:
+        content.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    else:
+        return "utf-8"
+    best, best_score = "windows-1251", None
+    sample = content[:65536]
+    for name in CYRILLIC_CANDIDATES:
+        try:
+            text = sample.decode(ENCODINGS[name])
+        except UnicodeDecodeError:
+            continue
+        score = _cyrillic_score(text)
+        if best_score is None or score > best_score:
+            best, best_score = name, score
+    return best
+
+
+def _decode(content: bytes, encoding: str) -> str:
+    codec = ENCODINGS[encoding]
+    if encoding == "utf-8":
+        codec = "utf-8-sig"  # BOM не должен попасть в первый заголовок
+    try:
+        return content.decode(codec)
+    except UnicodeDecodeError as error:
+        raise SheetError(
+            f"Файл не читается в кодировке {encoding}: выберите другую кодировку."
+        ) from error
+
+
+def _delimiter(text: str) -> str:
+    lines = [line for line in text.splitlines()[:20] if line.strip()]
+    sample = "\n".join(lines)
+    try:
+        return csv.Sniffer().sniff(sample, delimiters=DELIMITERS).delimiter
+    except csv.Error:
+        # Excel в русской локали сохраняет CSV через точку с запятой.
+        first = lines[0] if lines else ""
+        return max(DELIMITERS, key=lambda candidate: (first.count(candidate), candidate == ";"))
+
+
+def _read_csv(content: bytes, encoding: str | None) -> tuple[list[list[str]], str, str]:
+    if b"\x00" in content[:4096] and not content.startswith((b"\xff\xfe", b"\xfe\xff")):
+        raise SheetError("Это не текстовый файл CSV.")
+    chosen = encoding or detect_encoding(content)
+    text = _decode(content, chosen)
+    lines = text.splitlines(keepends=True)
+    # Строка «sep=;» — указание Excel о разделителе, а не данные.
+    if lines and lines[0].strip().lower().startswith("sep=") and len(lines[0].strip()) == 5:
+        delimiter = lines[0].strip()[4]
+        text = "".join(lines[1:])
+    else:
+        delimiter = _delimiter(text)
+    reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter)
+    rows = [[_cell(value) for value in row] for row in reader]
+    return rows, chosen, delimiter
+
+
+def read(file_name: str, content: bytes, encoding: str | None = None) -> Sheet:
     kind = file_kind(file_name)
     if kind is None:
-        raise SheetError("Поддерживаются только файлы xls и xlsx.")
+        raise SheetError("Поддерживаются файлы xls, xlsx и csv.")
+    if encoding is not None and encoding not in ENCODINGS:
+        raise SheetError(f"Неизвестная кодировка: {encoding}.")
     try:
-        raw_rows = _read_xlsx(content) if kind == "xlsx" else _read_xls(content)
+        if kind == "csv":
+            raw_rows, detected, delimiter = _read_csv(content, encoding)
+            return _sheet_from_rows(raw_rows, detected, delimiter)
+        raw_rows = _read_xlsx(content) if kind == "xlsx" else _read_xls(content, encoding)
     except SheetError:
         raise
     except Exception as error:  # любая ошибка разбора выглядит для клиента одинаково
-        raise SheetError("Файл не удалось прочитать: проверьте, что это книга Excel.") from error
-    return _sheet_from_rows(raw_rows)
+        raise SheetError("Файл не удалось прочитать: проверьте формат и кодировку.") from error
+    return _sheet_from_rows(raw_rows, encoding if kind == "xls" else None)
 
 
 def parse_date(value: str | None) -> date | None:

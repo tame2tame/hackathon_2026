@@ -1992,8 +1992,11 @@ paths:
     post:
       tags:
       - imports
-      summary: Загрузить выгрузку xls или xlsx
-      description: Возвращает колонки файла и подсказку соответствия по заголовкам ТЗ.
+      summary: Загрузить выгрузку xls, xlsx или csv
+      description: Возвращает колонки файла, подсказку соответствия по заголовкам ТЗ и параметры чтения.
+        Кодировку CSV система определяет сама (BOM, UTF-8, иначе cp1251, KOI8-R или cp866 по содержимому),
+        разделитель — по образцу строк. Если в предпросмотре «кракозябры», загрузите файл снова, указав
+        `encoding`; для старых xls без кодовой страницы она тоже учитывается.
       operationId: post_import_api_v1_imports_post
       requestBody:
         content:
@@ -5005,7 +5008,19 @@ components:
           type: string
           contentMediaType: application/octet-stream
           title: File
-          description: Книга Excel с выгрузкой
+          description: Книга Excel или CSV с выгрузкой
+        encoding:
+          anyOf:
+          - type: string
+            enum:
+            - utf-8
+            - windows-1251
+            - koi8-r
+            - cp866
+            - utf-16
+          - type: 'null'
+          title: Encoding
+          description: Кодировка файла, если определилась неверно
       type: object
       required:
       - file
@@ -6214,6 +6229,19 @@ components:
         file_kind:
           type: string
           title: File Kind
+          description: xlsx, xls или csv
+        encoding:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Encoding
+          description: 'Кодировка, в которой прочитан файл: указанная вручную или определённая'
+        delimiter:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Delimiter
+          description: Разделитель колонок CSV
         status:
           type: string
           title: Status
@@ -6266,6 +6294,8 @@ components:
       - id
       - file_name
       - file_kind
+      - encoding
+      - delimiter
       - status
       - headers
       - column_map
@@ -7258,10 +7288,19 @@ components:
           enum:
           - xlsx
           - xls
+          - csv
           - pdf
           - json
           title: Format
           default: xlsx
+        encoding:
+          type: string
+          enum:
+          - utf-8
+          - windows-1251
+          title: Encoding
+          description: 'Кодировка CSV: utf-8 (с BOM, без потерь) или windows-1251 для старых программ'
+          default: utf-8
         period_from:
           anyOf:
           - type: string

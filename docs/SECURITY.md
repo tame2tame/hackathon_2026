@@ -38,6 +38,7 @@
 | ПДн не попадают в логи и тексты ошибок | Ошибки отдаются кодом каталога и `trace_id`; стек — только в журнал сервера | [`backend/app/core/errors.py`](../backend/app/core/errors.py) |
 | В репозитории только синтетические данные | Демо-пользователи на `example.com`, фикстуры генерируются | [`backend/app/demo.py`](../backend/app/demo.py) |
 
+| Выгрузка не превращается в формулы | В xlsx, xls и csv значения с `=`, `+`, `-`, `@` в начале экранируются апострофом (CSV-инъекция) | [`backend/app/modules/reports/renderers.py`](../backend/app/modules/reports/renderers.py) |
 | Файлы отдельно от базы | Вложения в MinIO без публичного доступа; скачивание только через API с проверкой области видимости записи | [`backend/app/core/storage.py`](../backend/app/core/storage.py) |
 
 ## Журналирование и целостность

@@ -1,7 +1,7 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
 from app.core.db import SessionDep
 from app.core.errors import ErrorCode, TraceIdDep, error_responses
@@ -48,6 +48,8 @@ def _preview(batch: ImportBatch, rows: list[ImportRow]) -> ImportBatchOut:
         id=batch.id,
         file_name=batch.file_name,
         file_kind=batch.file_kind,
+        encoding=batch.encoding,
+        delimiter=batch.delimiter,
         status=batch.status,
         headers=batch.headers,
         column_map=batch.column_map,
@@ -63,8 +65,14 @@ def _preview(batch: ImportBatch, rows: list[ImportRow]) -> ImportBatchOut:
 @router.post(
     "/imports",
     status_code=status.HTTP_201_CREATED,
-    summary="Загрузить выгрузку xls или xlsx",
-    description="Возвращает колонки файла и подсказку соответствия по заголовкам ТЗ.",
+    summary="Загрузить выгрузку xls, xlsx или csv",
+    description=(
+        "Возвращает колонки файла, подсказку соответствия по заголовкам ТЗ и параметры чтения. "
+        "Кодировку CSV система определяет сама (BOM, UTF-8, иначе cp1251, KOI8-R или cp866 по "
+        "содержимому), разделитель — по образцу строк. Если в предпросмотре «кракозябры», "
+        "загрузите файл снова, указав `encoding`; для старых xls без кодовой страницы она тоже "
+        "учитывается."
+    ),
     responses=error_responses(
         ErrorCode.AUTH_REQUIRED,
         ErrorCode.AUTH_FORBIDDEN,
@@ -76,9 +84,13 @@ def _preview(batch: ImportBatch, rows: list[ImportRow]) -> ImportBatchOut:
 async def post_import(
     session: SessionDep,
     user: ManagerDep,
-    file: Annotated[UploadFile, File(description="Книга Excel с выгрузкой")],
+    file: Annotated[UploadFile, File(description="Книга Excel или CSV с выгрузкой")],
+    encoding: Annotated[
+        Literal["utf-8", "windows-1251", "koi8-r", "cp866", "utf-16"] | None,
+        Form(description="Кодировка файла, если определилась неверно"),
+    ] = None,
 ) -> ImportBatchOut:
-    batch = await create_batch(session, user, file)
+    batch = await create_batch(session, user, file, encoding)
     return _preview(batch, await batch_rows(session, batch.id))
 
 

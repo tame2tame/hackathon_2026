@@ -18,7 +18,7 @@ class ImportProfile(UUIDPrimaryKey, Timestamps, Base):
     """Сохранённое соответствие колонок: следующий импорт идёт без ручной настройки."""
 
     __tablename__ = "import_profile"
-    __table_args__ = (CheckConstraint("file_kind IN ('xls', 'xlsx')", name="file_kind"),)
+    __table_args__ = (CheckConstraint("file_kind IN ('xls', 'xlsx', 'csv')", name="file_kind"),)
 
     name: Mapped[str] = mapped_column(String(200), unique=True)
     file_kind: Mapped[str] = mapped_column(String(8))
@@ -38,6 +38,9 @@ class ImportBatch(UUIDPrimaryKey, Timestamps, Base):
     )
     file_name: Mapped[str] = mapped_column(String(255))
     file_kind: Mapped[str] = mapped_column(String(8))
+    # Кодировка и разделитель, с которыми прочитан CSV: видны в предпросмотре вместе с данными.
+    encoding: Mapped[str | None] = mapped_column(String(20))
+    delimiter: Mapped[str | None] = mapped_column(String(1))
     status: Mapped[str] = mapped_column(String(16), default="uploaded")
     # Заголовки файла и выбранное соответствие храним здесь: файл после разбора не нужен.
     headers: Mapped[list[str]] = mapped_column(JSONB, default=list)

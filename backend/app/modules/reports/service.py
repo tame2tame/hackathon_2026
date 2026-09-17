@@ -92,7 +92,12 @@ async def run_job(
         await session.commit()
 
         content = await run_in_threadpool(
-            renderers.render, job.format, query.headers(payload.columns), rows, TITLE
+            renderers.render,
+            job.format,
+            query.headers(payload.columns),
+            rows,
+            TITLE,
+            payload.encoding,
         )
         job.file_key = f"reports/{job.id}.{job.format}"
         await run_in_threadpool(storage.save, job.file_key, io.BytesIO(content))

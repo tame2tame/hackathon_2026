@@ -20,7 +20,7 @@ class ReportJob(UUIDPrimaryKey, Timestamps, Base):
     __tablename__ = "report_job"
     __table_args__ = (
         CheckConstraint("status IN ('queued', 'running', 'done', 'failed')", name="status"),
-        CheckConstraint("format IN ('xlsx', 'xls', 'pdf', 'json')", name="format"),
+        CheckConstraint("format IN ('xlsx', 'xls', 'csv', 'pdf', 'json')", name="format"),
         CheckConstraint("progress BETWEEN 0 AND 100", name="progress"),
     )
 
