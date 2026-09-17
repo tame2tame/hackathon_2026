@@ -1,9 +1,10 @@
 """Редактор процесса: черновик, правка, переименование и публикация с переносом записей."""
 
+from itertools import pairwise
 from typing import Any
 
-from httpx import AsyncClient
-from sqlalchemy import select
+from httpx import AsyncClient, Response
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.interactions.models import Interaction, Transition
@@ -97,7 +98,7 @@ async def test_stage_can_be_renamed_in_a_published_version(
     response = await client.patch(
         f"/api/v1/stages/{stage['id']}",
         json={"name": "Подписание договора"},
-        headers=as_user(ROMAN_MANAGER),
+        headers=as_user(ALINA_ADMIN),
     )
 
     assert response.status_code == 200
@@ -151,32 +152,181 @@ async def test_unknown_stage_in_transitions_is_refused(
     assert response.json()["code"] == "VALIDATION_ERROR"
 
 
-async def test_publish_needs_a_map_for_busy_stages(
-    client: AsyncClient, session: AsyncSession
-) -> None:
-    template = await default_template(session)
-    draft = await make_draft(client, str(template.id))
-    # В новой версии нет этапа «Подписание», а на нём стоит демо-взаимодействие.
-    await client.patch(
-        f"{VERSIONS}/{draft['id']}",
-        json={
-            "stages": [
-                {"code": "contact_search", "name": "Поиск", "position": 1, "kind": "start"},
-                {"code": "work", "name": "Работа", "position": 2},
-            ],
-            "transitions": [{"from_code": "contact_search", "to_code": "work"}],
-        },
+async def test_manager_cannot_rename_a_stage(client: AsyncClient) -> None:
+    workflow = (await client.get(f"{WORKFLOWS}/default", headers=as_user(ANNA_KAM))).json()
+    stage = next(item for item in workflow["stages"] if item["code"] == "signing")
+
+    response = await client.patch(
+        f"/api/v1/stages/{stage['id']}",
+        json={"name": "Подписание договора"},
         headers=as_user(ROMAN_MANAGER),
     )
 
-    response = await client.post(
-        f"{VERSIONS}/{draft['id']}/publish", json={}, headers=as_user(ROMAN_MANAGER)
+    assert response.status_code == 403
+    assert response.json()["code"] == "AUTH_FORBIDDEN"
+
+
+async def draft_without(
+    client: AsyncClient,
+    session: AsyncSession,
+    removed: set[str],
+    renamed: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Черновик базового процесса без указанных этапов; остальные идут подряд друг за другом."""
+    template = await default_template(session)
+    draft = await make_draft(client, str(template.id))
+    kept = [stage for stage in draft["stages"] if stage["code"] not in removed]
+    stages = [
+        {
+            "code": stage["code"],
+            "name": (renamed or {}).get(stage["code"], stage["name"]),
+            "position": position,
+            "kind": stage["kind"],
+        }
+        for position, stage in enumerate(kept, start=1)
+    ]
+    transitions = [{"from_code": a["code"], "to_code": b["code"]} for a, b in pairwise(kept)]
+    response = await client.patch(
+        f"{VERSIONS}/{draft['id']}",
+        json={"stages": stages, "transitions": transitions},
+        headers=as_user(ROMAN_MANAGER),
     )
+    assert response.status_code == 200, response.text
+    return draft
+
+
+async def publish(
+    client: AsyncClient,
+    draft: dict[str, Any],
+    migration_map: dict[str, str] | None = None,
+    email: str = ROMAN_MANAGER,
+) -> Response:
+    return await client.post(
+        f"{VERSIONS}/{draft['id']}/publish",
+        json={"migration_map": migration_map or {}},
+        headers=as_user(email),
+    )
+
+
+async def test_removed_stage_moves_records_to_the_previous_stage(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    kfu = await find(client, ANNA_KAM, stage_code="meeting")
+    draft = await draft_without(client, session, {"meeting"})
+
+    response = await publish(client, draft)
+
+    assert response.status_code == 200, response.text
+    moved = await find(client, ANNA_KAM, stage_code="communication")
+    assert moved["id"] == kfu["id"]
+    # Этап сменился не по вине КАМа: дни на этапе считаются заново.
+    assert moved["days_on_stage"] == 0
+    card = (await client.get(f"/api/v1/interactions/{kfu['id']}", headers=as_user(ANNA_KAM))).json()
+    assert card["history"][0]["source"] == "migration"
+    assert card["history"][0]["comment"] == (
+        "Этап «Встреча» удалён из процесса: запись перенесена на «Коммуникация»"
+    )
+    # Записи на оставшихся этапах стоят где стояли.
+    assert (await find(client, ANNA_KAM, stage_code="signing"))["stage"]["name"] == "Подписание"
+
+
+async def test_records_move_forward_when_no_earlier_stage_is_left(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    kfu = await find(client, ANNA_KAM, stage_code="meeting")
+    draft = await draft_without(client, session, {"contact_search", "communication", "meeting"})
+
+    response = await publish(client, draft)
+
+    assert response.status_code == 200, response.text
+    assert (await find(client, ANNA_KAM, stage_code="documents_exchange"))["id"] == kfu["id"]
+
+
+async def test_migration_map_beats_the_neighbour(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    kfu = await find(client, ANNA_KAM, stage_code="meeting")
+    draft = await draft_without(client, session, {"meeting"})
+
+    response = await publish(client, draft, {"meeting": "documents_exchange"})
+
+    assert response.status_code == 200, response.text
+    assert (await find(client, ANNA_KAM, stage_code="documents_exchange"))["id"] == kfu["id"]
+
+
+async def test_map_to_a_missing_stage_is_refused(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    draft = await draft_without(client, session, {"meeting"})
+
+    response = await publish(client, draft, {"meeting": "нет_такого"})
 
     assert response.status_code == 422
     body = response.json()
     assert body["code"] == "WF_MIGRATION_MAP_INCOMPLETE"
-    assert any(error["field"].startswith("migration_map.") for error in body["errors"])
+    assert body["errors"] == [
+        {"field": "migration_map.meeting", "message": "Нужен этап новой схемы"}
+    ]
+
+
+async def test_preview_shows_what_publishing_will_do(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    draft = await draft_without(client, session, {"meeting"})
+
+    preview = await client.post(
+        f"{VERSIONS}/{draft['id']}/publish-preview", json={}, headers=as_user(ROMAN_MANAGER)
+    )
+
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["renamed"] == []
+    assert body["added"] == []
+    assert body["requires_admin"] is False
+    assert body["moves"] == [
+        {
+            "from_code": "meeting",
+            "from_name": "Встреча",
+            "stage_removed": True,
+            "open_interactions": 1,
+            "to_code": "communication",
+            "to_name": "Коммуникация",
+            "automatic": True,
+        }
+    ]
+    # Предпросмотр ничего не меняет: запись ещё на встрече.
+    assert (await find(client, ANNA_KAM, stage_code="meeting"))["stage"]["code"] == "meeting"
+
+    response = await publish(client, draft)
+
+    assert response.status_code == 200
+    migrated = await session.scalar(
+        select(func.count()).select_from(Transition).where(Transition.source == "migration")
+    )
+    assert migrated == body["moved_interactions"] == 6
+
+
+async def test_renaming_draft_is_published_by_an_admin(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    draft = await draft_without(client, session, set(), renamed={"signing": "Подписание договора"})
+
+    preview = await client.post(
+        f"{VERSIONS}/{draft['id']}/publish-preview", json={}, headers=as_user(ROMAN_MANAGER)
+    )
+    by_manager = await publish(client, draft)
+    by_admin = await publish(client, draft, email=ALINA_ADMIN)
+
+    assert preview.json()["requires_admin"] is True
+    assert preview.json()["renamed"] == [
+        {"code": "signing", "old_name": "Подписание", "new_name": "Подписание договора"}
+    ]
+    assert by_manager.status_code == 403
+    assert by_manager.json()["code"] == "AUTH_FORBIDDEN"
+    assert by_admin.status_code == 200
+    assert (await find(client, ANNA_KAM, stage_code="signing"))["stage"]["name"] == (
+        "Подписание договора"
+    )
 
 
 async def test_publish_moves_open_interactions(client: AsyncClient, session: AsyncSession) -> None:
@@ -203,10 +353,11 @@ async def test_publish_moves_open_interactions(client: AsyncClient, session: Asy
                  "teacher_training", "curriculum_update", "classes", "docs_update",
                  "teacher_upskilling", "stage_control"]  # fmt: skip
 
+    # Черновик переименовывает «Поиск контактов» в «Поиск», поэтому публикует администратор.
     response = await client.post(
         f"{VERSIONS}/{draft['id']}/publish",
         json={"migration_map": {code: "work" for code in old_codes}},
-        headers=as_user(ROMAN_MANAGER),
+        headers=as_user(ALINA_ADMIN),
     )
 
     assert response.status_code == 200

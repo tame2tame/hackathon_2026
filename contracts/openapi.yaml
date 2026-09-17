@@ -586,7 +586,8 @@ paths:
       tags:
       - workflow
       summary: Переименовать этап
-      description: Единственное изменение, разрешённое в опубликованной версии.
+      description: Единственное изменение, разрешённое в действующей схеме. Переименование статуса — чувствительная
+        операция, поэтому доступно только администратору.
       operationId: patch_stage_api_v1_stages__stage_id__patch
       security:
       - HTTPBearer: []
@@ -635,13 +636,77 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/workflow-versions/{version_id}/publish-preview:
+    post:
+      tags:
+      - workflow
+      summary: Предпросмотр публикации
+      description: Ничего не меняет. Показывает переименованные и добавленные этапы, удалённые этапы с
+        числом открытых записей и этапом, куда они переедут, и нужен ли администратор. Данные для окна
+        подтверждения перед публикацией.
+      operationId: post_publish_preview_api_v1_workflow_versions__version_id__publish_preview_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Version Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishPreview'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR · WF_MIGRATION_MAP_INCOMPLETE
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: WF_VERSION_NOT_DRAFT
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/workflow-versions/{version_id}/publish:
     post:
       tags:
       - workflow
-      summary: Опубликовать версию
-      description: Открытые взаимодействия переезжают на новую версию переходом `migration`, а прежняя
-        версия становится `retired`. Карта переноса нужна для занятых этапов.
+      summary: Опубликовать изменения процесса
+      description: Все открытые взаимодействия переезжают на новую схему переходом `migration`, прежняя
+        схема становится `retired`. Записи с удалённого этапа переходят на ближайший предыдущий этап,
+        а если его нет — на следующий; `migration_map` задаёт другой этап явно. Черновик с переименованием
+        этапов публикует только администратор.
       operationId: post_publish_api_v1_workflow_versions__version_id__publish_post
       security:
       - HTTPBearer: []
@@ -2715,7 +2780,8 @@ paths:
       tags:
       - admin
       summary: Изменить настройку
-      description: Пороги радара, веса по умолчанию и прочее; изменение пишется в аудит.
+      description: Значение проверяется схемой настройки; пропущенные поля получают значения по умолчанию.
+        Неизвестный ключ — `NOT_FOUND`. Изменение пишется в аудит, новые пороги радара применяются сразу.
       operationId: put_setting_api_v1_admin_settings__key__put
       security:
       - HTTPBearer: []
@@ -4434,6 +4500,41 @@ components:
       - name
       - direction
       title: ProgramRef
+    PublishPreview:
+      properties:
+        renamed:
+          items:
+            $ref: '#/components/schemas/StageRenameOut'
+          type: array
+          title: Renamed
+        moves:
+          items:
+            $ref: '#/components/schemas/StageMoveOut'
+          type: array
+          title: Moves
+          description: Удалённые этапы и этапы, записи с которых карта переносит на другой
+        added:
+          items:
+            $ref: '#/components/schemas/StageRef'
+          type: array
+          title: Added
+        moved_interactions:
+          type: integer
+          title: Moved Interactions
+          description: Сколько открытых записей перейдёт на новую схему
+        requires_admin:
+          type: boolean
+          title: Requires Admin
+          description: 'Черновик переименовывает этапы: опубликовать его может только администратор'
+      type: object
+      required:
+      - renamed
+      - moves
+      - added
+      - moved_interactions
+      - requires_admin
+      title: PublishPreview
+      description: 'Что изменит публикация: данные для окна подтверждения.'
     PublishRequest:
       properties:
         migration_map:
@@ -4441,7 +4542,8 @@ components:
             type: string
           type: object
           title: Migration Map
-          description: Код этапа старой версии → код новой; нужен для занятых этапов
+          description: 'Код этапа прежней схемы → код новой. Необязательна: записи с удалённого этапа
+            сами переходят на ближайший предыдущий этап, а если его нет — на следующий'
       type: object
       title: PublishRequest
     RatingOut:
@@ -4687,18 +4789,30 @@ components:
         key:
           type: string
           title: Key
+        description:
+          type: string
+          title: Description
         value:
           additionalProperties: true
           type: object
           title: Value
+          description: Действующее значение, в том числе по умолчанию
+        is_default:
+          type: boolean
+          title: Is Default
+          description: 'Настройку не сохраняли: действует значение по умолчанию'
         updated_at:
-          type: string
-          format: date-time
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
           title: Updated At
       type: object
       required:
       - key
+      - description
       - value
+      - is_default
       - updated_at
       title: SettingOut
     SettingUpdate:
@@ -4939,6 +5053,42 @@ components:
       - position
       title: StageDraft
       description: 'Этап черновика: код неизменяем и связывает норму с этапом между версиями.'
+    StageMoveOut:
+      properties:
+        from_code:
+          type: string
+          title: From Code
+        from_name:
+          type: string
+          title: From Name
+        stage_removed:
+          type: boolean
+          title: Stage Removed
+          description: Этапа нет в новой схеме
+        open_interactions:
+          type: integer
+          title: Open Interactions
+        to_code:
+          type: string
+          title: To Code
+        to_name:
+          type: string
+          title: To Name
+        automatic:
+          type: boolean
+          title: Automatic
+          description: Этап выбран автоматически, а не картой переноса
+      type: object
+      required:
+      - from_code
+      - from_name
+      - stage_removed
+      - open_interactions
+      - to_code
+      - to_name
+      - automatic
+      title: StageMoveOut
+      description: Куда переедут открытые записи этапа прежней схемы.
     StageNormOut:
       properties:
         stage_code:
@@ -5057,6 +5207,23 @@ components:
       required:
       - name
       title: StageRename
+    StageRenameOut:
+      properties:
+        code:
+          type: string
+          title: Code
+        old_name:
+          type: string
+          title: Old Name
+        new_name:
+          type: string
+          title: New Name
+      type: object
+      required:
+      - code
+      - old_name
+      - new_name
+      title: StageRenameOut
     SummaryRow:
       properties:
         owner:

@@ -67,6 +67,14 @@ def base_transition_pairs() -> list[tuple[str, str]]:
     return pairs
 
 
+def return_pairs(forward: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Возврат на шаг назад для каждого перехода вперёд.
+
+    Процесс бюрократический: что-то забыли — вернулись. Возврат требует объяснения, но не документа.
+    """
+    return [(to_code, from_code) for from_code, to_code in forward]
+
+
 async def ensure_default_workflow(session: AsyncSession) -> WorkflowVersion:
     """Создаёт базовый шаблон с опубликованной версией 1, если его ещё нет. Идемпотентна."""
     existing = await session.scalar(
@@ -107,13 +115,24 @@ async def ensure_default_workflow(session: AsyncSession) -> WorkflowVersion:
             )
     await session.flush()
 
-    for from_code, to_code in base_transition_pairs():
+    forward = base_transition_pairs()
+    for from_code, to_code in forward:
         session.add(
             StageTransitionRule(
                 version_id=version.id,
                 from_stage_id=stages[from_code].id,
                 to_stage_id=stages[to_code].id,
                 requires_attachment=from_code in DOCUMENT_REQUIRED_EXITS,
+            )
+        )
+    for from_code, to_code in return_pairs(forward):
+        session.add(
+            StageTransitionRule(
+                version_id=version.id,
+                from_stage_id=stages[from_code].id,
+                to_stage_id=stages[to_code].id,
+                requires_comment=True,
+                requires_attachment=False,
             )
         )
     await session.flush()

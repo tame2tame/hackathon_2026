@@ -108,7 +108,42 @@ class StageRename(BaseModel):
 class PublishRequest(BaseModel):
     migration_map: dict[str, str] = Field(
         default_factory=dict,
-        description="Код этапа старой версии → код новой; нужен для занятых этапов",
+        description=(
+            "Код этапа прежней схемы → код новой. Необязательна: записи с удалённого этапа "
+            "сами переходят на ближайший предыдущий этап, а если его нет — на следующий"
+        ),
+    )
+
+
+class StageRenameOut(BaseModel):
+    code: str
+    old_name: str
+    new_name: str
+
+
+class StageMoveOut(BaseModel):
+    """Куда переедут открытые записи этапа прежней схемы."""
+
+    from_code: str
+    from_name: str
+    stage_removed: bool = Field(description="Этапа нет в новой схеме")
+    open_interactions: int
+    to_code: str
+    to_name: str
+    automatic: bool = Field(description="Этап выбран автоматически, а не картой переноса")
+
+
+class PublishPreview(BaseModel):
+    """Что изменит публикация: данные для окна подтверждения."""
+
+    renamed: list[StageRenameOut]
+    moves: list[StageMoveOut] = Field(
+        description="Удалённые этапы и этапы, записи с которых карта переносит на другой"
+    )
+    added: list[StageRef]
+    moved_interactions: int = Field(description="Сколько открытых записей перейдёт на новую схему")
+    requires_admin: bool = Field(
+        description="Черновик переименовывает этапы: опубликовать его может только администратор"
     )
 
 

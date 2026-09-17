@@ -20,7 +20,6 @@ from app.modules.interactions.models import Attachment, Contract, Interaction
 from app.modules.interactions.period import period_condition
 from app.modules.radar.models import RadarSignal
 from app.modules.radar.rules import (
-    DEFAULT_THRESHOLDS,
     InteractionState,
     RadarThresholds,
     SignalKind,
@@ -33,6 +32,7 @@ from app.modules.radar.schemas import (
     SignalSummaryOut,
     SummaryRow,
 )
+from app.modules.radar.settings import load_thresholds
 from app.modules.workflow.models import Stage, StageNorm, WorkflowVersion
 
 
@@ -106,10 +106,13 @@ async def recompute_signals(
     session: AsyncSession,
     interaction_ids: Sequence[uuid.UUID],
     now: datetime | None = None,
-    thresholds: RadarThresholds = DEFAULT_THRESHOLDS,
+    thresholds: RadarThresholds | None = None,
 ) -> None:
     """Открывает, обновляет и закрывает сигналы так, чтобы они соответствовали правилам на `now`."""
     now = now or datetime.now(UTC)
+    if not interaction_ids:
+        return
+    thresholds = thresholds or await load_thresholds(session)
     states = await load_states(session, interaction_ids)
     open_signals = await session.scalars(
         select(RadarSignal).where(

@@ -1,9 +1,11 @@
 """Администрирование: сотрудники, команды, правила доступа, настройки, аудит и каталоги."""
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
 
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +19,7 @@ from app.modules.admin.schemas import (
     CatalogItemCreate,
     ContactCreate,
     ContactOut,
+    SettingOut,
 )
 from app.modules.audit.models import AuditLog
 from app.modules.catalogs.models import (
@@ -29,6 +32,9 @@ from app.modules.catalogs.models import (
     University,
     Vendor,
 )
+from app.modules.interactions.models import Interaction
+from app.modules.radar.service import recompute_signals
+from app.modules.radar.settings import RADAR_THRESHOLDS_KEY, RadarThresholdsSetting
 
 CATALOGS: dict[str, type[University | Direction | Program | Vendor | Product]] = {
     "universities": University,
@@ -206,9 +212,55 @@ async def delete_rule(
     await session.commit()
 
 
-async def list_settings(session: AsyncSession) -> list[AppSetting]:
-    settings = await session.scalars(select(AppSetting).order_by(AppSetting.key))
-    return list(settings)
+@dataclass(frozen=True, slots=True)
+class KnownSetting:
+    schema: type[BaseModel]
+    description: str
+
+
+# Только эти настройки что-то меняют в системе. Неизвестный ключ — опечатка, а не новая настройка.
+KNOWN_SETTINGS: dict[str, KnownSetting] = {
+    RADAR_THRESHOLDS_KEY: KnownSetting(
+        RadarThresholdsSetting, "Пороги радара в днях: срок лицензии и простой записи"
+    ),
+}
+
+
+def _setting_out(key: str, stored: AppSetting | None) -> SettingOut:
+    known = KNOWN_SETTINGS[key]
+    value = stored.value if stored else known.schema().model_dump(mode="json")
+    return SettingOut(
+        key=key,
+        description=known.description,
+        value=value,
+        is_default=stored is None,
+        updated_at=stored.updated_at if stored else None,
+    )
+
+
+async def list_settings(session: AsyncSession) -> list[SettingOut]:
+    stored = {setting.key: setting for setting in await session.scalars(select(AppSetting))}
+    return [_setting_out(key, stored.get(key)) for key in sorted(KNOWN_SETTINGS)]
+
+
+def _validated(key: str, value: dict[str, Any]) -> dict[str, Any]:
+    known = KNOWN_SETTINGS.get(key)
+    if known is None:
+        raise AppError(ErrorCode.NOT_FOUND, f"Неизвестная настройка: {key}.")
+    try:
+        return known.schema.model_validate(value).model_dump(mode="json")
+    except ValidationError as error:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Значение настройки не прошло проверку.",
+            errors=[
+                FieldError(
+                    field=".".join(["value", *(str(part) for part in item["loc"])]),
+                    message=item["msg"],
+                )
+                for item in error.errors()
+            ],
+        ) from error
 
 
 async def set_setting(
@@ -217,7 +269,8 @@ async def set_setting(
     key: str,
     value: dict[str, Any],
     trace_id: str | None = None,
-) -> AppSetting:
+) -> SettingOut:
+    value = _validated(key, value)
     setting = await session.get(AppSetting, key)
     before = dict(setting.value) if setting else None
     if setting is None:
@@ -229,8 +282,14 @@ async def set_setting(
     session.add(
         _audit(admin, "admin.setting_changed", "app_setting", None, before, value, trace_id)
     )
+    await session.flush()
+    if key == RADAR_THRESHOLDS_KEY:
+        # Новые пороги видны сразу, а не после ночного пересчёта.
+        active = await session.scalars(select(Interaction.id).where(Interaction.status == "active"))
+        await recompute_signals(session, list(active))
     await session.commit()
-    return setting
+    await session.refresh(setting)
+    return _setting_out(key, setting)
 
 
 async def list_audit(

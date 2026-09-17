@@ -58,7 +58,12 @@ async def test_card_has_history_transitions_and_signals(client: AsyncClient) -> 
     assert response.status_code == 200
     card = response.json()
     assert card["history"][0]["to_stage"]["code"] == "signing"
-    assert [t["to_stage"]["code"] for t in card["allowed_transitions"]] == ["materials_transfer"]
+    # Вперёд — на передачу материалов, назад — на обмен документами или их доработку.
+    assert [t["to_stage"]["code"] for t in card["allowed_transitions"]] == [
+        "documents_exchange",
+        "documents_revision",
+        "materials_transfer",
+    ]
     assert {s["kind"] for s in card["signals"]} == {"stage_overdue", "missing_document"}
 
 
@@ -153,7 +158,7 @@ async def test_skipping_stages_is_not_allowed(client: AsyncClient) -> None:
     assert response.json()["code"] == "WF_TRANSITION_NOT_ALLOWED"
 
 
-async def test_final_stage_offers_no_transitions(
+async def test_final_stage_offers_only_the_way_back(
     client: AsyncClient, session: AsyncSession
 ) -> None:
     item = await find(client, ANNA_KAM, search="КФУ")
@@ -167,7 +172,8 @@ async def test_final_stage_offers_no_transitions(
 
     card = await client.get(f"/api/v1/interactions/{item['id']}", headers=as_user(ANNA_KAM))
 
-    assert card.json()["allowed_transitions"] == []
+    [back] = card.json()["allowed_transitions"]
+    assert back["to_stage"]["code"] == "teacher_upskilling"
 
 
 @pytest.mark.parametrize(
@@ -192,3 +198,38 @@ async def test_audit_log_is_append_only(connection: AsyncConnection, statement: 
     with pytest.raises(DBAPIError, match="только дописывается"):
         async with connection.begin_nested():
             await connection.execute(text(statement))
+
+
+async def test_kam_returns_to_the_previous_stage_without_a_document(client: AsyncClient) -> None:
+    item = await find(client, ANNA_KAM, stage_code="signing")
+    card = (
+        await client.get(f"/api/v1/interactions/{item['id']}", headers=as_user(ANNA_KAM))
+    ).json()
+    back = next(
+        t for t in card["allowed_transitions"] if t["to_stage"]["code"] == "documents_revision"
+    )
+    assert (back["requires_comment"], back["requires_attachment"]) == (True, False)
+
+    silent = await client.post(
+        f"/api/v1/interactions/{item['id']}/transitions",
+        json={
+            "to_stage_id": back["to_stage"]["id"],
+            "comment": " ",
+            "expected_version": item["version"],
+        },
+        headers=as_user(ANNA_KAM),
+    )
+    returned = await client.post(
+        f"/api/v1/interactions/{item['id']}/transitions",
+        json={
+            "to_stage_id": back["to_stage"]["id"],
+            "comment": "Юристы вуза вернули договор с правками",
+            "expected_version": item["version"],
+        },
+        headers=as_user(ANNA_KAM),
+    )
+
+    assert silent.status_code == 422
+    assert silent.json()["code"] == "WF_COMMENT_REQUIRED"
+    assert returned.status_code == 201, returned.text
+    assert returned.json()["interaction"]["stage"]["code"] == "documents_revision"

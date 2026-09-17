@@ -21,10 +21,13 @@ class Severity(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class RadarThresholds:
+    """Пороги в днях; администратор меняет их в настройках (`radar_thresholds`)."""
+
     license_warn_days: int = 60
     license_critical_days: int = 30
-    inactivity_low_days: int = 21
-    inactivity_medium_days: int = 42
+    # Простой: жюри назвало ориентиром одну-две недели без изменений.
+    inactivity_low_days: int = 14
+    inactivity_medium_days: int = 28
 
 
 DEFAULT_THRESHOLDS = RadarThresholds()

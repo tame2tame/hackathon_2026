@@ -79,7 +79,7 @@ def test_missing_document_after_half_of_norm() -> None:
 
 
 @pytest.mark.parametrize(
-    ("inactive", "expected"), [(20, None), (21, Severity.LOW), (42, Severity.MEDIUM)]
+    ("inactive", "expected"), [(13, None), (14, Severity.LOW), (28, Severity.MEDIUM)]
 )
 def test_inactivity_severity(inactive: int, expected: Severity | None) -> None:
     drafts = evaluate_signals(state(last_activity_at=NOW - timedelta(days=inactive)), NOW)

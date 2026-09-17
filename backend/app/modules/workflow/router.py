@@ -11,12 +11,14 @@ from app.modules.workflow.editor import (
     create_draft,
     create_template,
     patch_version,
+    preview_publish,
     publish_version,
     rename_stage,
     version_out,
 )
 from app.modules.workflow.schemas import (
     NormUpdate,
+    PublishPreview,
     PublishRequest,
     StageNormOut,
     StageRef,
@@ -38,6 +40,7 @@ router = APIRouter(prefix="/api/v1/workflows", tags=["workflow"])
 # Версии и этапы адресуются по своему идентификатору, поэтому живут вне префикса шаблонов.
 editor_router = APIRouter(prefix="/api/v1", tags=["workflow"])
 ManagerDep = Annotated[CurrentUser, Depends(require_roles(Role.MANAGER, Role.ADMIN))]
+AdminDep = Annotated[CurrentUser, Depends(require_roles(Role.ADMIN))]
 EDITOR_ERRORS = (
     ErrorCode.AUTH_REQUIRED,
     ErrorCode.AUTH_FORBIDDEN,
@@ -148,7 +151,10 @@ async def patch_workflow_version(
 @editor_router.patch(
     "/stages/{stage_id}",
     summary="Переименовать этап",
-    description="Единственное изменение, разрешённое в опубликованной версии.",
+    description=(
+        "Единственное изменение, разрешённое в действующей схеме. Переименование статуса — "
+        "чувствительная операция, поэтому доступно только администратору."
+    ),
     responses=error_responses(*EDITOR_ERRORS),
 )
 async def patch_stage(
@@ -156,18 +162,41 @@ async def patch_stage(
     payload: StageRename,
     trace_id: TraceIdDep,
     session: SessionDep,
-    user: ManagerDep,
+    user: AdminDep,
 ) -> StageRef:
     stage = await rename_stage(session, user, stage_id, payload.name, trace_id)
     return StageRef.model_validate(stage)
 
 
 @editor_router.post(
-    "/workflow-versions/{version_id}/publish",
-    summary="Опубликовать версию",
+    "/workflow-versions/{version_id}/publish-preview",
+    summary="Предпросмотр публикации",
     description=(
-        "Открытые взаимодействия переезжают на новую версию переходом `migration`, "
-        "а прежняя версия становится `retired`. Карта переноса нужна для занятых этапов."
+        "Ничего не меняет. Показывает переименованные и добавленные этапы, удалённые этапы "
+        "с числом открытых записей и этапом, куда они переедут, и нужен ли администратор. "
+        "Данные для окна подтверждения перед публикацией."
+    ),
+    responses=error_responses(
+        *EDITOR_ERRORS, ErrorCode.WF_VERSION_NOT_DRAFT, ErrorCode.WF_MIGRATION_MAP_INCOMPLETE
+    ),
+)
+async def post_publish_preview(
+    version_id: uuid.UUID,
+    payload: PublishRequest,
+    session: SessionDep,
+    _user: ManagerDep,
+) -> PublishPreview:
+    return await preview_publish(session, version_id, payload)
+
+
+@editor_router.post(
+    "/workflow-versions/{version_id}/publish",
+    summary="Опубликовать изменения процесса",
+    description=(
+        "Все открытые взаимодействия переезжают на новую схему переходом `migration`, "
+        "прежняя схема становится `retired`. Записи с удалённого этапа переходят на ближайший "
+        "предыдущий этап, а если его нет — на следующий; `migration_map` задаёт другой этап явно. "
+        "Черновик с переименованием этапов публикует только администратор."
     ),
     responses=error_responses(
         *EDITOR_ERRORS, ErrorCode.WF_VERSION_NOT_DRAFT, ErrorCode.WF_MIGRATION_MAP_INCOMPLETE

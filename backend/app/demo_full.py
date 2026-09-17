@@ -175,7 +175,8 @@ def plans(rng: random.Random, count: int) -> list[Plan]:
             Plan(
                 stage_code,
                 rng.randint(1, max(2, norm // 3)),
-                rng.randint(0, 14),
+                # Спокойные записи — моложе порога простоя по умолчанию (14 дней).
+                rng.randint(0, 10),
                 rng.random() < 0.6,
                 False,
             )

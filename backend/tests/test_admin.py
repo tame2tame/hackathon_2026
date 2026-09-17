@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.catalogs.models import ContactPerson, University
-from tests.api import user_id
+from tests.api import find, user_id
 from tests.users import ALINA_ADMIN, ANNA_KAM, ROMAN_MANAGER, as_user
 
 ADMIN = "/api/v1/admin"
@@ -175,17 +175,77 @@ async def test_catalog_item_is_archived_not_deleted(
     assert archived.json()["archived_at"] is not None
 
 
+async def test_settings_show_defaults_until_saved(client: AsyncClient) -> None:
+    response = await client.get(f"{ADMIN}/settings", headers=as_user(ALINA_ADMIN))
+
+    radar = next(item for item in response.json() if item["key"] == "radar_thresholds")
+    assert radar["is_default"] is True
+    assert radar["updated_at"] is None
+    assert radar["value"]["inactivity_low_days"] == 14
+
+
 async def test_setting_is_saved_with_audit(client: AsyncClient) -> None:
     response = await client.put(
         f"{ADMIN}/settings/radar_thresholds",
-        json={"value": {"inactivity_low_days": 14}},
+        json={"value": {"inactivity_low_days": 10}},
         headers=as_user(ALINA_ADMIN),
     )
-    settings = await client.get(f"{ADMIN}/settings", headers=as_user(ALINA_ADMIN))
+    audit = await client.get(
+        f"{ADMIN}/audit", params={"action": "admin.setting_changed"}, headers=as_user(ALINA_ADMIN)
+    )
 
     assert response.status_code == 200
-    assert response.json()["value"] == {"inactivity_low_days": 14}
-    assert any(item["key"] == "radar_thresholds" for item in settings.json())
+    body = response.json()
+    # Пропущенные поля получают значения по умолчанию.
+    assert body["value"] == {
+        "license_warn_days": 60,
+        "license_critical_days": 30,
+        "inactivity_low_days": 10,
+        "inactivity_medium_days": 28,
+    }
+    assert body["is_default"] is False
+    assert audit.json()[0]["after"]["inactivity_low_days"] == 10
+
+
+async def test_invalid_setting_is_refused(client: AsyncClient) -> None:
+    unordered = await client.put(
+        f"{ADMIN}/settings/radar_thresholds",
+        json={"value": {"inactivity_low_days": 30, "inactivity_medium_days": 20}},
+        headers=as_user(ALINA_ADMIN),
+    )
+    unknown_field = await client.put(
+        f"{ADMIN}/settings/radar_thresholds",
+        json={"value": {"inactivity_days": 30}},
+        headers=as_user(ALINA_ADMIN),
+    )
+    unknown_key = await client.put(
+        f"{ADMIN}/settings/radar_treshold", json={"value": {}}, headers=as_user(ALINA_ADMIN)
+    )
+
+    assert unordered.status_code == 422
+    assert unordered.json()["code"] == "VALIDATION_ERROR"
+    assert unknown_field.json()["errors"][0]["field"] == "value.inactivity_days"
+    assert unknown_key.status_code == 404
+
+
+async def test_radar_follows_the_saved_thresholds(client: AsyncClient) -> None:
+    kfu = await find(client, ANNA_KAM, search="КФУ")
+    before = await client.get(
+        "/api/v1/signals", params={"kind": "inactivity"}, headers=as_user(ALINA_ADMIN)
+    )
+
+    await client.put(
+        f"{ADMIN}/settings/radar_thresholds",
+        json={"value": {"inactivity_low_days": 30, "inactivity_medium_days": 60}},
+        headers=as_user(ALINA_ADMIN),
+    )
+    after = await client.get(
+        "/api/v1/signals", params={"kind": "inactivity"}, headers=as_user(ALINA_ADMIN)
+    )
+
+    assert [item["interaction"]["id"] for item in before.json()["items"]] == [kfu["id"]]
+    # КФУ без изменений 23 дня: при пороге 30 сигнала о простое больше нет.
+    assert after.json()["total"] == 0
 
 
 async def test_team_can_be_created(client: AsyncClient) -> None:

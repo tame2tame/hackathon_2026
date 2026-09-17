@@ -115,20 +115,23 @@ async def delete_rule(
 
 @router.get("/settings", summary="Настройки приложения", responses=error_responses(*ADMIN_ERRORS))
 async def read_settings(session: SessionDep, _admin: AdminDep) -> list[SettingOut]:
-    return [SettingOut.model_validate(item) for item in await service.list_settings(session)]
+    return await service.list_settings(session)
 
 
 @router.put(
     "/settings/{key}",
     summary="Изменить настройку",
-    description="Пороги радара, веса по умолчанию и прочее; изменение пишется в аудит.",
+    description=(
+        "Значение проверяется схемой настройки; пропущенные поля получают значения по умолчанию. "
+        "Неизвестный ключ — `NOT_FOUND`. Изменение пишется в аудит, новые пороги радара "
+        "применяются сразу."
+    ),
     responses=error_responses(*ADMIN_ERRORS),
 )
 async def put_setting(
     key: str, payload: SettingUpdate, trace_id: TraceIdDep, session: SessionDep, admin: AdminDep
 ) -> SettingOut:
-    setting = await service.set_setting(session, admin, key, payload.value, trace_id)
-    return SettingOut.model_validate(setting)
+    return await service.set_setting(session, admin, key, payload.value, trace_id)
 
 
 @router.get(

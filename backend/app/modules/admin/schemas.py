@@ -66,11 +66,11 @@ class AccessRuleCreate(BaseModel):
 
 
 class SettingOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     key: str
-    value: dict[str, Any]
-    updated_at: datetime
+    description: str
+    value: dict[str, Any] = Field(description="Действующее значение, в том числе по умолчанию")
+    is_default: bool = Field(description="Настройку не сохраняли: действует значение по умолчанию")
+    updated_at: datetime | None
 
 
 class SettingUpdate(BaseModel):
