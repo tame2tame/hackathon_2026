@@ -182,7 +182,8 @@ radar_signal       id, interaction_id, kind, severity (low|medium|high), detecte
                    UNIQUE(interaction_id, kind) WHERE resolved_at IS NULL
 rating_weight_set  id, name, w_applications, w_students, w_streams, is_default   -- сумма весов 100
 report_job         id, requested_by, params jsonb, status, progress, file_key, error_code
-saved_view         id, user_id, page, name, filters jsonb, columns jsonb
+saved_view         id, user_id → app_user, page (interactions|radar|reports|rating|clients), name,
+                   filters jsonb, columns jsonb, UNIQUE(user_id, page, name)
 data_access_rule   id, subject_user_id | subject_role, effect (allow|deny), scope_kind (university|direction|program|group), scope_id
 audit_log          id bigserial, occurred_at, actor_user_id, action, entity_kind, entity_id, before, after, trace_id  -- только INSERT
 app_setting        key, value jsonb                    -- radar_thresholds, stalled_escalation
@@ -226,6 +227,7 @@ notification_delivery id, notification_id, channel_kind, status (pending|sent|fa
 | `GET /api/v1/directions`, `/programs`, `/products`, `/users` | Справочники |
 | `PUT /api/v1/programs/{id}/priority` | Ручной приоритет курса (0–100); меняют руководитель и админ |
 | `GET /api/v1/counterparty-groups` | Группы контрагентов и их процессы |
+| `GET`, `POST /api/v1/saved-views`, `PATCH`, `DELETE /api/v1/saved-views/{id}` | Свои виды списка: фильтры и колонки под своим названием |
 | `GET`, `POST /api/v1/clients`, `GET /api/v1/clients/{id}` | Клиенты вне вузов; организации видны всем, люди — тем, кто с ними работает; просмотр карточки человека пишется в аудит |
 | `GET /api/v1/workflows` | Процессы: действующая схема, черновик изменений, группы |
 | `GET /api/v1/workflows/{template_id}`, `/norms`, `PUT /norms/{stage_code}`, `POST /norms/{stage_code}/accept-suggestion` | Схема и нормы процесса любой группы |

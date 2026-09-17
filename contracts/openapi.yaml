@@ -5208,6 +5208,170 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/saved-views:
+    get:
+      tags:
+      - saved-views
+      summary: Мои сохранённые виды
+      description: Набор фильтров и колонок под своим названием. Виды свои у каждого.
+      operationId: read_views_api_v1_saved_views_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - interactions
+            - radar
+            - reports
+            - rating
+            - clients
+            type: string
+          - type: 'null'
+          description: Только для одной страницы
+          title: Page
+        description: Только для одной страницы
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SavedViewOut'
+                title: Response Read Views Api V1 Saved Views Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      tags:
+      - saved-views
+      summary: Сохранить вид
+      operationId: post_view_api_v1_saved_views_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedViewCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedViewOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/saved-views/{view_id}:
+    patch:
+      tags:
+      - saved-views
+      summary: Изменить сохранённый вид
+      description: Название, фильтры или колонки. Пропущенное поле остаётся как было.
+      operationId: patch_view_api_v1_saved_views__view_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: view_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: View Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedViewUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedViewOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    delete:
+      tags:
+      - saved-views
+      summary: Удалить сохранённый вид
+      operationId: remove_view_api_v1_saved_views__view_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: view_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: View Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/events:
     get:
       tags:
@@ -8423,6 +8587,104 @@ components:
       - product
       - contract_number
       title: RowPreview
+    SavedViewCreate:
+      properties:
+        page:
+          type: string
+          enum:
+          - interactions
+          - radar
+          - reports
+          - rating
+          - clients
+          title: Page
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+        filters:
+          additionalProperties: true
+          type: object
+          title: Filters
+          description: 'Параметры запроса страницы: сервер их не толкует'
+        columns:
+          items:
+            type: string
+          type: array
+          maxItems: 40
+          title: Columns
+          description: Колонки списка в нужном порядке
+      type: object
+      required:
+      - page
+      - name
+      title: SavedViewCreate
+    SavedViewOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        page:
+          type: string
+          enum:
+          - interactions
+          - radar
+          - reports
+          - rating
+          - clients
+          title: Page
+        name:
+          type: string
+          title: Name
+        filters:
+          additionalProperties: true
+          type: object
+          title: Filters
+        columns:
+          items:
+            type: string
+          type: array
+          title: Columns
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - page
+      - name
+      - filters
+      - columns
+      - updated_at
+      title: SavedViewOut
+    SavedViewUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+            minLength: 1
+          - type: 'null'
+          title: Name
+        filters:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Filters
+        columns:
+          anyOf:
+          - items:
+              type: string
+            type: array
+            maxItems: 40
+          - type: 'null'
+          title: Columns
+      type: object
+      title: SavedViewUpdate
     SettingOut:
       properties:
         key:

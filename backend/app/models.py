@@ -44,6 +44,7 @@ from app.modules.notifications.models import (
 from app.modules.participants.models import Participant
 from app.modules.radar.models import RadarSignal
 from app.modules.reports.models import ReportJob
+from app.modules.views.models import SavedView
 from app.modules.workflow.models import (
     Stage,
     StageNorm,
@@ -85,6 +86,7 @@ __all__ = [
     "RadarSignal",
     "RatingWeightSet",
     "ReportJob",
+    "SavedView",
     "SiteApplication",
     "Stage",
     "StageNorm",
