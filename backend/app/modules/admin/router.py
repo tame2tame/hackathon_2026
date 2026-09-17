@@ -1,21 +1,25 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi.responses import Response
 
 from app.core.db import SessionDep
 from app.core.errors import ErrorCode, TraceIdDep, error_responses
 from app.core.roles import Role
 from app.core.security import CurrentUser, CurrentUserDep, require_roles
-from app.modules.admin import service
+from app.modules.admin import catalog_io, service
 from app.modules.admin.schemas import (
     AccessRuleCreate,
     AccessRuleOut,
     AdminUserOut,
     AdminUserUpdate,
     AuditEntryOut,
+    CatalogImportOut,
     CatalogItemCreate,
     CatalogItemOut,
+    CatalogRowOut,
     ContactCreate,
     ContactOut,
     CounterpartyGroupCreate,
@@ -32,6 +36,7 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 contacts_router = APIRouter(prefix="/api/v1", tags=["catalogs"])
 
 AdminDep = Annotated[CurrentUser, Depends(require_roles(Role.ADMIN))]
+ManagerDep = Annotated[CurrentUser, Depends(require_roles(Role.MANAGER, Role.ADMIN))]
 ADMIN_ERRORS = (
     ErrorCode.AUTH_REQUIRED,
     ErrorCode.AUTH_FORBIDDEN,
@@ -170,6 +175,89 @@ async def post_catalog_item(
 ) -> CatalogItemOut:
     item = await service.create_catalog_item(session, admin, kind, payload, trace_id)
     return CatalogItemOut(id=item.id, name=item.name, archived_at=item.archived_at)
+
+
+@router.post(
+    "/catalogs/{kind}/import",
+    summary="Загрузить справочник файлом",
+    description=(
+        "JSON (массив объектов или `{items}`), CSV, XLSX или XLS. Справочники: "
+        f"{', '.join(catalog_io.SPECS)}. Колонки называются как в выгрузке или по именам полей. "
+        "Записи находятся по естественному ключу: повторная загрузка не создаёт дублей, пустая "
+        "ячейка не стирает поле, архивная запись возвращается. По умолчанию — предпросмотр "
+        "(`dry_run=true`): итог по каждой строке без изменений в базе."
+    ),
+    responses=error_responses(
+        *ADMIN_ERRORS,
+        ErrorCode.IMPORT_MAPPING_INVALID,
+        ErrorCode.FILE_TOO_LARGE,
+    ),
+)
+async def post_catalog_import(
+    kind: str,
+    trace_id: TraceIdDep,
+    session: SessionDep,
+    admin: AdminDep,
+    file: Annotated[UploadFile, File(description="Файл справочника")],
+    dry_run: Annotated[bool, Form(description="Только показать, что будет")] = True,
+    encoding: Annotated[
+        Literal["utf-8", "windows-1251", "koi8-r", "cp866", "utf-16"] | None,
+        Form(description="Кодировка CSV, если определилась неверно"),
+    ] = None,
+) -> CatalogImportOut:
+    outcome = await catalog_io.import_catalog(
+        session, admin, kind, file, dry_run, encoding, trace_id
+    )
+    return CatalogImportOut(
+        kind=outcome.kind,
+        dry_run=outcome.dry_run,
+        created=outcome.count("created"),
+        updated=outcome.count("updated"),
+        unchanged=outcome.count("unchanged"),
+        errors=outcome.count("error"),
+        rows=[
+            CatalogRowOut(row_no=row.row_no, key=row.key, action=row.action, detail=row.detail)
+            for row in outcome.rows
+        ],
+    )
+
+
+@router.get(
+    "/catalogs/{kind}/export",
+    summary="Выгрузить справочник файлом",
+    description=(
+        "Те же колонки, что принимает загрузка: выгрузил, поправил, загрузил обратно. "
+        "CSV — через точку с запятой, UTF-8 с BOM или windows-1251."
+    ),
+    response_class=Response,
+    responses={
+        200: {
+            "content": {"application/json": {}, "text/csv": {}, "application/octet-stream": {}},
+            "description": "Файл справочника",
+        },
+        **error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.AUTH_FORBIDDEN, ErrorCode.NOT_FOUND),
+    },
+)
+async def read_catalog_export(
+    kind: str,
+    session: SessionDep,
+    _user: ManagerDep,
+    file_format: Annotated[
+        Literal["json", "csv", "xlsx"], Query(alias="format", description="Формат файла")
+    ] = "xlsx",
+    encoding: Annotated[
+        Literal["utf-8", "windows-1251"], Query(description="Кодировка CSV")
+    ] = "utf-8",
+    include_archived: Annotated[bool, Query(description="Вместе с архивными записями")] = False,
+) -> Response:
+    content, media_type, file_name = await catalog_io.export_catalog(
+        session, kind, file_format, encoding, include_archived
+    )
+    return Response(
+        content,
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(file_name)}"},
+    )
 
 
 @router.post(

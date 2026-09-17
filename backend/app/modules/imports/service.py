@@ -278,19 +278,13 @@ async def list_profiles(session: AsyncSession) -> list[ImportProfile]:
     return list(profiles)
 
 
-def _short_name(name: str) -> str:
-    """Сокращение вуза: аббревиатура из заглавных букв, иначе первое слово."""
-    letters = "".join(ch for ch in name if ch.isupper())
-    if 2 <= len(letters) <= 12:
-        return letters
-    return name.split(",")[0].split()[0][:60] if name.split() else name[:60]
-
-
 async def _university(session: AsyncSession, catalog: Catalog, name: str) -> University:
     key = mapping.normalize(name)
     university = catalog.universities.get(key)
     if university is None:
-        university = University(name=name[:300], short_name=_short_name(name), region="Не указан")
+        university = University(
+            name=name[:300], short_name=mapping.short_name(name), region="Не указан"
+        )
         session.add(university)
         await session.flush()
         catalog.universities[key] = university

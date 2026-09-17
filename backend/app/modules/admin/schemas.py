@@ -141,3 +141,20 @@ class CatalogItemOut(BaseModel):
     id: uuid.UUID
     name: str
     archived_at: datetime | None
+
+
+class CatalogRowOut(BaseModel):
+    row_no: int = Field(description="Номер строки данных в файле, с 1")
+    key: str = Field(description="Чем строка опознана: название, код или пара вендор и продукт")
+    action: Literal["created", "updated", "unchanged", "error"]
+    detail: str | None = Field(description="Что изменилось или почему строка не применена")
+
+
+class CatalogImportOut(BaseModel):
+    kind: str
+    dry_run: bool = Field(description="Предпросмотр: в базе ничего не изменилось")
+    created: int
+    updated: int
+    unchanged: int
+    errors: int
+    rows: list[CatalogRowOut]

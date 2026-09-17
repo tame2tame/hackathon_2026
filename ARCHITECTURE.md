@@ -265,6 +265,8 @@ notification_delivery id, notification_id, channel_kind, status (pending|sent|fa
 | `GET`, `PUT /api/v1/admin/settings` | Настройки приложения |
 | `GET /api/v1/admin/audit` | Журнал аудита с фильтрами |
 | `POST /api/v1/admin/catalogs/{kind}`, `/{id}/archive` | Каталоги: добавление и архивирование |
+| `POST /api/v1/admin/catalogs/{kind}/import` | Справочник файлом JSON, CSV, XLSX или XLS: предпросмотр (`dry_run`) и применение с итогом по каждой строке |
+| `GET /api/v1/admin/catalogs/{kind}/export` | Выгрузка справочника в JSON, CSV или XLSX в том виде, в каком его принимает загрузка |
 | `POST`, `PATCH /api/v1/admin/counterparty-groups`, `POST /{id}/archive` | Группы контрагентов: добавление, процесс группы, архив без открытых записей |
 | `GET`, `POST /api/v1/universities/{id}/contacts` | Контакты вуза; просмотр пишется в аудит |
 | `GET /api/v1/events` | Поток событий `text/event-stream` |

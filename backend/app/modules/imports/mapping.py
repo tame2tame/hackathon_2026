@@ -65,6 +65,14 @@ def normalize(value: str) -> str:
     return "".join(ch for ch in value.casefold() if ch.isalnum())
 
 
+def short_name(name: str) -> str:
+    """Сокращение вуза: аббревиатура из заглавных букв, иначе первое слово."""
+    letters = "".join(ch for ch in name if ch.isupper())
+    if 2 <= len(letters) <= 12:
+        return letters
+    return name.split(",")[0].split()[0][:60] if name.split() else name[:60]
+
+
 def suggest(headers: Sequence[str]) -> dict[str, str]:
     """Поле модели → заголовок файла. Точное совпадение заголовка важнее частичного."""
     normalized = {header: normalize(header) for header in headers if header.strip()}

@@ -3808,6 +3808,151 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/admin/catalogs/{kind}/import:
+    post:
+      tags:
+      - admin
+      summary: Загрузить справочник файлом
+      description: 'JSON (массив объектов или `{items}`), CSV, XLSX или XLS. Справочники: universities,
+        directions, programs, vendors, products, program-products. Колонки называются как в выгрузке или
+        по именам полей. Записи находятся по естественному ключу: повторная загрузка не создаёт дублей,
+        пустая ячейка не стирает поле, архивная запись возвращается. По умолчанию — предпросмотр (`dry_run=true`):
+        итог по каждой строке без изменений в базе.'
+      operationId: post_catalog_import_api_v1_admin_catalogs__kind__import_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: kind
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Kind
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_post_catalog_import_api_v1_admin_catalogs__kind__import_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogImportOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR · IMPORT_MAPPING_INVALID
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '413':
+          description: FILE_TOO_LARGE
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/admin/catalogs/{kind}/export:
+    get:
+      tags:
+      - admin
+      summary: Выгрузить справочник файлом
+      description: 'Те же колонки, что принимает загрузка: выгрузил, поправил, загрузил обратно. CSV —
+        через точку с запятой, UTF-8 с BOM или windows-1251.'
+      operationId: read_catalog_export_api_v1_admin_catalogs__kind__export_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: kind
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Kind
+      - name: format
+        in: query
+        required: false
+        schema:
+          enum:
+          - json
+          - csv
+          - xlsx
+          type: string
+          description: Формат файла
+          default: xlsx
+          title: Format
+        description: Формат файла
+      - name: encoding
+        in: query
+        required: false
+        schema:
+          enum:
+          - utf-8
+          - windows-1251
+          type: string
+          description: Кодировка CSV
+          default: utf-8
+          title: Encoding
+        description: Кодировка CSV
+      - name: include_archived
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Вместе с архивными записями
+          default: false
+          title: Include Archived
+        description: Вместе с архивными записями
+      responses:
+        '200':
+          description: Файл справочника
+          content:
+            application/json: {}
+            text/csv: {}
+            application/octet-stream: {}
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/admin/catalogs/{kind}/{item_id}/archive:
     post:
       tags:
@@ -5002,6 +5147,34 @@ components:
       required:
       - file
       title: Body_post_attachment_api_v1_interactions__interaction_id__attachments_post
+    Body_post_catalog_import_api_v1_admin_catalogs__kind__import_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Файл справочника
+        dry_run:
+          type: boolean
+          title: Dry Run
+          description: Только показать, что будет
+          default: true
+        encoding:
+          anyOf:
+          - type: string
+            enum:
+            - utf-8
+            - windows-1251
+            - koi8-r
+            - cp866
+            - utf-16
+          - type: 'null'
+          title: Encoding
+          description: Кодировка CSV, если определилась неверно
+      type: object
+      required:
+      - file
+      title: Body_post_catalog_import_api_v1_admin_catalogs__kind__import_post
     Body_post_import_api_v1_imports_post:
       properties:
         file:
@@ -5124,6 +5297,42 @@ components:
       - interaction_ids
       - to_stage_code
       title: BulkTransitionRequest
+    CatalogImportOut:
+      properties:
+        kind:
+          type: string
+          title: Kind
+        dry_run:
+          type: boolean
+          title: Dry Run
+          description: 'Предпросмотр: в базе ничего не изменилось'
+        created:
+          type: integer
+          title: Created
+        updated:
+          type: integer
+          title: Updated
+        unchanged:
+          type: integer
+          title: Unchanged
+        errors:
+          type: integer
+          title: Errors
+        rows:
+          items:
+            $ref: '#/components/schemas/CatalogRowOut'
+          type: array
+          title: Rows
+      type: object
+      required:
+      - kind
+      - dry_run
+      - created
+      - updated
+      - unchanged
+      - errors
+      - rows
+      title: CatalogImportOut
     CatalogItemCreate:
       properties:
         name:
@@ -5197,6 +5406,37 @@ components:
       - name
       - archived_at
       title: CatalogItemOut
+    CatalogRowOut:
+      properties:
+        row_no:
+          type: integer
+          title: Row No
+          description: Номер строки данных в файле, с 1
+        key:
+          type: string
+          title: Key
+          description: 'Чем строка опознана: название, код или пара вендор и продукт'
+        action:
+          type: string
+          enum:
+          - created
+          - updated
+          - unchanged
+          - error
+          title: Action
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Detail
+          description: Что изменилось или почему строка не применена
+      type: object
+      required:
+      - row_no
+      - key
+      - action
+      - detail
+      title: CatalogRowOut
     ChannelOut:
       properties:
         kind:
