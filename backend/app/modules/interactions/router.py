@@ -2,10 +2,10 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.core.db import SessionDep
-from app.core.errors import ErrorCode, error_responses
+from app.core.errors import ErrorCode, TraceIdDep, error_responses
 from app.core.pagination import Page, PageQuery
 from app.core.security import CurrentUserDep
 from app.modules.interactions.schemas import (
@@ -106,11 +106,10 @@ async def read_interaction(
 async def post_transition(
     interaction_id: uuid.UUID,
     payload: TransitionCreate,
-    request: Request,
+    trace_id: TraceIdDep,
     session: SessionDep,
     user: CurrentUserDep,
 ) -> TransitionResult:
-    trace_id = getattr(request.state, "trace_id", None)
     return await create_transition(session, user, interaction_id, payload, trace_id=trace_id)
 
 
@@ -158,11 +157,10 @@ async def post_note(
 )
 async def post_bulk_transitions(
     payload: BulkTransitionRequest,
-    request: Request,
+    trace_id: TraceIdDep,
     session: SessionDep,
     user: CurrentUserDep,
 ) -> BulkResult:
-    trace_id = getattr(request.state, "trace_id", None)
     return await bulk_transitions(session, user, payload, trace_id=trace_id)
 
 
@@ -181,11 +179,10 @@ async def post_bulk_transitions(
 async def put_owner(
     interaction_id: uuid.UUID,
     payload: OwnerChange,
-    request: Request,
+    trace_id: TraceIdDep,
     session: SessionDep,
     user: CurrentUserDep,
 ) -> InteractionDetail:
-    trace_id = getattr(request.state, "trace_id", None)
     return await change_owner(session, user, interaction_id, payload, trace_id=trace_id)
 
 
@@ -201,9 +198,8 @@ async def put_owner(
 )
 async def post_bulk_owner(
     payload: BulkOwnerRequest,
-    request: Request,
+    trace_id: TraceIdDep,
     session: SessionDep,
     user: CurrentUserDep,
 ) -> BulkResult:
-    trace_id = getattr(request.state, "trace_id", None)
     return await bulk_change_owner(session, user, payload, trace_id=trace_id)

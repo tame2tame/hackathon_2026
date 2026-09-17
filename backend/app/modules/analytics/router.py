@@ -2,10 +2,10 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query
 
 from app.core.db import SessionDep
-from app.core.errors import AppError, ErrorCode, error_responses
+from app.core.errors import AppError, ErrorCode, TraceIdDep, error_responses
 from app.core.roles import Role
 from app.core.security import CurrentUser, CurrentUserDep, require_roles
 from app.modules.analytics import stats
@@ -86,9 +86,8 @@ async def read_weights(session: SessionDep, _user: CurrentUserDep) -> WeightsOut
     ),
 )
 async def put_weights(
-    payload: WeightsUpdate, request: Request, session: SessionDep, user: ManagerDep
+    payload: WeightsUpdate, trace_id: TraceIdDep, session: SessionDep, user: ManagerDep
 ) -> WeightsOut:
-    trace_id = getattr(request.state, "trace_id", None)
     return WeightsOut.model_validate(await set_weights(session, user, payload, trace_id))
 
 

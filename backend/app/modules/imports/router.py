@@ -1,10 +1,10 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, UploadFile, status
 
 from app.core.db import SessionDep
-from app.core.errors import ErrorCode, error_responses
+from app.core.errors import ErrorCode, TraceIdDep, error_responses
 from app.core.roles import Role
 from app.core.security import CurrentUser, require_roles
 from app.modules.imports.mapping import REQUIRED_FIELDS, ImportField, suggest
@@ -113,9 +113,8 @@ async def put_mapping(
     ),
 )
 async def post_apply(
-    batch_id: uuid.UUID, request: Request, session: SessionDep, user: ManagerDep
+    batch_id: uuid.UUID, trace_id: TraceIdDep, session: SessionDep, user: ManagerDep
 ) -> ApplyResult:
-    trace_id = getattr(request.state, "trace_id", None)
     return await apply_batch(session, user, batch_id, trace_id=trace_id)
 
 

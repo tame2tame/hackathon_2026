@@ -3,9 +3,9 @@
 import logging
 import uuid
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -128,6 +128,16 @@ class TraceIdMiddleware:
 
 def _trace_id(request: Request) -> str:
     return str(getattr(request.state, "trace_id", "") or uuid.uuid4().hex[:16])
+
+
+def trace_id_of(request: Request) -> str | None:
+    """Идентификатор запроса для записей аудита. Зависимость вместо повтора в каждом методе."""
+    trace_id: str | None = getattr(request.state, "trace_id", None)
+    return trace_id
+
+
+# Роутеры объявляют TraceIdDep и не лезут в request.state руками.
+TraceIdDep = Annotated[str | None, Depends(trace_id_of)]
 
 
 def problem_response(

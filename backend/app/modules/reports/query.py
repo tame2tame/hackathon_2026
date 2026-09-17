@@ -1,8 +1,9 @@
 """Строки отчёта: фильтры списка плюс этап, на котором взаимодействие было к концу периода."""
 
 from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.scope import apply_interaction_scope
@@ -29,7 +30,9 @@ def _period_end(filters: InteractionFilters, now: datetime) -> datetime:
     return datetime.combine(filters.period_to, datetime.max.time(), tzinfo=UTC)
 
 
-def _base_query(user: CurrentUser, filters: InteractionFilters, end: datetime):  # type: ignore[no-untyped-def]
+def _base_query(
+    user: CurrentUser, filters: InteractionFilters, end: datetime
+) -> Select[tuple[Any, ...]]:
     # Последний переход до конца периода: он и задаёт этап того времени (ADR-005).
     stage_at = (
         select(

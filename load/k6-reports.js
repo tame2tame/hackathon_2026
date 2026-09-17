@@ -2,10 +2,12 @@
 // Запуск: k6 run -e BASE_URL=http://127.0.0.1:8000 load/k6-reports.js
 
 import http from 'k6/http';
-import { check } from 'k6';
+import { check, sleep } from 'k6';
 
 const BASE_URL = __ENV.BASE_URL || 'http://127.0.0.1:8000';
 const FORMATS = ['xlsx', 'json', 'pdf', 'xls'];
+// Отчёт строится в фоне, поэтому состояние опрашивается, а не читается в первом же ответе.
+const POLL_ATTEMPTS = 60;
 
 export const options = {
   scenarios: {
@@ -35,6 +37,14 @@ export default function () {
 
   const id = created.json('id');
   if (!id) return;
-  const state = http.get(`${BASE_URL}/api/v1/reports/${id}`, options);
-  check(state, { 'отчёт готов': (r) => r.json('status') === 'done' });
+
+  const poll = { headers: options.headers, tags: { name: 'poll' } };
+  let status = 'queued';
+  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
+    const state = http.get(`${BASE_URL}/api/v1/reports/${id}`, poll);
+    status = state.json('status');
+    if (status === 'done' || status === 'failed') break;
+    sleep(1);
+  }
+  check({ status: status }, { 'отчёт дошёл до done': (r) => r.status === 'done' });
 }

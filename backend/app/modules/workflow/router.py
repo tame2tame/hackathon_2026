@@ -1,10 +1,10 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, status
 
 from app.core.db import SessionDep
-from app.core.errors import ErrorCode, error_responses
+from app.core.errors import ErrorCode, TraceIdDep, error_responses
 from app.core.roles import Role
 from app.core.security import CurrentUser, CurrentUserDep, require_roles
 from app.modules.workflow.editor import (
@@ -77,11 +77,10 @@ async def read_norms(session: SessionDep, _user: CurrentUserDep) -> list[StageNo
 async def put_norm(
     stage_code: str,
     payload: NormUpdate,
-    request: Request,
+    trace_id: TraceIdDep,
     session: SessionDep,
     user: ManagerDep,
 ) -> StageNormOut:
-    trace_id = getattr(request.state, "trace_id", None)
     return await set_norm(session, user, stage_code, payload.norm_days, trace_id=trace_id)
 
 
@@ -97,9 +96,8 @@ async def put_norm(
     ),
 )
 async def post_accept_suggestion(
-    stage_code: str, request: Request, session: SessionDep, user: ManagerDep
+    stage_code: str, trace_id: TraceIdDep, session: SessionDep, user: ManagerDep
 ) -> StageNormOut:
-    trace_id = getattr(request.state, "trace_id", None)
     return await accept_suggestion(session, user, stage_code, trace_id=trace_id)
 
 
@@ -110,9 +108,8 @@ async def post_accept_suggestion(
     responses=error_responses(*EDITOR_ERRORS),
 )
 async def post_template(
-    payload: WorkflowTemplateCreate, request: Request, session: SessionDep, user: ManagerDep
+    payload: WorkflowTemplateCreate, trace_id: TraceIdDep, session: SessionDep, user: ManagerDep
 ) -> WorkflowTemplateOut:
-    trace_id = getattr(request.state, "trace_id", None)
     template = await create_template(session, user, payload.name, trace_id)
     return WorkflowTemplateOut.model_validate(template)
 
@@ -125,9 +122,8 @@ async def post_template(
     responses=error_responses(*EDITOR_ERRORS),
 )
 async def post_version(
-    template_id: uuid.UUID, request: Request, session: SessionDep, user: ManagerDep
+    template_id: uuid.UUID, trace_id: TraceIdDep, session: SessionDep, user: ManagerDep
 ) -> VersionOut:
-    trace_id = getattr(request.state, "trace_id", None)
     draft = await create_draft(session, user, template_id, trace_id)
     return await version_out(session, draft)
 
@@ -141,11 +137,10 @@ async def post_version(
 async def patch_workflow_version(
     version_id: uuid.UUID,
     payload: VersionPatch,
-    request: Request,
+    trace_id: TraceIdDep,
     session: SessionDep,
     user: ManagerDep,
 ) -> VersionOut:
-    trace_id = getattr(request.state, "trace_id", None)
     draft = await patch_version(session, user, version_id, payload, trace_id)
     return await version_out(session, draft)
 
@@ -159,11 +154,10 @@ async def patch_workflow_version(
 async def patch_stage(
     stage_id: uuid.UUID,
     payload: StageRename,
-    request: Request,
+    trace_id: TraceIdDep,
     session: SessionDep,
     user: ManagerDep,
 ) -> StageRef:
-    trace_id = getattr(request.state, "trace_id", None)
     stage = await rename_stage(session, user, stage_id, payload.name, trace_id)
     return StageRef.model_validate(stage)
 
@@ -182,10 +176,9 @@ async def patch_stage(
 async def post_publish(
     version_id: uuid.UUID,
     payload: PublishRequest,
-    request: Request,
+    trace_id: TraceIdDep,
     session: SessionDep,
     user: ManagerDep,
 ) -> VersionOut:
-    trace_id = getattr(request.state, "trace_id", None)
     published = await publish_version(session, user, version_id, payload, trace_id)
     return await version_out(session, published)

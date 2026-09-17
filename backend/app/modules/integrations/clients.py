@@ -6,7 +6,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
@@ -41,10 +41,13 @@ class ApplicationRecord:
     applications: int = 1
 
 
+# runtime_checkable: синхронизация выбирает ветку по типу клиента, а не по строке вида источника.
+@runtime_checkable
 class LmsClient(Protocol):
     async def fetch_metrics(self) -> list[CourseMetrics]: ...
 
 
+@runtime_checkable
 class SiteClient(Protocol):
     async def fetch_applications(self) -> list[ApplicationRecord]: ...
 

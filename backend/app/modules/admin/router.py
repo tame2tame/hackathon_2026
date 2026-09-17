@@ -1,10 +1,10 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.core.db import SessionDep
-from app.core.errors import ErrorCode, error_responses
+from app.core.errors import ErrorCode, TraceIdDep, error_responses
 from app.core.roles import Role
 from app.core.security import CurrentUser, CurrentUserDep, require_roles
 from app.modules.admin import service
@@ -37,11 +37,6 @@ ADMIN_ERRORS = (
 )
 
 
-def _trace(request: Request) -> str | None:
-    trace_id: str | None = getattr(request.state, "trace_id", None)
-    return trace_id
-
-
 @router.get("/users", summary="Сотрудники", responses=error_responses(*ADMIN_ERRORS))
 async def read_users(session: SessionDep, _admin: AdminDep) -> list[AdminUserOut]:
     return [AdminUserOut.model_validate(user) for user in await service.list_users(session)]
@@ -55,11 +50,11 @@ async def read_users(session: SessionDep, _admin: AdminDep) -> list[AdminUserOut
 async def patch_user(
     user_id: uuid.UUID,
     payload: AdminUserUpdate,
-    request: Request,
+    trace_id: TraceIdDep,
     session: SessionDep,
     admin: AdminDep,
 ) -> AdminUserOut:
-    user = await service.update_user(session, admin, user_id, payload, _trace(request))
+    user = await service.update_user(session, admin, user_id, payload, trace_id)
     return AdminUserOut.model_validate(user)
 
 
@@ -75,10 +70,10 @@ async def read_teams(session: SessionDep, _admin: AdminDep) -> list[TeamOut]:
     responses=error_responses(*ADMIN_ERRORS),
 )
 async def post_team(
-    payload: TeamCreate, request: Request, session: SessionDep, admin: AdminDep
+    payload: TeamCreate, trace_id: TraceIdDep, session: SessionDep, admin: AdminDep
 ) -> TeamOut:
     team = await service.create_team(
-        session, admin, payload.name, payload.manager_user_id, _trace(request)
+        session, admin, payload.name, payload.manager_user_id, trace_id
     )
     return TeamOut.model_validate(team)
 
@@ -100,9 +95,9 @@ async def read_rules(session: SessionDep, _admin: AdminDep) -> list[AccessRuleOu
     responses=error_responses(*ADMIN_ERRORS),
 )
 async def post_rule(
-    payload: AccessRuleCreate, request: Request, session: SessionDep, admin: AdminDep
+    payload: AccessRuleCreate, trace_id: TraceIdDep, session: SessionDep, admin: AdminDep
 ) -> AccessRuleOut:
-    rule = await service.create_rule(session, admin, payload, _trace(request))
+    rule = await service.create_rule(session, admin, payload, trace_id)
     return AccessRuleOut.model_validate(rule)
 
 
@@ -113,9 +108,9 @@ async def post_rule(
     responses=error_responses(*ADMIN_ERRORS),
 )
 async def delete_rule(
-    rule_id: uuid.UUID, request: Request, session: SessionDep, admin: AdminDep
+    rule_id: uuid.UUID, trace_id: TraceIdDep, session: SessionDep, admin: AdminDep
 ) -> None:
-    await service.delete_rule(session, admin, rule_id, _trace(request))
+    await service.delete_rule(session, admin, rule_id, trace_id)
 
 
 @router.get("/settings", summary="Настройки приложения", responses=error_responses(*ADMIN_ERRORS))
@@ -130,9 +125,9 @@ async def read_settings(session: SessionDep, _admin: AdminDep) -> list[SettingOu
     responses=error_responses(*ADMIN_ERRORS),
 )
 async def put_setting(
-    key: str, payload: SettingUpdate, request: Request, session: SessionDep, admin: AdminDep
+    key: str, payload: SettingUpdate, trace_id: TraceIdDep, session: SessionDep, admin: AdminDep
 ) -> SettingOut:
-    setting = await service.set_setting(session, admin, key, payload.value, _trace(request))
+    setting = await service.set_setting(session, admin, key, payload.value, trace_id)
     return SettingOut.model_validate(setting)
 
 
@@ -163,11 +158,11 @@ async def read_audit(
 async def post_catalog_item(
     kind: str,
     payload: CatalogItemCreate,
-    request: Request,
+    trace_id: TraceIdDep,
     session: SessionDep,
     admin: AdminDep,
 ) -> CatalogItemOut:
-    item = await service.create_catalog_item(session, admin, kind, payload, _trace(request))
+    item = await service.create_catalog_item(session, admin, kind, payload, trace_id)
     return CatalogItemOut(id=item.id, name=item.name, archived_at=item.archived_at)
 
 
@@ -178,9 +173,9 @@ async def post_catalog_item(
     responses=error_responses(*ADMIN_ERRORS),
 )
 async def post_catalog_archive(
-    kind: str, item_id: uuid.UUID, request: Request, session: SessionDep, admin: AdminDep
+    kind: str, item_id: uuid.UUID, trace_id: TraceIdDep, session: SessionDep, admin: AdminDep
 ) -> CatalogItemOut:
-    item = await service.archive_catalog_item(session, admin, kind, item_id, _trace(request))
+    item = await service.archive_catalog_item(session, admin, kind, item_id, trace_id)
     return CatalogItemOut(id=item.id, name=item.name, archived_at=item.archived_at)
 
 
@@ -191,9 +186,9 @@ async def post_catalog_archive(
     responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
 )
 async def read_contacts(
-    university_id: uuid.UUID, request: Request, session: SessionDep, user: CurrentUserDep
+    university_id: uuid.UUID, trace_id: TraceIdDep, session: SessionDep, user: CurrentUserDep
 ) -> list[ContactOut]:
-    return await service.list_contacts(session, user, university_id, _trace(request))
+    return await service.list_contacts(session, user, university_id, trace_id)
 
 
 @contacts_router.post(
@@ -208,11 +203,11 @@ async def read_contacts(
 async def post_contact(
     university_id: uuid.UUID,
     payload: ContactCreate,
-    request: Request,
+    trace_id: TraceIdDep,
     session: SessionDep,
     user: CurrentUserDep,
 ) -> ContactOut:
-    return await service.create_contact(session, user, university_id, payload, _trace(request))
+    return await service.create_contact(session, user, university_id, payload, trace_id)
 
 
 @contacts_router.post(
@@ -221,6 +216,6 @@ async def post_contact(
     responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
 )
 async def post_contact_archive(
-    contact_id: uuid.UUID, request: Request, session: SessionDep, user: CurrentUserDep
+    contact_id: uuid.UUID, trace_id: TraceIdDep, session: SessionDep, user: CurrentUserDep
 ) -> ContactOut:
-    return await service.archive_contact(session, user, contact_id, _trace(request))
+    return await service.archive_contact(session, user, contact_id, trace_id)

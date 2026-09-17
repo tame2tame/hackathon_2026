@@ -327,12 +327,12 @@ async def sync_source(
 
     client = client or _client_for(source)
     try:
-        if source.kind == "lms":
-            metrics = await client.fetch_metrics()  # type: ignore[union-attr]
-            stats = await _save_metrics(session, source, metrics)
+        if isinstance(client, LmsClient):
+            stats = await _save_metrics(session, source, await client.fetch_metrics())
         else:
-            records = await client.fetch_applications()  # type: ignore[union-attr]
-            stats = await _save_applications(session, source, records, now)
+            stats = await _save_applications(
+                session, source, await client.fetch_applications(), now
+            )
     except SourceUnavailableError:
         run.status = "failed"
         run.error_code = ErrorCode.INTEGRATION_UNAVAILABLE.value
