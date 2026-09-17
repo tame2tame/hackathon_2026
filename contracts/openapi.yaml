@@ -1726,6 +1726,125 @@ paths:
                 $ref: '#/components/schemas/Problem'
       security:
       - HTTPBearer: []
+  /api/v1/interactions/{interaction_id}/export:
+    get:
+      tags:
+      - exchange
+      summary: Документ обмена по записи
+      description: 'JSON `radar-vuzov/interaction@1`: статус, ответственный, контрагент, программа, продукт
+        и ключи связей с записями базы и файлами в S3. Тот же документ уходит в LMS и CMS.'
+      operationId: read_interaction_document_api_v1_interactions__interaction_id__export_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InteractionDocument'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/exchange/interactions:
+    get:
+      tags:
+      - exchange
+      summary: Выгрузка записей в JSON
+      description: Документы `radar-vuzov/interaction@1` в области видимости пользователя. `updated_since`
+        отдаёт только изменённые с этого момента — так внешняя система забирает изменения по расписанию,
+        не перечитывая всё.
+      operationId: read_exchange_api_v1_exchange_interactions_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: updated_since
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          description: Изменённые не раньше этого момента, ISO 8601
+          title: Updated Since
+        description: Изменённые не раньше этого момента, ISO 8601
+      - name: group_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: Группа контрагентов
+          title: Group Id
+        description: Группа контрагентов
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Номер страницы, с 1
+          default: 1
+          title: Page
+        description: Номер страницы, с 1
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          description: Размер страницы
+          default: 50
+          title: Page Size
+        description: Размер страницы
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_InteractionDocument_'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/interactions/{interaction_id}/attachments:
     post:
       tags:
@@ -2131,11 +2250,176 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/integrations/{source_id}:
+    patch:
+      tags:
+      - integrations
+      summary: Включить или выключить отправку изменений источнику
+      operationId: patch_source_api_v1_integrations__source_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: source_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Source Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationSourceOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/integrations/{source_id}/push:
+    post:
+      tags:
+      - integrations
+      summary: Отправить изменения записей в систему сейчас
+      description: 'То же, что делает воркер раз в минуту: документы `radar-vuzov/interaction@1` по записям
+        из очереди уходят одним пакетом. Запуск пишется в журнал с направлением `push`, отказ получателя
+        — с кодом `INTEGRATION_UNAVAILABLE` и повтором позже.'
+      operationId: post_push_api_v1_integrations__source_id__push_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: source_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Source Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRunOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/integrations/{source_id}/outbox:
+    get:
+      tags:
+      - integrations
+      summary: Очередь отправки источнику
+      description: Какие записи ждут отправки, ушли или отклонены получателем и почему.
+      operationId: read_outbox_api_v1_integrations__source_id__outbox_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: source_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Source Id
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            pattern: ^(pending|sent|failed)$
+          - type: 'null'
+          description: Состояние отправки
+          title: Status
+        description: Состояние отправки
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OutboxEntryOut'
+                title: Response Read Outbox Api V1 Integrations  Source Id  Outbox Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/integrations/{source_id}/runs:
     get:
       tags:
       - integrations
-      summary: Журнал запусков источника
+      summary: Журнал обмена с источником в обе стороны
       operationId: read_runs_api_v1_integrations__source_id__runs_get
       security:
       - HTTPBearer: []
@@ -5535,6 +5819,294 @@ components:
       - code
       - name
       title: DirectionRef
+    DocumentApplication:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+          description: Ключ записи site_application
+        external_id:
+          type: string
+          title: External Id
+          description: Номер заявки на сайте
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+      type: object
+      required:
+      - id
+      - external_id
+      - received_at
+      title: DocumentApplication
+    DocumentContract:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        number:
+          type: string
+          title: Number
+        signed_at:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Signed At
+        license_valid_until:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: License Valid Until
+        transfer_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Transfer Status
+      type: object
+      required:
+      - id
+      - number
+      - signed_at
+      - license_valid_until
+      - transfer_status
+      title: DocumentContract
+    DocumentCounterparty:
+      properties:
+        kind:
+          type: string
+          enum:
+          - university
+          - person
+          - organization
+          title: Kind
+        id:
+          type: string
+          format: uuid
+          title: Id
+          description: Ключ записи university или client
+        name:
+          type: string
+          title: Name
+        short_name:
+          type: string
+          title: Short Name
+        region:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Region
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+        inn:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Inn
+          description: ИНН организации
+      type: object
+      required:
+      - kind
+      - id
+      - name
+      - short_name
+      - region
+      - city
+      - inn
+      title: DocumentCounterparty
+    DocumentFile:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+          description: Ключ записи attachment
+        document_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+        file_name:
+          type: string
+          title: File Name
+        mime_type:
+          type: string
+          title: Mime Type
+        size_bytes:
+          type: integer
+          title: Size Bytes
+        sha256:
+          type: string
+          title: Sha256
+          description: 'Контрольная сумма: сверка файла без его скачивания'
+        stage_code:
+          type: string
+          title: Stage Code
+        uploaded_at:
+          type: string
+          format: date-time
+          title: Uploaded At
+        storage:
+          additionalProperties:
+            type: string
+          type: object
+          title: Storage
+          description: 'Где лежит файл: backend (s3 или local), bucket и key'
+      type: object
+      required:
+      - id
+      - document_type
+      - file_name
+      - mime_type
+      - size_bytes
+      - sha256
+      - stage_code
+      - uploaded_at
+      - storage
+      title: DocumentFile
+    DocumentGroup:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        code:
+          type: string
+          title: Code
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - id
+      - code
+      - name
+      title: DocumentGroup
+    DocumentPerson:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        full_name:
+          type: string
+          title: Full Name
+      type: object
+      required:
+      - id
+      - full_name
+      title: DocumentPerson
+    DocumentProduct:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        vendor_name:
+          type: string
+          title: Vendor Name
+      type: object
+      required:
+      - id
+      - name
+      - vendor_name
+      title: DocumentProduct
+    DocumentProgram:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        direction_code:
+          type: string
+          title: Direction Code
+        direction_name:
+          type: string
+          title: Direction Name
+        lms_course_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Lms Course Ref
+          description: Курс программы в LMS, если известен
+      type: object
+      required:
+      - id
+      - name
+      - direction_code
+      - direction_name
+      - lms_course_ref
+      title: DocumentProgram
+    DocumentRecord:
+      properties:
+        table:
+          type: string
+          const: interaction
+          title: Table
+          default: interaction
+        id:
+          type: string
+          format: uuid
+          title: Id
+        version:
+          type: integer
+          title: Version
+          description: 'Растёт с каждым изменением: получатель отбрасывает устаревшие документы'
+      type: object
+      required:
+      - id
+      - version
+      title: DocumentRecord
+      description: Ключ записи в базе CRM.
+    DocumentStatus:
+      properties:
+        state:
+          type: string
+          enum:
+          - active
+          - paused
+          - completed
+          - cancelled
+          title: State
+        stage_code:
+          type: string
+          title: Stage Code
+        stage_name:
+          type: string
+          title: Stage Name
+        stage_entered_at:
+          type: string
+          format: date-time
+          title: Stage Entered At
+        workflow_template_id:
+          type: string
+          format: uuid
+          title: Workflow Template Id
+        workflow_version_id:
+          type: string
+          format: uuid
+          title: Workflow Version Id
+      type: object
+      required:
+      - state
+      - stage_code
+      - stage_name
+      - stage_entered_at
+      - workflow_template_id
+      - workflow_version_id
+      title: DocumentStatus
     ErrorCode:
       type: string
       enum:
@@ -5758,6 +6330,16 @@ components:
             format: date-time
           - type: 'null'
           title: Last Sync At
+        push_enabled:
+          type: boolean
+          title: Push Enabled
+          description: Система принимает изменения записей CRM
+        last_push_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Push At
       type: object
       required:
       - id
@@ -5767,6 +6349,8 @@ components:
       - is_mock
       - schedule_cron
       - last_sync_at
+      - push_enabled
+      - last_push_at
       title: IntegrationSourceOut
     InteractionCreate:
       properties:
@@ -5924,6 +6508,72 @@ components:
       - allowed_transitions
       - signals
       title: InteractionDetail
+    InteractionDocument:
+      properties:
+        format:
+          type: string
+          const: radar-vuzov/interaction@1
+          title: Format
+          default: radar-vuzov/interaction@1
+        record:
+          $ref: '#/components/schemas/DocumentRecord'
+        group:
+          $ref: '#/components/schemas/DocumentGroup'
+        status:
+          $ref: '#/components/schemas/DocumentStatus'
+        owner:
+          $ref: '#/components/schemas/DocumentPerson'
+          description: Ответственный КАМ
+        counterparty:
+          $ref: '#/components/schemas/DocumentCounterparty'
+        program:
+          $ref: '#/components/schemas/DocumentProgram'
+        product:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentProduct'
+          - type: 'null'
+        contract:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentContract'
+          - type: 'null'
+        files:
+          items:
+            $ref: '#/components/schemas/DocumentFile'
+          type: array
+          title: Files
+        site_applications:
+          items:
+            $ref: '#/components/schemas/DocumentApplication'
+          type: array
+          title: Site Applications
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        exported_at:
+          type: string
+          format: date-time
+          title: Exported At
+      type: object
+      required:
+      - record
+      - group
+      - status
+      - owner
+      - counterparty
+      - program
+      - product
+      - contract
+      - files
+      - site_applications
+      - created_at
+      - updated_at
+      - exported_at
+      title: InteractionDocument
     InteractionListItem:
       properties:
         id:
@@ -6190,6 +6840,58 @@ components:
       - created_at
       - read_at
       title: NotificationOut
+    OutboxEntryOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        interaction_id:
+          type: string
+          format: uuid
+          title: Interaction Id
+        reason:
+          type: string
+          title: Reason
+          description: 'Что изменилось: created, transition, owner, attachment и др.'
+        status:
+          type: string
+          title: Status
+          description: pending, sent или failed
+        attempts:
+          type: integer
+          title: Attempts
+        next_attempt_at:
+          type: string
+          format: date-time
+          title: Next Attempt At
+        last_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Error
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Sent At
+      type: object
+      required:
+      - id
+      - interaction_id
+      - reason
+      - status
+      - attempts
+      - next_attempt_at
+      - last_error
+      - created_at
+      - sent_at
+      title: OutboxEntryOut
     OwnerChange:
       properties:
         owner_id:
@@ -6234,6 +6936,29 @@ components:
       - page
       - page_size
       title: Page[ClientListItem]
+    Page_InteractionDocument_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/InteractionDocument'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      title: Page[InteractionDocument]
     Page_InteractionListItem_:
       properties:
         items:
@@ -6919,6 +7644,16 @@ components:
       - match_status
       - interaction_id
       title: SiteApplicationOut
+    SourceUpdate:
+      properties:
+        push_enabled:
+          type: boolean
+          title: Push Enabled
+          description: Отправлять ли системе изменения записей
+      type: object
+      required:
+      - push_enabled
+      title: SourceUpdate
     StageDraft:
       properties:
         code:
@@ -7167,6 +7902,10 @@ components:
           type: string
           format: uuid
           title: Source Id
+        direction:
+          type: string
+          title: Direction
+          description: pull — забрали данные, push — отправили изменения
         started_at:
           type: string
           format: date-time
@@ -7194,6 +7933,7 @@ components:
       required:
       - id
       - source_id
+      - direction
       - started_at
       - finished_at
       - status

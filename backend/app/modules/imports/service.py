@@ -26,6 +26,7 @@ from app.modules.catalogs.models import (
 from app.modules.imports import mapping, reader
 from app.modules.imports.models import ImportBatch, ImportProfile, ImportRow
 from app.modules.imports.schemas import ApplyResult
+from app.modules.integrations.outbox import mark_changed
 from app.modules.interactions.models import Contract, Interaction, InteractionNote, Transition
 from app.modules.radar.service import recompute_signals
 from app.modules.workflow.defaults import universities_group
@@ -343,6 +344,7 @@ async def apply_batch(
 
     await session.flush()
     await recompute_signals(session, touched, now)
+    await mark_changed(session, touched, "import")
     batch.status = "applied"
     batch.applied_at = now
     batch.stats = {**batch.stats, **counter}

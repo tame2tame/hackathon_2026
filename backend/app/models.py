@@ -19,7 +19,12 @@ from app.modules.catalogs.models import (
 )
 from app.modules.clients.models import Client
 from app.modules.imports.models import ImportBatch, ImportProfile, ImportRow
-from app.modules.integrations.models import IntegrationSource, SiteApplication, SyncRun
+from app.modules.integrations.models import (
+    IntegrationOutbox,
+    IntegrationSource,
+    SiteApplication,
+    SyncRun,
+)
 from app.modules.interactions.models import (
     AssignmentChange,
     Attachment,
@@ -62,6 +67,7 @@ __all__ = [
     "ImportBatch",
     "ImportProfile",
     "ImportRow",
+    "IntegrationOutbox",
     "IntegrationSource",
     "Interaction",
     "InteractionContact",

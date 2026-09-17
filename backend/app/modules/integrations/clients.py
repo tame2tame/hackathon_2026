@@ -1,7 +1,9 @@
-"""Клиенты внешних систем за узкими интерфейсами: LMS отдаёт метрики, сайт — заявки.
+"""Клиенты внешних систем за узкими интерфейсами: LMS отдаёт метрики, сайт — заявки, оба принимают
+изменения записей CRM.
 
 Настоящая LMS — Moodle Web Services, но код зависит только от интерфейса, поэтому в тестах
-и на демо-стенде вместо неё работают моки из `backend/mocks/`.
+и на демо-стенде вместо неё работают моки из `backend/mocks/`. Контракт приёма документов
+(`POST /api/crm/interactions`) — наш, пока заказчик не дал свой: меняется только адаптер.
 """
 
 from dataclasses import dataclass
@@ -52,6 +54,22 @@ class SiteClient(Protocol):
     async def fetch_applications(self) -> list[ApplicationRecord]: ...
 
 
+@dataclass(frozen=True, slots=True)
+class PushResult:
+    """Что получатель принял, а что отклонил с причиной. Неупомянутое будет отправлено снова."""
+
+    accepted: frozenset[str]
+    rejected: dict[str, str]
+
+
+@runtime_checkable
+class InteractionReceiver(Protocol):
+    async def push_interactions(self, documents: list[dict[str, Any]]) -> PushResult: ...
+
+
+PUSH_PATH = "/api/crm/interactions"
+
+
 def _month(value: str) -> date:
     return date.fromisoformat(f"{value}-01") if len(value) == 7 else date.fromisoformat(value)
 
@@ -71,6 +89,43 @@ async def _get(
             return response.json()
     except (httpx.HTTPError, ValueError) as error:
         raise SourceUnavailableError(str(error)) from error
+
+
+async def _post(
+    base_url: str,
+    path: str,
+    payload: dict[str, Any],
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> Any:
+    try:
+        async with httpx.AsyncClient(
+            base_url=base_url, timeout=TIMEOUT_SECONDS, transport=transport
+        ) as client:
+            response = await client.post(path, json=payload)
+            response.raise_for_status()
+            return response.json()
+    except (httpx.HTTPError, ValueError) as error:
+        raise SourceUnavailableError(str(error)) from error
+
+
+def _push_result(answer: Any) -> PushResult:
+    if not isinstance(answer, dict):
+        raise SourceUnavailableError("Получатель ответил не объектом JSON")
+    rejected = {
+        str(item.get("id")): str(item.get("reason") or "Причина не указана")
+        for item in answer.get("rejected", [])
+        if isinstance(item, dict)
+    }
+    return PushResult(frozenset(str(key) for key in answer.get("accepted", [])), rejected)
+
+
+async def push_documents(
+    base_url: str,
+    documents: list[dict[str, Any]],
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> PushResult:
+    """Пакет документов одним запросом: обмен по расписанию, а не по вебхуку на каждое изменение."""
+    return _push_result(await _post(base_url, PUSH_PATH, {"items": documents}, transport))
 
 
 class MoodleLmsClient:
@@ -115,6 +170,9 @@ class MoodleLmsClient:
                 raise SourceUnavailableError(f"LMS вернула неожиданный курс: {error}") from error
         return metrics
 
+    async def push_interactions(self, documents: list[dict[str, Any]]) -> PushResult:
+        return await push_documents(self._base_url, documents, self._transport)
+
 
 class HttpSiteClient:
     """Заявки с сайта ИТ Школы."""
@@ -153,3 +211,6 @@ class HttpSiteClient:
             except (KeyError, TypeError, ValueError) as error:
                 raise SourceUnavailableError(f"Сайт вернул неожиданную заявку: {error}") from error
         return records
+
+    async def push_interactions(self, documents: list[dict[str, Any]]) -> PushResult:
+        return await push_documents(self._base_url, documents, self._transport)

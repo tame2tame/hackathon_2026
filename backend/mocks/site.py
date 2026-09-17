@@ -10,8 +10,11 @@ from typing import Any
 from fastapi import FastAPI
 
 from app.demo import PROGRAMS, UNIVERSITIES
+from mocks.crm_inbox import crm_inbox
 
 app = FastAPI(title="Мок сайта", docs_url="/docs")
+# Обмен двусторонний: сайт узнаёт, в какую запись CRM попала его заявка и на каком она этапе.
+app.include_router(crm_inbox())
 
 # Заявки от вузов, которых нет в справочнике: они и попадут в очередь несопоставленных.
 UNKNOWN = (

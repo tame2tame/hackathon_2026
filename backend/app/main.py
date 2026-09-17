@@ -28,6 +28,7 @@ from app.modules.attachments.router import router as attachments_router
 from app.modules.catalogs.router import router as catalogs_router
 from app.modules.clients.router import router as clients_router
 from app.modules.events.router import router as events_router
+from app.modules.exchange.router import router as exchange_router
 from app.modules.imports.router import router as imports_router
 from app.modules.integrations.router import router as integrations_router
 from app.modules.interactions.router import router as interactions_router
@@ -107,6 +108,7 @@ def create_app() -> FastAPI:
         workflow_router,
         workflow_editor_router,
         interactions_router,
+        exchange_router,
         attachments_router,
         imports_router,
         integrations_router,

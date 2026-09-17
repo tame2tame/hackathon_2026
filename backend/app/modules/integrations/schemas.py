@@ -17,6 +17,8 @@ class IntegrationSourceOut(BaseModel):
     is_mock: bool
     schedule_cron: str | None
     last_sync_at: datetime | None
+    push_enabled: bool = Field(description="Система принимает изменения записей CRM")
+    last_push_at: datetime | None
 
 
 class SyncRunOut(BaseModel):
@@ -24,6 +26,7 @@ class SyncRunOut(BaseModel):
 
     id: uuid.UUID
     source_id: uuid.UUID
+    direction: str = Field(description="pull — забрали данные, push — отправили изменения")
     started_at: datetime
     finished_at: datetime | None
     status: str = Field(description="running, done или failed")
@@ -47,3 +50,21 @@ class SiteApplicationOut(BaseModel):
 
 class ApplicationMatch(BaseModel):
     interaction_id: uuid.UUID = Field(description="Взаимодействие, к которому относится заявка")
+
+
+class SourceUpdate(BaseModel):
+    push_enabled: bool = Field(description="Отправлять ли системе изменения записей")
+
+
+class OutboxEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    interaction_id: uuid.UUID
+    reason: str = Field(description="Что изменилось: created, transition, owner, attachment и др.")
+    status: str = Field(description="pending, sent или failed")
+    attempts: int
+    next_attempt_at: datetime
+    last_error: str | None
+    created_at: datetime
+    sent_at: datetime | None

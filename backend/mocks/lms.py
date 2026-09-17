@@ -11,10 +11,13 @@ from typing import Any
 from fastapi import FastAPI, Query
 
 from app.demo_full import CITIES, PROGRAMS_V1, SEED, UNIVERSITY_KINDS, month_starts
+from mocks.crm_inbox import crm_inbox
 
 COURSES_PER_MONTH = 12
 
 app = FastAPI(title="Мок LMS", docs_url="/docs")
+# Обмен двусторонний: LMS принимает изменения записей CRM, например зачисление в B2C.
+app.include_router(crm_inbox())
 
 
 def _courses() -> list[dict[str, Any]]:

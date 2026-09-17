@@ -38,6 +38,7 @@ from app.modules.catalogs.schemas import (
 from app.modules.clients.models import Client
 from app.modules.clients.schemas import ClientRef
 from app.modules.clients.service import visible_client
+from app.modules.integrations.outbox import mark_changed
 from app.modules.interactions.models import (
     AssignmentChange,
     Attachment,
@@ -461,6 +462,7 @@ async def create_interaction(
     )
     await session.flush()
     await recompute_signals(session, [interaction.id], now)
+    await mark_changed(session, [interaction.id], "created")
     await session.commit()
     await get_event_bus().publish(
         INTERACTION_CREATED,
@@ -610,6 +612,7 @@ async def _apply_transition(
     )
     if user.id != interaction.owner_user_id:
         await _notify_owner(session, user, interaction, from_stage_id, to_stage, comment)
+    await mark_changed(session, [interaction.id], "transition")
     return transition
 
 
@@ -882,6 +885,7 @@ async def _assign_owner(
         )
     )
     await session.flush()
+    await mark_changed(session, [interaction.id], "owner")
 
 
 async def change_owner(

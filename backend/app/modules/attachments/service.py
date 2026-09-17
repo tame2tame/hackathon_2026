@@ -18,6 +18,7 @@ from app.core.security import CurrentUser
 from app.core.storage import Storage, get_storage
 from app.modules.attachments import files
 from app.modules.audit.models import AuditLog
+from app.modules.integrations.outbox import mark_changed
 from app.modules.interactions.models import Attachment, Interaction
 from app.modules.radar.service import recompute_signals
 from app.modules.workflow.models import Stage
@@ -125,6 +126,8 @@ async def upload_attachment(
     await session.flush()
     # Загруженный документ закрывает сигнал «нет документа» на этом этапе.
     await recompute_signals(session, [interaction.id], now)
+    # Ключ файла в хранилище уходит получателям в документе обмена.
+    await mark_changed(session, [interaction.id], "attachment")
     await session.commit()
     return attachment
 

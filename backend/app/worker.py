@@ -18,6 +18,7 @@ from app.core.db import get_sessionmaker
 from app.core.roles import Role
 from app.core.security import CurrentUser
 from app.modules.catalogs.models import AppUser
+from app.modules.integrations.outbox import push_all
 from app.modules.integrations.service import ensure_sources, sync_all
 from app.modules.interactions.models import Interaction
 from app.modules.notifications.escalation import escalate_stalled
@@ -67,6 +68,13 @@ async def sync_integrations(ctx: dict[str, Any]) -> int:
         return sum(1 for run in runs if run.status == "done")
 
 
+async def push_integrations(ctx: dict[str, Any]) -> int:
+    """Отправляет изменения записей в LMS и CMS сайта. Отказ одного получателя не трогает других."""
+    async with get_sessionmaker()() as session:
+        runs = await push_all(session, datetime.now(UTC))
+        return sum(int(run.stats.get("sent", 0)) for run in runs)
+
+
 async def escalate_stalled_interactions(ctx: dict[str, Any]) -> int:
     """Уведомляет руководителей о записях без изменений дольше срока из настройки."""
     async with get_sessionmaker()() as session:
@@ -95,6 +103,7 @@ class WorkerSettings:
         refresh_norm_suggestions,
         build_report,
         sync_integrations,
+        push_integrations,
         deliver_notifications,
     ]
     cron_jobs: ClassVar[list[Any]] = [
@@ -103,6 +112,8 @@ class WorkerSettings:
         cron(refresh_norm_suggestions, hour=RADAR_HOUR_UTC, minute=SUGGESTIONS_MINUTE),
         # Раз в минуту: уведомления не требуют мгновенности, но и не копятся часами.
         cron(deliver_notifications, second=30),
+        # Раз в минуту: изменения записей уходят в LMS и CMS пакетом, онлайн жюри не требует.
+        cron(push_integrations, second=45),
         # Раз в час: свежие метрики LMS и заявки сайта.
         cron(sync_integrations, minute=5),
     ]

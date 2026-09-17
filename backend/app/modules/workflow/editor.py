@@ -18,6 +18,7 @@ from app.core.errors import AppError, ErrorCode, FieldError
 from app.core.roles import Role
 from app.core.security import CurrentUser
 from app.modules.audit.models import AuditLog
+from app.modules.integrations.outbox import mark_changed
 from app.modules.interactions.models import Interaction, Transition
 from app.modules.notifications.service import notify
 from app.modules.radar.service import recompute_signals
@@ -551,6 +552,7 @@ async def publish_version(
     await session.flush()
     # Этап записи мог смениться, а с ним норма и требования к документам.
     await recompute_signals(session, moved, now)
+    await mark_changed(session, moved, "workflow")
     await session.commit()
     return draft
 

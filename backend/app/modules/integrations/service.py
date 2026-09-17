@@ -28,6 +28,7 @@ from app.modules.integrations.clients import (
     SourceUnavailableError,
 )
 from app.modules.integrations.models import IntegrationSource, SiteApplication, SyncRun
+from app.modules.integrations.outbox import mark_changed
 from app.modules.interactions.models import Interaction, Transition
 from app.modules.metrics.models import ProgramMetric
 from app.modules.radar.service import recompute_signals
@@ -295,15 +296,25 @@ async def _save_applications(
     process = await group_process(session, group)
     counter: Counter[str] = Counter()
     created: list[uuid.UUID] = []
+    matched: list[uuid.UUID] = []
     monthly: dict[tuple[uuid.UUID, uuid.UUID, date], int] = defaultdict(int)
 
     for record in records:
+        was_matched = await session.scalar(
+            select(SiteApplication.interaction_id).where(
+                SiteApplication.external_id == record.external_id,
+                SiteApplication.match_status == "matched",
+            )
+        )
         application, created_id = await _match_application(
             session, record, universities, programs, group.id, process
         )
         counter[application.match_status] += 1
         if created_id is not None:
             created.append(created_id)
+        if was_matched is None and application.interaction_id is not None:
+            # Сайт узнаёт, в какую запись CRM попала его заявка.
+            matched.append(application.interaction_id)
         if application.university_id and application.program_id:
             month = record.received_at.date().replace(day=1)
             monthly[(application.university_id, application.program_id, month)] += 1
@@ -335,6 +346,7 @@ async def _save_applications(
     await session.flush()
     if created:
         await recompute_signals(session, created, now)
+    await mark_changed(session, matched, "site_application")
     counter["interactions_created"] = len(created)
     return counter
 
@@ -400,5 +412,6 @@ async def match_application(
     application.university_id = interaction.university_id
     application.program_id = interaction.program_id
     application.match_status = "matched"
+    await mark_changed(session, [interaction.id], "site_application")
     await session.commit()
     return application
