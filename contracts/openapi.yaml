@@ -31,7 +31,7 @@ paths:
         '500':
           description: INTERNAL_ERROR
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
   /api/v1/me:
@@ -50,7 +50,7 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
@@ -106,15 +106,15 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: Validation Error
+          description: VALIDATION_ERROR
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/Problem'
   /api/v1/universities/{university_id}:
     get:
       tags:
@@ -139,23 +139,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/UniversityOut'
         '401':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '404':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: NOT_FOUND
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
           description: Validation Error
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/Problem'
   /api/v1/directions:
     get:
       tags:
@@ -175,7 +175,7 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
@@ -215,15 +215,15 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: Validation Error
+          description: VALIDATION_ERROR
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/Problem'
   /api/v1/products:
     get:
       tags:
@@ -243,7 +243,7 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
@@ -267,7 +267,7 @@ paths:
         '401':
           description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
@@ -286,19 +286,416 @@ paths:
               schema:
                 $ref: '#/components/schemas/WorkflowOut'
         '401':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '404':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: NOT_FOUND
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
       security:
       - HTTPBearer: []
+  /api/v1/workflows/default/norms:
+    get:
+      tags:
+      - workflow
+      summary: Нормы этапов с подсказками по истории
+      operationId: read_norms_api_v1_workflows_default_norms_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/StageNormOut'
+                type: array
+                title: Response Read Norms Api V1 Workflows Default Norms Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/workflows/default/norms/{stage_code}:
+    put:
+      tags:
+      - workflow
+      summary: Задать норму этапа вручную
+      operationId: put_norm_api_v1_workflows_default_norms__stage_code__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: stage_code
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stage Code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NormUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageNormOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/workflows/default/norms/{stage_code}/accept-suggestion:
+    post:
+      tags:
+      - workflow
+      summary: Принять подсказку нормы
+      description: Нормой становится 80-й перцентиль завершённых этапов.
+      operationId: post_accept_suggestion_api_v1_workflows_default_norms__stage_code__accept_suggestion_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: stage_code
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Stage Code
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageNormOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/workflows:
+    post:
+      tags:
+      - workflow
+      summary: Создать шаблон процесса
+      operationId: post_template_api_v1_workflows_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowTemplateCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowTemplateOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/workflows/{template_id}/versions:
+    post:
+      tags:
+      - workflow
+      summary: Создать черновик версии
+      description: 'Черновик копирует последнюю версию шаблона: править проще, чем собирать заново.'
+      operationId: post_version_api_v1_workflows__template_id__versions_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: template_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Template Id
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/workflow-versions/{version_id}:
+    patch:
+      tags:
+      - workflow
+      summary: Изменить черновик версии
+      description: Этапы, их порядок, нормы, требования к документам и правила переходов.
+      operationId: patch_workflow_version_api_v1_workflow_versions__version_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Version Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionPatch'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: WF_VERSION_NOT_DRAFT
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/stages/{stage_id}:
+    patch:
+      tags:
+      - workflow
+      summary: Переименовать этап
+      description: Единственное изменение, разрешённое в опубликованной версии.
+      operationId: patch_stage_api_v1_stages__stage_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: stage_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Stage Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StageRename'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StageRef'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/workflow-versions/{version_id}/publish:
+    post:
+      tags:
+      - workflow
+      summary: Опубликовать версию
+      description: Открытые взаимодействия переезжают на новую версию переходом `migration`, а прежняя
+        версия становится `retired`. Карта переноса нужна для занятых этапов.
+      operationId: post_publish_api_v1_workflow_versions__version_id__publish_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Version Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR · WF_MIGRATION_MAP_INCOMPLETE
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: WF_VERSION_NOT_DRAFT
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/interactions:
     get:
       tags:
@@ -416,6 +813,28 @@ paths:
           description: Есть открытый сигнал
           title: Has Signal
         description: Есть открытый сигнал
+      - name: period_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Начало периода, UTC
+          title: Period From
+        description: Начало периода, UTC
+      - name: period_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Конец периода, UTC
+          title: Period To
+        description: Конец периода, UTC
       - name: search
         in: query
         required: false
@@ -435,15 +854,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/Page_InteractionListItem_'
         '401':
-          description: AUTH_REQUIRED, VALIDATION_ERROR
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: AUTH_REQUIRED, VALIDATION_ERROR
+          description: VALIDATION_ERROR
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
   /api/v1/interactions/{interaction_id}:
@@ -471,23 +890,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/InteractionDetail'
         '401':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '404':
-          description: AUTH_REQUIRED, NOT_FOUND
+          description: NOT_FOUND
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
           description: Validation Error
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: '#/components/schemas/Problem'
   /api/v1/interactions/{interaction_id}/transitions:
     post:
       tags:
@@ -518,27 +937,810 @@ paths:
               schema:
                 $ref: '#/components/schemas/TransitionResult'
         '401':
-          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '404':
-          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
+          description: NOT_FOUND
           content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '409':
-          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
-          content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: AUTH_REQUIRED, NOT_FOUND, INTERACTION_VERSION_CONFLICT, WF_COMMENT_REQUIRED
+          description: VALIDATION_ERROR · WF_COMMENT_REQUIRED · WF_ATTACHMENT_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: INTERACTION_VERSION_CONFLICT · WF_TRANSITION_NOT_ALLOWED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/interactions/{interaction_id}/notes:
+    get:
+      tags:
+      - interactions
+      summary: Заметки по взаимодействию
+      operationId: read_notes_api_v1_interactions__interaction_id__notes_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      responses:
+        '200':
+          description: Successful Response
           content:
             application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NoteOut'
+                title: Response Read Notes Api V1 Interactions  Interaction Id  Notes Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      tags:
+      - interactions
+      summary: Добавить заметку
+      description: Заметка считается работой по записи и снимает сигнал о простое.
+      operationId: post_note_api_v1_interactions__interaction_id__notes_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/interactions/bulk-transitions:
+    post:
+      tags:
+      - interactions
+      summary: Перевести несколько взаимодействий на один этап
+      description: Разрешён только с этапов с `bulk_allowed`. У каждой записи свой итог, поэтому частичный
+        успех — обычный ответ. Переход с требованием документа выполняется в карточке.
+      operationId: post_bulk_transitions_api_v1_interactions_bulk_transitions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkTransitionRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResult'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/interactions/{interaction_id}/owner:
+    put:
+      tags:
+      - interactions
+      summary: Сменить ответственного КАМа
+      description: Доступно руководителю в пределах команды и администратору.
+      operationId: put_owner_api_v1_interactions__interaction_id__owner_put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OwnerChange'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InteractionDetail'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: INTERACTION_VERSION_CONFLICT
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/interactions/bulk-owner:
+    post:
+      tags:
+      - interactions
+      summary: Передать несколько взаимодействий другому КАМу
+      description: Итог по каждой записи; недоступные записи возвращают `NOT_FOUND`.
+      operationId: post_bulk_owner_api_v1_interactions_bulk_owner_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkOwnerRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResult'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/interactions/{interaction_id}/attachments:
+    post:
+      tags:
+      - attachments
+      summary: Загрузить документ к взаимодействию
+      description: Файл проверяется по расширению и сигнатуре, лимит задаёт `MAX_UPLOAD_MB`. Документ
+        привязывается к текущему этапу и закрывает сигнал «нет документа».
+      operationId: post_attachment_api_v1_interactions__interaction_id__attachments_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_post_attachment_api_v1_interactions__interaction_id__attachments_post'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '415':
+          description: FILE_TYPE_NOT_ALLOWED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '413':
+          description: FILE_TOO_LARGE
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    get:
+      tags:
+      - attachments
+      summary: Документы взаимодействия
+      operationId: read_attachments_api_v1_interactions__interaction_id__attachments_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AttachmentOut'
+                title: Response Read Attachments Api V1 Interactions  Interaction Id  Attachments Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/attachments/{attachment_id}/file:
+    get:
+      tags:
+      - attachments
+      summary: Скачать файл вложения
+      operationId: read_attachment_file_api_v1_attachments__attachment_id__file_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: attachment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Attachment Id
+      responses:
+        '200':
+          description: Файл вложения с исходным именем
+          content:
+            application/octet-stream: {}
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/imports:
+    post:
+      tags:
+      - imports
+      summary: Загрузить выгрузку xls или xlsx
+      description: Возвращает колонки файла и подсказку соответствия по заголовкам ТЗ.
+      operationId: post_import_api_v1_imports_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_post_import_api_v1_imports_post'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatchOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '415':
+          description: FILE_TYPE_NOT_ALLOWED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '413':
+          description: FILE_TOO_LARGE
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/imports/{batch_id}/mapping:
+    put:
+      tags:
+      - imports
+      summary: Задать соответствие колонок и увидеть предпросмотр
+      description: 'Каждая строка получает решение: new, update, conflict, skip или needs_program.'
+      operationId: put_mapping_api_v1_imports__batch_id__mapping_put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Batch Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MappingUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatchOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR · IMPORT_MAPPING_INVALID
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/imports/{batch_id}/apply:
+    post:
+      tags:
+      - imports
+      summary: Применить загрузку
+      description: Создаёт и обновляет записи по строкам new и update, затем пересчитывает радар.
+      operationId: post_apply_api_v1_imports__batch_id__apply_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Batch Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyResult'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/import-profiles:
+    get:
+      tags:
+      - imports
+      summary: Сохранённые соответствия колонок
+      operationId: read_import_profiles_api_v1_import_profiles_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ImportProfileOut'
+                type: array
+                title: Response Read Import Profiles Api V1 Import Profiles Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/integrations:
+    get:
+      tags:
+      - integrations
+      summary: Источники LMS и сайта
+      operationId: read_integrations_api_v1_integrations_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/IntegrationSourceOut'
+                type: array
+                title: Response Read Integrations Api V1 Integrations Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/integrations/{source_id}/sync:
+    post:
+      tags:
+      - integrations
+      summary: Синхронизировать источник вручную
+      description: 'Запись в журнале появляется и при отказе источника: там будет код ошибки.'
+      operationId: post_sync_api_v1_integrations__source_id__sync_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: source_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Source Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRunOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/integrations/{source_id}/runs:
+    get:
+      tags:
+      - integrations
+      summary: Журнал запусков источника
+      operationId: read_runs_api_v1_integrations__source_id__runs_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: source_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Source Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SyncRunOut'
+                title: Response Read Runs Api V1 Integrations  Source Id  Runs Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/site-applications:
+    get:
+      tags:
+      - integrations
+      summary: Заявки с сайта
+      description: Без фильтра — все заявки; `match_status=unmatched` — очередь на разбор.
+      operationId: read_applications_api_v1_site_applications_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: match_status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            pattern: ^(matched|unmatched)$
+          - type: 'null'
+          description: Состояние сопоставления
+          title: Match Status
+        description: Состояние сопоставления
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SiteApplicationOut'
+                title: Response Read Applications Api V1 Site Applications Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/site-applications/{application_id}/match:
+    post:
+      tags:
+      - integrations
+      summary: Привязать заявку к взаимодействию
+      operationId: post_match_api_v1_site_applications__application_id__match_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: application_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Application Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationMatch'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteApplicationOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
   /api/v1/signals:
@@ -622,6 +1824,28 @@ paths:
           description: Вуз
           title: University Id
         description: Вуз
+      - name: period_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Начало периода, UTC
+          title: Period From
+        description: Начало периода, UTC
+      - name: period_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Конец периода, UTC
+          title: Period To
+        description: Конец периода, UTC
       - name: search
         in: query
         required: false
@@ -641,19 +1865,1389 @@ paths:
               schema:
                 $ref: '#/components/schemas/Page_SignalListItem_'
         '401':
-          description: AUTH_REQUIRED, VALIDATION_ERROR
+          description: AUTH_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '422':
-          description: AUTH_REQUIRED, VALIDATION_ERROR
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/signals/summary:
+    get:
+      tags:
+      - radar
+      summary: Матрица «КАМ × вид сигнала»
+      description: 'Тепловая карта руководителя: открытые сигналы по видам у каждого КАМа.'
+      operationId: read_signals_summary_api_v1_signals_summary_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: kind
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/SignalKind'
+          - type: 'null'
+          description: Вид сигнала
+          title: Kind
+        description: Вид сигнала
+      - name: severity
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/Severity'
+          - type: 'null'
+          description: Серьёзность
+          title: Severity
+        description: Серьёзность
+      - name: owner_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: КАМ
+          title: Owner Id
+        description: КАМ
+      - name: university_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: Вуз
+          title: University Id
+        description: Вуз
+      - name: period_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Начало периода, UTC
+          title: Period From
+        description: Начало периода, UTC
+      - name: period_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Конец периода, UTC
+          title: Period To
+        description: Конец периода, UTC
+      - name: search
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          description: Вуз, программа или продукт
+          title: Search
+        description: Вуз, программа или продукт
+      responses:
+        '200':
+          description: Successful Response
           content:
             application/json:
+              schema:
+                $ref: '#/components/schemas/SignalSummaryOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/reports:
+    get:
+      tags:
+      - reports
+      summary: Свои задания на отчёт
+      operationId: read_reports_api_v1_reports_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ReportJobOut'
+                type: array
+                title: Response Read Reports Api V1 Reports Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - reports
+      summary: Заказать отчёт
+      description: 'Отчёт строится в фоне: ответ содержит id задания, дальше состояние смотрят в `GET
+        /api/v1/reports/{id}`. Колонки: university, direction, program, product, stage, owner, contract,
+        license_valid_until, days_on_stage, signals.'
+      operationId: post_report_api_v1_reports_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportCreate'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportJobOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR · REPORT_TOO_LARGE
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/reports/{report_id}:
+    get:
+      tags:
+      - reports
+      summary: Состояние отчёта
+      operationId: read_report_api_v1_reports__report_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: report_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Report Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportJobOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/reports/{report_id}/file:
+    get:
+      tags:
+      - reports
+      summary: Скачать готовый отчёт
+      operationId: read_report_file_api_v1_reports__report_id__file_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: report_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Report Id
+      responses:
+        '200':
+          description: Файл отчёта
+          content:
+            application/octet-stream: {}
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/analytics/rating:
+    get:
+      tags:
+      - analytics
+      summary: Рейтинг востребованности
+      description: Балл считается по заявкам, обучающимся и потокам с нормированием внутри направления.
+        Вклад каждой метрики возвращается вместе с баллом, а неполные данные помечаются.
+      operationId: read_rating_api_v1_analytics_rating_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: entity
+        in: query
+        required: false
+        schema:
+          enum:
+          - program
+          - university
+          type: string
+          description: Что сравниваем
+          default: program
+          title: Entity
+        description: Что сравниваем
+      - name: period_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Начало периода
+          title: Period From
+        description: Начало периода
+      - name: period_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          description: Конец периода
+          title: Period To
+        description: Конец периода
+      - name: direction_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          description: ИТ-направление
+          title: Direction Id
+        description: ИТ-направление
+      - name: w_applications
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 100
+            minimum: 0
+          - type: 'null'
+          title: W Applications
+      - name: w_students
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 100
+            minimum: 0
+          - type: 'null'
+          title: W Students
+      - name: w_streams
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 100
+            minimum: 0
+          - type: 'null'
+          title: W Streams
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatingOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/analytics/rating/weights:
+    get:
+      tags:
+      - analytics
+      summary: Веса рейтинга по умолчанию
+      operationId: read_weights_api_v1_analytics_rating_weights_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeightsOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+    put:
+      tags:
+      - analytics
+      summary: Изменить веса рейтинга
+      description: Сумма весов — 100. Меняют руководитель и администратор.
+      operationId: put_weights_api_v1_analytics_rating_weights_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeightsUpdate'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeightsOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/analytics/stats/funnel:
+    get:
+      tags:
+      - analytics
+      summary: Воронка по этапам
+      operationId: read_funnel_api_v1_analytics_stats_funnel_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/analytics/stats/stage-durations:
+    get:
+      tags:
+      - analytics
+      summary: Средняя длительность этапов
+      operationId: read_stage_durations_api_v1_analytics_stats_stage_durations_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/analytics/stats/distribution:
+    get:
+      tags:
+      - analytics
+      summary: Распределение по направлениям
+      operationId: read_distribution_api_v1_analytics_stats_distribution_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/users:
+    get:
+      tags:
+      - admin
+      summary: Сотрудники
+      operationId: read_users_api_v1_admin_users_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AdminUserOut'
+                type: array
+                title: Response Read Users Api V1 Admin Users Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/users/{user_id}:
+    patch:
+      tags:
+      - admin
+      summary: Роль, команда и доступ сотрудника
+      operationId: patch_user_api_v1_admin_users__user_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: User Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUserUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/admin/teams:
+    get:
+      tags:
+      - admin
+      summary: Команды
+      operationId: read_teams_api_v1_admin_teams_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/TeamOut'
+                type: array
+                title: Response Read Teams Api V1 Admin Teams Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - admin
+      summary: Создать команду
+      operationId: post_team_api_v1_admin_teams_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/access-rules:
+    get:
+      tags:
+      - admin
+      summary: Правила доступа к данным
+      description: Запрет сильнее разрешения; правила применяются поверх ролей во всех списках.
+      operationId: read_rules_api_v1_admin_access_rules_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AccessRuleOut'
+                type: array
+                title: Response Read Rules Api V1 Admin Access Rules Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - admin
+      summary: Добавить правило доступа
+      operationId: post_rule_api_v1_admin_access_rules_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessRuleCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessRuleOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/access-rules/{rule_id}:
+    delete:
+      tags:
+      - admin
+      summary: Убрать правило доступа
+      operationId: delete_rule_api_v1_admin_access_rules__rule_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Rule Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/admin/settings:
+    get:
+      tags:
+      - admin
+      summary: Настройки приложения
+      operationId: read_settings_api_v1_admin_settings_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/SettingOut'
+                type: array
+                title: Response Read Settings Api V1 Admin Settings Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/settings/{key}:
+    put:
+      tags:
+      - admin
+      summary: Изменить настройку
+      description: Пороги радара, веса по умолчанию и прочее; изменение пишется в аудит.
+      operationId: put_setting_api_v1_admin_settings__key__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/admin/audit:
+    get:
+      tags:
+      - admin
+      summary: Журнал аудита
+      description: Значения до и после изменения; просмотр персональных данных тоже записывается.
+      operationId: read_audit_api_v1_admin_audit_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: action
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 60
+          - type: 'null'
+          title: Action
+      - name: entity_kind
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 60
+          - type: 'null'
+          title: Entity Kind
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEntryOut'
+                title: Response Read Audit Api V1 Admin Audit Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/admin/catalogs/{kind}:
+    post:
+      tags:
+      - admin
+      summary: Добавить запись каталога
+      description: 'Каталоги: universities, directions, programs, vendors, products.'
+      operationId: post_catalog_item_api_v1_admin_catalogs__kind__post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: kind
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Kind
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogItemCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogItemOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/admin/catalogs/{kind}/{item_id}/archive:
+    post:
+      tags:
+      - admin
+      summary: Архивировать запись каталога
+      description: 'Удаления нет: на записи ссылаются взаимодействия и история.'
+      operationId: post_catalog_archive_api_v1_admin_catalogs__kind___item_id__archive_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: kind
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Kind
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Item Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogItemOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/universities/{university_id}/contacts:
+    get:
+      tags:
+      - catalogs
+      summary: Контакты вуза
+      description: 'Просмотр записывается в аудит: это обращение к персональным данным.'
+      operationId: read_contacts_api_v1_universities__university_id__contacts_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: university_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: University Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContactOut'
+                title: Response Read Contacts Api V1 Universities  University Id  Contacts Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      tags:
+      - catalogs
+      summary: Добавить контакт вуза
+      description: Email и телефон шифруются перед записью в базу.
+      operationId: post_contact_api_v1_universities__university_id__contacts_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: university_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: University Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/contacts/{contact_id}/archive:
+    post:
+      tags:
+      - catalogs
+      summary: Архивировать контакт
+      operationId: post_contact_archive_api_v1_contacts__contact_id__archive_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: contact_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Contact Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/events:
+    get:
+      tags:
+      - events
+      summary: Поток событий
+      description: '`text/event-stream`. Заголовок `Last-Event-ID` досылает пропущенное после обрыва связи;
+        раз в 15 секунд приходит комментарий-пульс.'
+      operationId: read_events_api_v1_events_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: Last-Event-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last-Event-Id
+      responses:
+        '200':
+          description: События области видимости пользователя
+          content:
+            text/event-stream: {}
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
 components:
   schemas:
+    AccessRuleCreate:
+      properties:
+        subject_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Subject User Id
+        subject_role:
+          anyOf:
+          - $ref: '#/components/schemas/Role'
+          - type: 'null'
+        effect:
+          type: string
+          enum:
+          - allow
+          - deny
+          title: Effect
+        scope_kind:
+          type: string
+          enum:
+          - university
+          - direction
+          - program
+          title: Scope Kind
+        scope_id:
+          type: string
+          format: uuid
+          title: Scope Id
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Comment
+      type: object
+      required:
+      - effect
+      - scope_kind
+      - scope_id
+      title: AccessRuleCreate
+      description: Правило адресуется либо сотруднику, либо роли — ровно одно из двух.
+    AccessRuleOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        subject_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Subject User Id
+        subject_role:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Subject Role
+        effect:
+          type: string
+          title: Effect
+        scope_kind:
+          type: string
+          title: Scope Kind
+        scope_id:
+          type: string
+          format: uuid
+          title: Scope Id
+        comment:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Comment
+      type: object
+      required:
+      - id
+      - subject_user_id
+      - subject_role
+      - effect
+      - scope_kind
+      - scope_id
+      - comment
+      title: AccessRuleOut
+    AdminUserOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        email:
+          type: string
+          title: Email
+        full_name:
+          type: string
+          title: Full Name
+        role:
+          $ref: '#/components/schemas/Role'
+        team_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Team Id
+        is_active:
+          type: boolean
+          title: Is Active
+      type: object
+      required:
+      - id
+      - email
+      - full_name
+      - role
+      - team_id
+      - is_active
+      title: AdminUserOut
+    AdminUserUpdate:
+      properties:
+        role:
+          anyOf:
+          - $ref: '#/components/schemas/Role'
+          - type: 'null'
+        team_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Team Id
+        is_active:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+          description: Отключённый сотрудник не входит
+      type: object
+      title: AdminUserUpdate
     AllowedTransitionOut:
       properties:
         to_stage:
@@ -670,6 +3264,455 @@ components:
       - requires_comment
       - requires_attachment
       title: AllowedTransitionOut
+    ApplicationMatch:
+      properties:
+        interaction_id:
+          type: string
+          format: uuid
+          title: Interaction Id
+          description: Взаимодействие, к которому относится заявка
+      type: object
+      required:
+      - interaction_id
+      title: ApplicationMatch
+    ApplyResult:
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+          title: Batch Id
+        created:
+          type: integer
+          title: Created
+        updated:
+          type: integer
+          title: Updated
+        skipped:
+          type: integer
+          title: Skipped
+        conflicts:
+          type: integer
+          title: Conflicts
+        needs_program:
+          type: integer
+          title: Needs Program
+      type: object
+      required:
+      - batch_id
+      - created
+      - updated
+      - skipped
+      - conflicts
+      - needs_program
+      title: ApplyResult
+    AttachmentOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        file_name:
+          type: string
+          title: File Name
+        mime_type:
+          type: string
+          title: Mime Type
+        size_bytes:
+          type: integer
+          title: Size Bytes
+        document_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+          description: Тип документа этапа, если указан при загрузке
+        sha256:
+          type: string
+          title: Sha256
+          description: 'Контрольная сумма: видно повторную загрузку того же файла'
+        stage_id:
+          type: string
+          format: uuid
+          title: Stage Id
+          description: Этап, на котором файл загружен
+        uploaded_by:
+          type: string
+          format: uuid
+          title: Uploaded By
+        uploaded_at:
+          type: string
+          format: date-time
+          title: Uploaded At
+      type: object
+      required:
+      - id
+      - file_name
+      - mime_type
+      - size_bytes
+      - document_type
+      - sha256
+      - stage_id
+      - uploaded_by
+      - uploaded_at
+      title: AttachmentOut
+    AuditEntryOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        occurred_at:
+          type: string
+          format: date-time
+          title: Occurred At
+        actor_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Actor User Id
+        action:
+          type: string
+          title: Action
+        entity_kind:
+          type: string
+          title: Entity Kind
+        entity_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Entity Id
+        before:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Before
+        after:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: After
+        trace_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Trace Id
+      type: object
+      required:
+      - id
+      - occurred_at
+      - actor_user_id
+      - action
+      - entity_kind
+      - entity_id
+      - before
+      - after
+      - trace_id
+      title: AuditEntryOut
+    Body_post_attachment_api_v1_interactions__interaction_id__attachments_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Файл документа
+        document_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+          description: Тип документа этапа, например signed_contract
+      type: object
+      required:
+      - file
+      title: Body_post_attachment_api_v1_interactions__interaction_id__attachments_post
+    Body_post_import_api_v1_imports_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Книга Excel с выгрузкой
+      type: object
+      required:
+      - file
+      title: Body_post_import_api_v1_imports_post
+    BulkItemResult:
+      properties:
+        interaction_id:
+          type: string
+          format: uuid
+          title: Interaction Id
+        ok:
+          type: boolean
+          title: Ok
+        version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Version
+          description: Новая версия записи при успехе
+        code:
+          anyOf:
+          - $ref: '#/components/schemas/ErrorCode'
+          - type: 'null'
+          description: Код ошибки из каталога при отказе
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Detail
+      type: object
+      required:
+      - interaction_id
+      - ok
+      title: BulkItemResult
+    BulkOwnerRequest:
+      properties:
+        interaction_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Interaction Ids
+        owner_id:
+          type: string
+          format: uuid
+          title: Owner Id
+        reason:
+          type: string
+          maxLength: 4000
+          title: Reason
+          default: ''
+      type: object
+      required:
+      - interaction_ids
+      - owner_id
+      title: BulkOwnerRequest
+    BulkResult:
+      properties:
+        results:
+          items:
+            $ref: '#/components/schemas/BulkItemResult'
+          type: array
+          title: Results
+        succeeded:
+          type: integer
+          title: Succeeded
+        failed:
+          type: integer
+          title: Failed
+      type: object
+      required:
+      - results
+      - succeeded
+      - failed
+      title: BulkResult
+      description: 'Частичный успех — обычный ответ: у каждой записи свой итог.'
+    BulkTransitionRequest:
+      properties:
+        interaction_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Interaction Ids
+        to_stage_code:
+          type: string
+          maxLength: 60
+          title: To Stage Code
+          description: Код этапа назначения в версии процесса взаимодействия
+        comment:
+          type: string
+          maxLength: 4000
+          title: Comment
+          default: ''
+      type: object
+      required:
+      - interaction_ids
+      - to_stage_code
+      title: BulkTransitionRequest
+    CatalogItemCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 300
+          minLength: 2
+          title: Name
+        code:
+          anyOf:
+          - type: string
+            maxLength: 60
+          - type: 'null'
+          title: Code
+          description: Только для направлений
+        short_name:
+          anyOf:
+          - type: string
+            maxLength: 60
+          - type: 'null'
+          title: Short Name
+          description: Только для вузов
+        region:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Region
+          description: Только для вузов
+        city:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: City
+        direction_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Direction Id
+          description: Только для программ
+        vendor_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Vendor Id
+          description: Только для продуктов
+      type: object
+      required:
+      - name
+      title: CatalogItemCreate
+    CatalogItemOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        archived_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Archived At
+      type: object
+      required:
+      - id
+      - name
+      - archived_at
+      title: CatalogItemOut
+    ChartOut:
+      properties:
+        title:
+          type: string
+          title: Title
+        labels:
+          items:
+            type: string
+          type: array
+          title: Labels
+        values:
+          items:
+            type: integer
+          type: array
+          title: Values
+        option:
+          additionalProperties: true
+          type: object
+          title: Option
+          description: Готовые настройки ECharts
+      type: object
+      required:
+      - title
+      - labels
+      - values
+      - option
+      title: ChartOut
+      description: 'Данные и настройки ECharts: интерфейс и PDF рисуют график по одному описанию.'
+    ContactCreate:
+      properties:
+        full_name:
+          type: string
+          maxLength: 200
+          minLength: 2
+          title: Full Name
+        position:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Position
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+          - type: 'null'
+          title: Email
+        phone:
+          anyOf:
+          - type: string
+            maxLength: 40
+          - type: 'null'
+          title: Phone
+      type: object
+      required:
+      - full_name
+      title: ContactCreate
+    ContactOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        university_id:
+          type: string
+          format: uuid
+          title: University Id
+        full_name:
+          type: string
+          title: Full Name
+        position:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Position
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+        phone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Phone
+        archived_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Archived At
+      type: object
+      required:
+      - id
+      - university_id
+      - full_name
+      - position
+      - email
+      - phone
+      - archived_at
+      title: ContactOut
+      description: Контакт вуза. Email и телефон расшифровываются только для того, кто их запросил.
     ContractOut:
       properties:
         id:
@@ -717,6 +3760,35 @@ components:
       - license_term_years
       - transfer_status
       title: ContractOut
+    ContributionOut:
+      properties:
+        metric:
+          type: string
+          title: Metric
+          description: applications, students или streams
+        weight:
+          type: integer
+          title: Weight
+        value:
+          type: number
+          title: Value
+          description: Значение метрики за период
+        normalized:
+          type: number
+          title: Normalized
+          description: Доля от лучшего в направлении, 0–100
+        contribution:
+          type: number
+          title: Contribution
+          description: Вклад метрики в балл
+      type: object
+      required:
+      - metric
+      - weight
+      - value
+      - normalized
+      - contribution
+      title: ContributionOut
     DirectionRef:
       properties:
         id:
@@ -746,6 +3818,8 @@ components:
       - WF_TRANSITION_NOT_ALLOWED
       - WF_COMMENT_REQUIRED
       - WF_ATTACHMENT_REQUIRED
+      - WF_VERSION_NOT_DRAFT
+      - WF_MIGRATION_MAP_INCOMPLETE
       - FILE_TYPE_NOT_ALLOWED
       - FILE_TOO_LARGE
       - IMPORT_MAPPING_INVALID
@@ -794,6 +3868,144 @@ components:
       - version
       - database
       title: HealthOut
+    ImportBatchOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        file_name:
+          type: string
+          title: File Name
+        file_kind:
+          type: string
+          title: File Kind
+        status:
+          type: string
+          title: Status
+        headers:
+          items:
+            type: string
+          type: array
+          title: Headers
+          description: Колонки файла в исходном порядке
+        column_map:
+          additionalProperties:
+            type: string
+          type: object
+          title: Column Map
+          description: Поле модели → заголовок колонки
+        suggested_map:
+          additionalProperties:
+            type: string
+          type: object
+          title: Suggested Map
+          description: Подсказка по заголовкам ТЗ
+        fields:
+          items:
+            type: string
+          type: array
+          title: Fields
+          description: Поля модели, доступные для сопоставления
+        required_fields:
+          items:
+            type: string
+          type: array
+          title: Required Fields
+        total_rows:
+          type: integer
+          title: Total Rows
+        stats:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Stats
+          description: Сколько строк в каждом решении
+        rows:
+          items:
+            $ref: '#/components/schemas/RowPreview'
+          type: array
+          title: Rows
+          description: Первые строки для предпросмотра
+      type: object
+      required:
+      - id
+      - file_name
+      - file_kind
+      - status
+      - headers
+      - column_map
+      - suggested_map
+      - fields
+      - required_fields
+      - total_rows
+      - stats
+      - rows
+      title: ImportBatchOut
+    ImportProfileOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        file_kind:
+          type: string
+          title: File Kind
+        column_map:
+          additionalProperties:
+            type: string
+          type: object
+          title: Column Map
+      type: object
+      required:
+      - id
+      - name
+      - file_kind
+      - column_map
+      title: ImportProfileOut
+    IntegrationSourceOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          title: Kind
+          description: lms или site
+        name:
+          type: string
+          title: Name
+        base_url:
+          type: string
+          title: Base Url
+        is_mock:
+          type: boolean
+          title: Is Mock
+        schedule_cron:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Schedule Cron
+        last_sync_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Sync At
+      type: object
+      required:
+      - id
+      - kind
+      - name
+      - base_url
+      - is_mock
+      - schedule_cron
+      - last_sync_at
+      title: IntegrationSourceOut
     InteractionDetail:
       properties:
         id:
@@ -964,6 +4176,25 @@ components:
       - product
       - owner
       title: InteractionRef
+    MappingUpdate:
+      properties:
+        column_map:
+          additionalProperties:
+            type: string
+          type: object
+          title: Column Map
+          description: Поле модели → заголовок колонки файла
+        save_as_profile:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Save As Profile
+          description: Сохранить соответствие под этим именем
+      type: object
+      required:
+      - column_map
+      title: MappingUpdate
     MeOut:
       properties:
         id:
@@ -998,6 +4229,72 @@ components:
       - team
       - scope
       title: MeOut
+    NormUpdate:
+      properties:
+        norm_days:
+          type: integer
+          maximum: 365.0
+          minimum: 1.0
+          title: Norm Days
+          description: Новая норма этапа в днях
+      type: object
+      required:
+      - norm_days
+      title: NormUpdate
+    NoteCreate:
+      properties:
+        text:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Text
+      type: object
+      required:
+      - text
+      title: NoteCreate
+    NoteOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        text:
+          type: string
+          title: Text
+        author:
+          $ref: '#/components/schemas/UserRef'
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - text
+      - author
+      - created_at
+      title: NoteOut
+    OwnerChange:
+      properties:
+        owner_id:
+          type: string
+          format: uuid
+          title: Owner Id
+        reason:
+          type: string
+          maxLength: 4000
+          title: Reason
+          default: ''
+        expected_version:
+          type: integer
+          minimum: 1.0
+          title: Expected Version
+          description: Версия записи, которую видел пользователь
+      type: object
+      required:
+      - owner_id
+      - expected_version
+      title: OwnerChange
     Page_InteractionListItem_:
       properties:
         items:
@@ -1137,6 +4434,214 @@ components:
       - name
       - direction
       title: ProgramRef
+    PublishRequest:
+      properties:
+        migration_map:
+          additionalProperties:
+            type: string
+          type: object
+          title: Migration Map
+          description: Код этапа старой версии → код новой; нужен для занятых этапов
+      type: object
+      title: PublishRequest
+    RatingOut:
+      properties:
+        entity:
+          type: string
+          enum:
+          - program
+          - university
+          title: Entity
+        weights:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Weights
+        rows:
+          items:
+            $ref: '#/components/schemas/RatingRowOut'
+          type: array
+          title: Rows
+      type: object
+      required:
+      - entity
+      - weights
+      - rows
+      title: RatingOut
+    RatingRowOut:
+      properties:
+        place:
+          type: integer
+          title: Place
+        place_change:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Place Change
+          description: Насколько поднялась позиция к предыдущему периоду; null — раньше её не было
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        direction_name:
+          type: string
+          title: Direction Name
+        score:
+          type: number
+          title: Score
+        contributions:
+          items:
+            $ref: '#/components/schemas/ContributionOut'
+          type: array
+          title: Contributions
+        complete:
+          type: boolean
+          title: Complete
+          description: Есть ли все три метрики за период
+        missing_metrics:
+          items:
+            type: string
+          type: array
+          title: Missing Metrics
+      type: object
+      required:
+      - place
+      - place_change
+      - id
+      - name
+      - direction_name
+      - score
+      - contributions
+      - complete
+      - missing_metrics
+      title: RatingRowOut
+    ReportCreate:
+      properties:
+        format:
+          type: string
+          enum:
+          - xlsx
+          - xls
+          - pdf
+          - json
+          title: Format
+          default: xlsx
+        period_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Period From
+        period_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Period To
+        university_id:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: University Id
+        direction_id:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Direction Id
+        program_id:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Program Id
+        product_id:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Product Id
+        owner_id:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Owner Id
+        stage_code:
+          items:
+            type: string
+          type: array
+          title: Stage Code
+        search:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Search
+        columns:
+          items:
+            type: string
+          type: array
+          minItems: 1
+          title: Columns
+          description: 'Из набора: university, direction, program, product, stage, owner, contract, license_valid_until,
+            days_on_stage, signals'
+      type: object
+      title: ReportCreate
+      description: Те же фильтры, что у списка взаимодействий, плюс колонки и формат файла.
+    ReportJobOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          title: Status
+          description: queued, running, done или failed
+        progress:
+          type: integer
+          title: Progress
+          description: Процент готовности
+        format:
+          type: string
+          title: Format
+        row_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Row Count
+        error_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Code
+          description: Код ошибки из каталога, если отчёт не построен
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        finished_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Finished At
+      type: object
+      required:
+      - id
+      - status
+      - progress
+      - format
+      - row_count
+      - error_code
+      - created_at
+      - finished_at
+      title: ReportJobOut
     Role:
       type: string
       enum:
@@ -1144,6 +4649,68 @@ components:
       - manager
       - admin
       title: Role
+    RowPreview:
+      properties:
+        row_no:
+          type: integer
+          title: Row No
+        resolution:
+          type: string
+          title: Resolution
+          description: new, update, conflict, skip или needs_program
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Detail
+          description: Причина, если строка требует внимания
+        university:
+          type: string
+          title: University
+        product:
+          type: string
+          title: Product
+        contract_number:
+          type: string
+          title: Contract Number
+      type: object
+      required:
+      - row_no
+      - resolution
+      - detail
+      - university
+      - product
+      - contract_number
+      title: RowPreview
+    SettingOut:
+      properties:
+        key:
+          type: string
+          title: Key
+        value:
+          additionalProperties: true
+          type: object
+          title: Value
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - key
+      - value
+      - updated_at
+      title: SettingOut
+    SettingUpdate:
+      properties:
+        value:
+          additionalProperties: true
+          type: object
+          title: Value
+      type: object
+      required:
+      - value
+      title: SettingUpdate
     Severity:
       type: string
       enum:
@@ -1193,10 +4760,13 @@ components:
         message:
           type: string
           title: Message
+          description: Готовая строка для интерфейса, проверяемая по evidence
         evidence:
           additionalProperties: true
           type: object
           title: Evidence
+          description: 'Доказательство сигнала: этап, дни на этапе, норма и её источник (norm_source:
+            manual или suggested), дата окончания лицензии или последней активности'
         interaction:
           $ref: '#/components/schemas/InteractionRef'
       type: object
@@ -1233,10 +4803,13 @@ components:
         message:
           type: string
           title: Message
+          description: Готовая строка для интерфейса, проверяемая по evidence
         evidence:
           additionalProperties: true
           type: object
           title: Evidence
+          description: 'Доказательство сигнала: этап, дни на этапе, норма и её источник (norm_source:
+            manual или suggested), дата окончания лицензии или последней активности'
       type: object
       required:
       - id
@@ -1247,6 +4820,168 @@ components:
       - message
       - evidence
       title: SignalOut
+    SignalSummaryOut:
+      properties:
+        kinds:
+          items:
+            $ref: '#/components/schemas/SignalKind'
+          type: array
+          title: Kinds
+        rows:
+          items:
+            $ref: '#/components/schemas/SummaryRow'
+          type: array
+          title: Rows
+        total:
+          type: integer
+          title: Total
+      type: object
+      required:
+      - kinds
+      - rows
+      - total
+      title: SignalSummaryOut
+      description: Матрица «КАМ × вид сигнала» для тепловой карты руководителя.
+    SiteApplicationOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        external_id:
+          type: string
+          title: External Id
+        university_name:
+          type: string
+          title: University Name
+        program_name:
+          type: string
+          title: Program Name
+        contact_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Contact Name
+        comment:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Comment
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+        match_status:
+          type: string
+          title: Match Status
+          description: matched или unmatched
+        interaction_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Interaction Id
+      type: object
+      required:
+      - id
+      - external_id
+      - university_name
+      - program_name
+      - contact_name
+      - comment
+      - received_at
+      - match_status
+      - interaction_id
+      title: SiteApplicationOut
+    StageDraft:
+      properties:
+        code:
+          type: string
+          maxLength: 60
+          pattern: ^[a-z][a-z0-9_]*$
+          title: Code
+        name:
+          type: string
+          maxLength: 200
+          title: Name
+        position:
+          type: integer
+          minimum: 1.0
+          title: Position
+        kind:
+          type: string
+          enum:
+          - start
+          - normal
+          - final
+          title: Kind
+          default: normal
+        bulk_allowed:
+          type: boolean
+          title: Bulk Allowed
+          default: false
+        required_document_types:
+          items:
+            type: string
+          type: array
+          title: Required Document Types
+        norm_days:
+          anyOf:
+          - type: integer
+            maximum: 365.0
+            minimum: 1.0
+          - type: 'null'
+          title: Norm Days
+      type: object
+      required:
+      - code
+      - name
+      - position
+      title: StageDraft
+      description: 'Этап черновика: код неизменяем и связывает норму с этапом между версиями.'
+    StageNormOut:
+      properties:
+        stage_code:
+          type: string
+          title: Stage Code
+        stage_name:
+          type: string
+          title: Stage Name
+        norm_days:
+          type: integer
+          title: Norm Days
+        source:
+          type: string
+          title: Source
+          description: manual — задана вручную, suggested — принята подсказка
+        suggested_median_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Suggested Median Days
+          description: Типичный срок этапа по завершённым переходам
+        suggested_percentile_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Suggested Percentile Days
+          description: '80-й перцентиль: срок, в который укладывается большинство'
+        sample_size:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Sample Size
+          description: Сколько завершённых этапов легло в подсказку
+      type: object
+      required:
+      - stage_code
+      - stage_name
+      - norm_days
+      - source
+      - suggested_median_days
+      - suggested_percentile_days
+      - sample_size
+      title: StageNormOut
     StageOut:
       properties:
         id:
@@ -1311,6 +5046,119 @@ components:
       - name
       - position
       title: StageRef
+    StageRename:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 2
+          title: Name
+      type: object
+      required:
+      - name
+      title: StageRename
+    SummaryRow:
+      properties:
+        owner:
+          $ref: '#/components/schemas/UserRef'
+        counts:
+          additionalProperties:
+            type: integer
+          propertyNames:
+            $ref: '#/components/schemas/SignalKind'
+          type: object
+          title: Counts
+          description: Открытые сигналы по видам
+        total:
+          type: integer
+          title: Total
+      type: object
+      required:
+      - owner
+      - counts
+      - total
+      title: SummaryRow
+    SyncRunOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        source_id:
+          type: string
+          format: uuid
+          title: Source Id
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        finished_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Finished At
+        status:
+          type: string
+          title: Status
+          description: running, done или failed
+        stats:
+          additionalProperties: true
+          type: object
+          title: Stats
+        error_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Code
+      type: object
+      required:
+      - id
+      - source_id
+      - started_at
+      - finished_at
+      - status
+      - stats
+      - error_code
+      title: SyncRunOut
+    TeamCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          minLength: 2
+          title: Name
+        manager_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Manager User Id
+      type: object
+      required:
+      - name
+      title: TeamCreate
+    TeamOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        manager_user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Manager User Id
+      type: object
+      required:
+      - id
+      - name
+      - manager_user_id
+      title: TeamOut
     TeamRef:
       properties:
         id:
@@ -1353,6 +5201,29 @@ components:
       - to_stage_id
       - expected_version
       title: TransitionCreate
+    TransitionDraft:
+      properties:
+        from_code:
+          type: string
+          maxLength: 60
+          title: From Code
+        to_code:
+          type: string
+          maxLength: 60
+          title: To Code
+        requires_comment:
+          type: boolean
+          title: Requires Comment
+          default: true
+        requires_attachment:
+          type: boolean
+          title: Requires Attachment
+          default: false
+      type: object
+      required:
+      - from_code
+      - to_code
+      title: TransitionDraft
     TransitionOut:
       properties:
         id:
@@ -1558,6 +5429,122 @@ components:
       - id
       - name
       title: VendorRef
+    VersionOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        template_id:
+          type: string
+          format: uuid
+          title: Template Id
+        version_no:
+          type: integer
+          title: Version No
+        status:
+          type: string
+          title: Status
+          description: draft, published или retired
+        published_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Published At
+        stages:
+          items:
+            $ref: '#/components/schemas/StageOut'
+          type: array
+          title: Stages
+        transitions:
+          items:
+            $ref: '#/components/schemas/TransitionRuleOut'
+          type: array
+          title: Transitions
+      type: object
+      required:
+      - id
+      - template_id
+      - version_no
+      - status
+      - published_at
+      - stages
+      - transitions
+      title: VersionOut
+    VersionPatch:
+      properties:
+        stages:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/StageDraft'
+            type: array
+            minItems: 2
+          - type: 'null'
+          title: Stages
+        transitions:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/TransitionDraft'
+            type: array
+          - type: 'null'
+          title: Transitions
+      type: object
+      title: VersionPatch
+      description: Что меняем в черновике. Пропущенное поле остаётся как было.
+    WeightsOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        w_applications:
+          type: integer
+          title: W Applications
+        w_students:
+          type: integer
+          title: W Students
+        w_streams:
+          type: integer
+          title: W Streams
+        is_default:
+          type: boolean
+          title: Is Default
+      type: object
+      required:
+      - id
+      - name
+      - w_applications
+      - w_students
+      - w_streams
+      - is_default
+      title: WeightsOut
+    WeightsUpdate:
+      properties:
+        w_applications:
+          type: integer
+          maximum: 100.0
+          minimum: 0.0
+          title: W Applications
+        w_students:
+          type: integer
+          maximum: 100.0
+          minimum: 0.0
+          title: W Students
+        w_streams:
+          type: integer
+          maximum: 100.0
+          minimum: 0.0
+          title: W Streams
+      type: object
+      required:
+      - w_applications
+      - w_students
+      - w_streams
+      title: WeightsUpdate
     WorkflowOut:
       properties:
         id:
@@ -1593,6 +5580,35 @@ components:
       - stages
       - transitions
       title: WorkflowOut
+    WorkflowTemplateCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 3
+          title: Name
+      type: object
+      required:
+      - name
+      title: WorkflowTemplateCreate
+    WorkflowTemplateOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        is_default:
+          type: boolean
+          title: Is Default
+      type: object
+      required:
+      - id
+      - name
+      - is_default
+      title: WorkflowTemplateOut
   securitySchemes:
     HTTPBearer:
       type: http
