@@ -62,6 +62,7 @@ from app.modules.interactions.schemas import (
     TransitionOut,
     TransitionResult,
 )
+from app.modules.notifications.service import interaction_label, notify
 from app.modules.radar.models import RadarSignal
 from app.modules.radar.rules import Severity, SignalKind
 from app.modules.radar.schemas import SignalOut
@@ -580,6 +581,7 @@ async def _apply_transition(
     for attachment in attachments:
         attachment.transition_id = transition.id
 
+    from_stage_id = interaction.current_stage_id
     interaction.current_stage_id = to_stage.id
     interaction.stage_entered_at = now
     interaction.last_activity_at = now
@@ -606,7 +608,37 @@ async def _apply_transition(
         },
         owner_user_id=interaction.owner_user_id,
     )
+    if user.id != interaction.owner_user_id:
+        await _notify_owner(session, user, interaction, from_stage_id, to_stage, comment)
     return transition
+
+
+async def _notify_owner(
+    session: AsyncSession,
+    user: CurrentUser,
+    interaction: Interaction,
+    from_stage_id: uuid.UUID,
+    to_stage: Stage,
+    comment: str,
+) -> None:
+    """Запись перевёл не владелец: руководитель, групповой переход — владелец должен узнать."""
+    from_stage = await session.get(Stage, from_stage_id)
+    label = await interaction_label(session, interaction.id)
+    body = (
+        f"{user.full_name} перевёл(а) «{label}» с этапа «{from_stage.name if from_stage else '—'}» "
+        f"на «{to_stage.name}»."
+    )
+    if comment:
+        body += f" Комментарий: {comment}"
+    await notify(
+        session,
+        [interaction.owner_user_id],
+        "stage_changed",
+        f"Запись переведена на этап «{to_stage.name}»",
+        body,
+        interaction_id=interaction.id,
+        payload={"from_stage_id": str(from_stage_id), "to_stage_code": to_stage.code},
+    )
 
 
 async def _own_attachments(

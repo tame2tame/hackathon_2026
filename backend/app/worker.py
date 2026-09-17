@@ -1,4 +1,5 @@
-"""Ночные задачи arq: полный пересчёт радара и подсказки норм по накопленной истории.
+"""Задачи arq: пересчёт радара, эскалация зависших записей, подсказки норм, отчёты, синхронизация
+и доставка уведомлений.
 
 Контейнер живёт в UTC, поэтому 00:00 UTC — это 03:00 МСК, как записано в плане.
 Запуск: `arq app.worker.WorkerSettings`.
@@ -19,11 +20,14 @@ from app.core.security import CurrentUser
 from app.modules.catalogs.models import AppUser
 from app.modules.integrations.service import ensure_sources, sync_all
 from app.modules.interactions.models import Interaction
+from app.modules.notifications.escalation import escalate_stalled
+from app.modules.notifications.service import deliver_pending
 from app.modules.radar.service import recompute_signals
 from app.modules.reports.service import run_job
 from app.modules.workflow.service import refresh_suggestions
 
 RADAR_HOUR_UTC = 0
+ESCALATION_MINUTE = 10
 SUGGESTIONS_MINUTE = 20
 
 
@@ -63,6 +67,19 @@ async def sync_integrations(ctx: dict[str, Any]) -> int:
         return sum(1 for run in runs if run.status == "done")
 
 
+async def escalate_stalled_interactions(ctx: dict[str, Any]) -> int:
+    """Уведомляет руководителей о записях без изменений дольше срока из настройки."""
+    async with get_sessionmaker()() as session:
+        return await escalate_stalled(session, datetime.now(UTC))
+
+
+async def deliver_notifications(ctx: dict[str, Any]) -> int:
+    """Отправляет созревшие уведомления в Telegram, Max и почту; отказ повторится позже."""
+    async with get_sessionmaker()() as session:
+        stats = await deliver_pending(session, datetime.now(UTC))
+        return stats.sent
+
+
 async def refresh_norm_suggestions(ctx: dict[str, Any]) -> int:
     """Обновляет подсказки норм: медиану и 80-й перцентиль завершённых этапов."""
     async with get_sessionmaker()() as session:
@@ -74,13 +91,18 @@ async def refresh_norm_suggestions(ctx: dict[str, Any]) -> int:
 class WorkerSettings:
     functions: ClassVar[list[Any]] = [
         recompute_radar,
+        escalate_stalled_interactions,
         refresh_norm_suggestions,
         build_report,
         sync_integrations,
+        deliver_notifications,
     ]
     cron_jobs: ClassVar[list[Any]] = [
         cron(recompute_radar, hour=RADAR_HOUR_UTC, minute=0),
+        cron(escalate_stalled_interactions, hour=RADAR_HOUR_UTC, minute=ESCALATION_MINUTE),
         cron(refresh_norm_suggestions, hour=RADAR_HOUR_UTC, minute=SUGGESTIONS_MINUTE),
+        # Раз в минуту: уведомления не требуют мгновенности, но и не копятся часами.
+        cron(deliver_notifications, second=30),
         # Раз в час: свежие метрики LMS и заявки сайта.
         cron(sync_integrations, minute=5),
     ]

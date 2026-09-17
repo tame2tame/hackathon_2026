@@ -7,6 +7,7 @@
 """
 
 import uuid
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -18,6 +19,7 @@ from app.core.roles import Role
 from app.core.security import CurrentUser
 from app.modules.audit.models import AuditLog
 from app.modules.interactions.models import Interaction, Transition
+from app.modules.notifications.service import notify
 from app.modules.radar.service import recompute_signals
 from app.modules.workflow.models import (
     Stage,
@@ -570,9 +572,12 @@ async def _move_interactions(
             )
         )
     )
+    moved_by_owner: dict[uuid.UUID, Counter[tuple[str, str]]] = defaultdict(Counter)
     for interaction in interactions:
         old = old_stages[interaction.current_stage_id]
         target = plan.new_stages[plan.targets[old.code]]
+        if target.code != old.code:
+            moved_by_owner[interaction.owner_user_id][(old.name, target.name)] += 1
         if target.code == old.code:
             comment = "Процесс обновлён"
         elif old.code in plan.new_stages:
@@ -599,4 +604,17 @@ async def _move_interactions(
         # Последняя активность не меняется: перенос схемы — не работа по взаимодействию.
         interaction.version += 1
     await session.flush()
+    for owner_id, moves in moved_by_owner.items():
+        if owner_id == user.id:
+            continue
+        total = sum(moves.values())
+        lines = "; ".join(f"«{src}» → «{dst}»: {count}" for (src, dst), count in moves.items())
+        await notify(
+            session,
+            [owner_id],
+            "workflow_changed",
+            f"Процесс изменён: записей на другом этапе — {total}",
+            f"{user.full_name} опубликовал(а) изменения процесса. Этапы ваших записей: {lines}.",
+            payload={"version_no": draft.version_no, "moved": total},
+        )
     return [interaction.id for interaction in interactions]

@@ -26,6 +26,7 @@ SIGNAL_OPENED = "signal.opened"
 SIGNAL_RESOLVED = "signal.resolved"
 IMPORT_APPLIED = "import.applied"
 REPORT_UPDATED = "report.updated"
+NOTIFICATION_CREATED = "notification.created"
 
 EVENT_KINDS = (
     INTERACTION_CREATED,
@@ -34,6 +35,7 @@ EVENT_KINDS = (
     SIGNAL_RESOLVED,
     IMPORT_APPLIED,
     REPORT_UPDATED,
+    NOTIFICATION_CREATED,
 )
 
 

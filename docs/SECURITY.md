@@ -24,6 +24,8 @@
 | Запись вне области не раскрывается | Ответ `404 NOT_FOUND`, а не `403` — существование чужой записи не подтверждается | [`backend/app/core/errors.py`](../backend/app/core/errors.py) |
 | Правила администратора поверх ролей | `data_access_rule`: разрешение расширяет область, запрет вычитает и сильнее разрешения | [`backend/app/core/scope.py`](../backend/app/core/scope.py) |
 | Действия по ролям | `require_roles` на изменении норм, импорте, интеграциях, весах рейтинга, администрировании | [`backend/app/core/security.py`](../backend/app/core/security.py) |
+| Уведомления личные | Ленту и событие SSE `notification.created` видит только адресат, чужое уведомление — `404` | [`backend/app/modules/events/router.py`](../backend/app/modules/events/router.py) |
+| Секреты каналов уведомлений | В базе — только имя переменной, и только с префиксом `NOTIFY_`: через настройку канала нельзя отправить наружу `DATABASE_URL` или ключ шифрования | [`backend/app/modules/notifications/channels.py`](../backend/app/modules/notifications/channels.py) |
 
 ## Персональные данные
 

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import SessionDep
 from app.core.errors import ErrorCode, error_responses
-from app.core.events import HEARTBEAT_SECONDS, Event, get_event_bus
+from app.core.events import HEARTBEAT_SECONDS, NOTIFICATION_CREATED, Event, get_event_bus
 from app.core.roles import Role
 from app.core.security import CurrentUser, CurrentUserDep
 from app.modules.catalogs.models import AppUser
@@ -28,6 +28,9 @@ async def team_member_ids(session: AsyncSession, user: CurrentUser) -> set[uuid.
 
 def visible(event: Event, user: CurrentUser, team_members: set[uuid.UUID]) -> bool:
     """Та же область видимости, что у списков: КАМ видит своё, руководитель — команду."""
+    if event.kind == NOTIFICATION_CREATED:
+        # Уведомление личное: его не видит даже администратор.
+        return event.owner_user_id == user.id
     if user.role is Role.ADMIN:
         return True
     if event.owner_user_id is None:

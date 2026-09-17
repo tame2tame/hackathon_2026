@@ -63,6 +63,12 @@ services:
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/radar-vuzov/protocol/openid-connect/certs
       KEYCLOAK_AUDIENCE: radar-api
       REDIS_URL: redis://redis:6379/0
+      LMS_BASE_URL: http://mock-lms:8100
+      SITE_BASE_URL: http://mock-site:8101
+      TELEGRAM_API_URL: http://mock-messengers:8102
+      MAX_API_URL: http://mock-messengers:8102
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -80,6 +86,12 @@ services:
       AUTH_MODE: keycloak
       DATABASE_URL: postgresql+asyncpg://radar:radar@postgres:5432/radar
       REDIS_URL: redis://redis:6379/0
+      LMS_BASE_URL: http://mock-lms:8100
+      SITE_BASE_URL: http://mock-site:8101
+      TELEGRAM_API_URL: http://mock-messengers:8102
+      MAX_API_URL: http://mock-messengers:8102
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,6 +110,20 @@ services:
     command: ["uvicorn", "mocks.site:app", "--host", "0.0.0.0", "--port", "8101"]
     ports:
       - "127.0.0.1:8101:8101"
+
+  # Заглушка Telegram и Max: полученные сообщения — на http://127.0.0.1:8102/sent.
+  mock-messengers:
+    build: ../backend
+    command: ["uvicorn", "mocks.messengers:app", "--host", "0.0.0.0", "--port", "8102"]
+    ports:
+      - "127.0.0.1:8102:8102"
+
+  # Почтовый сервер для проверки писем: SMTP на 1025, письма в браузере на http://127.0.0.1:8025.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
 
   # Ежедневный дамп базы. Профиль ops: локальная разработка его не поднимает.
   # Запуск: docker compose --profile ops up -d backup

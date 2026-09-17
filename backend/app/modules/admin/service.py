@@ -36,6 +36,7 @@ from app.modules.catalogs.models import (
     Vendor,
 )
 from app.modules.interactions.models import Interaction
+from app.modules.notifications.settings import STALLED_ESCALATION_KEY, EscalationSetting
 from app.modules.radar.service import recompute_signals
 from app.modules.radar.settings import RADAR_THRESHOLDS_KEY, RadarThresholdsSetting
 from app.modules.workflow.models import WorkflowTemplate
@@ -227,6 +228,10 @@ class KnownSetting:
 KNOWN_SETTINGS: dict[str, KnownSetting] = {
     RADAR_THRESHOLDS_KEY: KnownSetting(
         RadarThresholdsSetting, "Пороги радара в днях: срок лицензии и простой записи"
+    ),
+    STALLED_ESCALATION_KEY: KnownSetting(
+        EscalationSetting,
+        "Эскалация зависших записей: через сколько дней без изменений и какой роли сообщать",
     ),
 }
 

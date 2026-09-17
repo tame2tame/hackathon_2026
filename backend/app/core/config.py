@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     # Адреса внешних систем; на демо-стенде это моки из backend/mocks.
     lms_base_url: str = "http://127.0.0.1:8100"
     site_base_url: str = "http://127.0.0.1:8101"
+    # Каналы уведомлений по умолчанию; на демо-стенде это заглушка мессенджеров и Mailpit.
+    telegram_api_url: str = "http://127.0.0.1:8102"
+    max_api_url: str = "http://127.0.0.1:8102"
+    smtp_host: str = "127.0.0.1"
+    smtp_port: int = 1025
+    smtp_sender: str = "radar@example.com"
+    # Адрес интерфейса: из него строится ссылка на карточку в тексте уведомления.
+    public_url: str = "http://127.0.0.1:5173"
     # Ключ Fernet для email и телефонов контактов вуза; пустой означает «шифрование не настроено».
     pd_encryption_key: str = ""
     # Каталог вложений; в облаке заменяется на S3 за тем же интерфейсом Storage.

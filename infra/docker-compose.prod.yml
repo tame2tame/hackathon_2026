@@ -34,6 +34,14 @@ services:
       PD_ENCRYPTION_KEY: ${PD_ENCRYPTION_KEY:?ключ шифрования контактов}
       UPLOAD_DIR: /data/uploads
       LOG_LEVEL: INFO
+      PUBLIC_URL: ${PUBLIC_URL:?адрес стенда}
+      # Внешние системы на стенде — заглушки из того же образа; настоящие адреса задаются здесь.
+      LMS_BASE_URL: http://mock-lms:8100
+      SITE_BASE_URL: http://mock-site:8101
+      TELEGRAM_API_URL: http://mock-messengers:8102
+      MAX_API_URL: http://mock-messengers:8102
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
     volumes:
       - uploads:/data/uploads
     depends_on:
@@ -53,6 +61,13 @@ services:
       REDIS_URL: redis://redis:6379/0
       PD_ENCRYPTION_KEY: ${PD_ENCRYPTION_KEY:?ключ шифрования контактов}
       UPLOAD_DIR: /data/uploads
+      PUBLIC_URL: ${PUBLIC_URL:?адрес стенда}
+      LMS_BASE_URL: http://mock-lms:8100
+      SITE_BASE_URL: http://mock-site:8101
+      TELEGRAM_API_URL: http://mock-messengers:8102
+      MAX_API_URL: http://mock-messengers:8102
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
     volumes:
       - uploads:/data/uploads
     depends_on:
@@ -60,6 +75,29 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Заглушки LMS, сайта и мессенджеров и почтовый сервер для писем: наружу не публикуются.
+  # Посмотреть полученное можно через SSH-туннель (см. docs/DEPLOY.md).
+  mock-lms:
+    build: ../backend
+    command: ["uvicorn", "mocks.lms:app", "--host", "0.0.0.0", "--port", "8100"]
+    restart: unless-stopped
+
+  mock-site:
+    build: ../backend
+    command: ["uvicorn", "mocks.site:app", "--host", "0.0.0.0", "--port", "8101"]
+    restart: unless-stopped
+
+  mock-messengers:
+    build: ../backend
+    command: ["uvicorn", "mocks.messengers:app", "--host", "0.0.0.0", "--port", "8102"]
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:8025:8025"
     restart: unless-stopped
 
   keycloak:

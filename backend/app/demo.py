@@ -23,6 +23,7 @@ from app.modules.catalogs.models import (
     product_direction,
 )
 from app.modules.interactions.models import Contract, Interaction, Transition
+from app.modules.notifications.models import NotificationAddress
 from app.modules.radar.service import recompute_signals
 from app.modules.workflow.defaults import BASE_STAGES, universities_group
 from app.modules.workflow.models import Stage
@@ -197,6 +198,18 @@ async def _seed_users(session: AsyncSession) -> dict[str, AppUser]:
     session.add_all(users.values())
     await session.flush()
     manager = users["roman.kovalev@example.com"]
+    # Адреса для показа уведомлений на заглушках: чат Telegram и почта на example.com.
+    session.add_all(
+        [
+            NotificationAddress(user_id=manager.id, channel_kind="telegram", address="100200300"),
+            NotificationAddress(user_id=manager.id, channel_kind="email", address=manager.email),
+            NotificationAddress(
+                user_id=users["anna.smirnova@example.com"].id,
+                channel_kind="max",
+                address="200300400",
+            ),
+        ]
+    )
     team = Team(name="Центр и Северо-Запад", manager_user_id=manager.id)
     session.add(team)
     await session.flush()

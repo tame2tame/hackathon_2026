@@ -3857,6 +3857,461 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/notifications:
+    get:
+      tags:
+      - notifications
+      summary: Мои уведомления
+      description: Сначала новые. Непрочитанные — `unread=true`; их число — поле `total`.
+      operationId: read_notifications_api_v1_notifications_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: unread
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Только непрочитанные
+          default: false
+          title: Unread
+        description: Только непрочитанные
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Номер страницы, с 1
+          default: 1
+          title: Page
+        description: Номер страницы, с 1
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          description: Размер страницы
+          default: 50
+          title: Page Size
+        description: Размер страницы
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page_NotificationOut_'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/notifications/read-all:
+    post:
+      tags:
+      - notifications
+      summary: Отметить все уведомления прочитанными
+      operationId: post_read_all_api_v1_notifications_read_all_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadAllOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/notifications/{notification_id}/read:
+    post:
+      tags:
+      - notifications
+      summary: Отметить уведомление прочитанным
+      operationId: post_read_api_v1_notifications__notification_id__read_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: notification_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Notification Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/me/notification-addresses:
+    get:
+      tags:
+      - notifications
+      summary: Мои адреса в каналах уведомлений
+      description: 'Куда приходят уведомления: чат Telegram, пользователь Max, почта.'
+      operationId: read_addresses_api_v1_me_notification_addresses_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AddressOut'
+                type: array
+                title: Response Read Addresses Api V1 Me Notification Addresses Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/me/notification-addresses/{channel_kind}:
+    put:
+      tags:
+      - notifications
+      summary: Задать свой адрес в канале
+      operationId: put_address_api_v1_me_notification_addresses__channel_kind__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: channel_kind
+        in: path
+        required: true
+        schema:
+          enum:
+          - telegram
+          - max
+          - email
+          type: string
+          title: Channel Kind
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/admin/notification-channels:
+    get:
+      tags:
+      - admin
+      summary: Каналы уведомлений
+      description: 'Telegram, Max и почта. Секреты не показываются: только имя переменной и признак.'
+      operationId: read_channels_api_v1_admin_notification_channels_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ChannelOut'
+                type: array
+                title: Response Read Channels Api V1 Admin Notification Channels Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/admin/notification-channels/{channel_kind}:
+    patch:
+      tags:
+      - admin
+      summary: Настроить канал уведомлений
+      description: Включение, адрес API или почтового сервера, виды уведомлений. Токен или пароль задаётся
+        переменной окружения `NOTIFY_*`, в базе хранится только её имя.
+      operationId: patch_channel_api_v1_admin_notification_channels__channel_kind__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: channel_kind
+        in: path
+        required: true
+        schema:
+          enum:
+          - telegram
+          - max
+          - email
+          type: string
+          title: Channel Kind
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/admin/notification-channels/{channel_kind}/test:
+    post:
+      tags:
+      - admin
+      summary: Пробное сообщение в канал
+      description: Сообщение уходит самому администратору сразу, без очереди; ответ — итог доставки.
+      operationId: post_channel_test_api_v1_admin_notification_channels__channel_kind__test_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: channel_kind
+        in: path
+        required: true
+        schema:
+          enum:
+          - telegram
+          - max
+          - email
+          type: string
+          title: Channel Kind
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/admin/notification-deliveries:
+    get:
+      tags:
+      - admin
+      summary: Журнал доставки уведомлений
+      operationId: read_deliveries_api_v1_admin_notification_deliveries_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - pending
+            - sent
+            - failed
+            type: string
+          - type: 'null'
+          description: Состояние доставки
+          title: Status
+        description: Состояние доставки
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeliveryOut'
+                title: Response Read Deliveries Api V1 Admin Notification Deliveries Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/admin/escalations/run:
+    post:
+      tags:
+      - admin
+      summary: Проверить зависшие записи сейчас
+      description: 'То же, что ночная проверка: записи без изменений дольше срока из настройки `stalled_escalation`
+        уведомляют руководителя команды или администраторов. Повторный запуск не дублирует уведомления.'
+      operationId: post_escalations_run_api_v1_admin_escalations_run_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EscalationRunOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: AUTH_FORBIDDEN
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
   /api/v1/events:
     get:
       tags:
@@ -3980,6 +4435,54 @@ components:
       - scope_id
       - comment
       title: AccessRuleOut
+    AddressOut:
+      properties:
+        channel_kind:
+          type: string
+          enum:
+          - telegram
+          - max
+          - email
+          title: Channel Kind
+        channel_name:
+          type: string
+          title: Channel Name
+        channel_enabled:
+          type: boolean
+          title: Channel Enabled
+          description: Включил ли канал администратор
+        address:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Address
+          description: Чат Telegram, пользователь Max или email
+        is_enabled:
+          type: boolean
+          title: Is Enabled
+      type: object
+      required:
+      - channel_kind
+      - channel_name
+      - channel_enabled
+      - address
+      - is_enabled
+      title: AddressOut
+    AddressUpdate:
+      properties:
+        address:
+          type: string
+          maxLength: 254
+          minLength: 1
+          title: Address
+        is_enabled:
+          type: boolean
+          title: Is Enabled
+          default: true
+      type: object
+      required:
+      - address
+      title: AddressUpdate
     AdminUserOut:
       properties:
         id:
@@ -4395,6 +4898,106 @@ components:
       - name
       - archived_at
       title: CatalogItemOut
+    ChannelOut:
+      properties:
+        kind:
+          type: string
+          enum:
+          - telegram
+          - max
+          - email
+          title: Kind
+        name:
+          type: string
+          title: Name
+        is_enabled:
+          type: boolean
+          title: Is Enabled
+        is_mock:
+          type: boolean
+          title: Is Mock
+          description: Канал смотрит в заглушку, а не в настоящий сервис
+        settings:
+          additionalProperties: true
+          type: object
+          title: Settings
+          description: Адрес API или почтового сервера, без секретов
+        secret_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Secret Ref
+          description: Имя переменной окружения с токеном или паролем
+        secret_configured:
+          type: boolean
+          title: Secret Configured
+          description: Переменная с секретом задана на сервере
+        kinds:
+          items:
+            type: string
+            enum:
+            - stalled_interaction
+            - stage_changed
+            - workflow_changed
+            - channel_test
+          type: array
+          title: Kinds
+          description: Какие уведомления канал пересылает
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - kind
+      - name
+      - is_enabled
+      - is_mock
+      - settings
+      - secret_ref
+      - secret_configured
+      - kinds
+      - updated_at
+      title: ChannelOut
+    ChannelUpdate:
+      properties:
+        is_enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Enabled
+        is_mock:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Mock
+        settings:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Settings
+        secret_ref:
+          anyOf:
+          - type: string
+            pattern: ^NOTIFY_[A-Z0-9_]{1,60}$
+          - type: 'null'
+          title: Secret Ref
+        kinds:
+          anyOf:
+          - items:
+              type: string
+              enum:
+              - stalled_interaction
+              - stage_changed
+              - workflow_changed
+              - channel_test
+            type: array
+          - type: 'null'
+          title: Kinds
+      type: object
+      title: ChannelUpdate
+      description: Пропущенное поле не меняется. Секрет задаётся именем переменной окружения `NOTIFY_*`.
     ChartOut:
       properties:
         title:
@@ -4856,6 +5459,64 @@ components:
       - short_name
       title: CounterpartyRef
       description: 'Контрагент записи: вуз, человек или организация — одной ссылкой для списков.'
+    DeliveryOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        notification_id:
+          type: string
+          format: uuid
+          title: Notification Id
+        channel_kind:
+          type: string
+          enum:
+          - telegram
+          - max
+          - email
+          title: Channel Kind
+        status:
+          type: string
+          enum:
+          - pending
+          - sent
+          - failed
+          title: Status
+        attempts:
+          type: integer
+          title: Attempts
+        last_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Error
+        next_attempt_at:
+          type: string
+          format: date-time
+          title: Next Attempt At
+        sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Sent At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - notification_id
+      - channel_kind
+      - status
+      - attempts
+      - last_error
+      - next_attempt_at
+      - sent_at
+      - created_at
+      title: DeliveryOut
     DirectionRef:
       properties:
         id:
@@ -4895,6 +5556,16 @@ components:
       - INTEGRATION_UNAVAILABLE
       - INTERNAL_ERROR
       title: ErrorCode
+    EscalationRunOut:
+      properties:
+        notified:
+          type: integer
+          title: Notified
+          description: Сколько уведомлений о зависших записях создано
+      type: object
+      required:
+      - notified
+      title: EscalationRunOut
     FieldError:
       properties:
         field:
@@ -5463,6 +6134,57 @@ components:
       - author
       - created_at
       title: NoteOut
+    NotificationOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          enum:
+          - stalled_interaction
+          - stage_changed
+          - workflow_changed
+          - channel_test
+          title: Kind
+        title:
+          type: string
+          title: Title
+        body:
+          type: string
+          title: Body
+        interaction_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Interaction Id
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        read_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Read At
+      type: object
+      required:
+      - id
+      - kind
+      - title
+      - body
+      - interaction_id
+      - payload
+      - created_at
+      - read_at
+      title: NotificationOut
     OwnerChange:
       properties:
         owner_id:
@@ -5530,6 +6252,29 @@ components:
       - page
       - page_size
       title: Page[InteractionListItem]
+    Page_NotificationOut_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/NotificationOut'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      title: Page[NotificationOut]
     Page_SignalListItem_:
       properties:
         items:
@@ -5766,6 +6511,16 @@ components:
       - complete
       - missing_metrics
       title: RatingRowOut
+    ReadAllOut:
+      properties:
+        updated:
+          type: integer
+          title: Updated
+          description: Сколько уведомлений отмечено прочитанными
+      type: object
+      required:
+      - updated
+      title: ReadAllOut
     ReportCreate:
       properties:
         format:

@@ -39,6 +39,18 @@ sh ../infra/smoke.sh "$PUBLIC_URL"
 | `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_KEY` | Доступ по SSH к серверу стенда |
 | `PUBLIC_URL` | Адрес стенда для smoke-проверки и ежечасного контроля |
 
+## Заглушки внешних систем
+
+На стенде LMS, сайт и мессенджеры заменены заглушками из того же образа (`mock-lms`, `mock-site`,
+`mock-messengers`), а письма принимает Mailpit. Наружу они не публикуются. Посмотреть, что ушло:
+
+- журнал доставки в админке — `GET /api/v1/admin/notification-deliveries`;
+- письма — через туннель `ssh -L 8025:127.0.0.1:8025 <сервер>` и `http://127.0.0.1:8025`;
+- сообщения мессенджеров — `docker compose exec api python -c "import httpx; print(httpx.get('http://mock-messengers:8102/sent').text)"`.
+
+Когда заказчик даст настоящие адреса, меняются переменные `LMS_BASE_URL`, `SITE_BASE_URL`,
+`TELEGRAM_API_URL`, `MAX_API_URL`, `SMTP_HOST`, `SMTP_PORT` и секреты `NOTIFY_*`; код не меняется.
+
 ## Контроль
 
 - Рабочий процесс **Health** раз в час прогоняет тот же smoke-скрипт. Пока секрет `PUBLIC_URL`

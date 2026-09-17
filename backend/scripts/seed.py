@@ -8,11 +8,13 @@ from app.core.db import get_sessionmaker
 from app.demo import seed_demo
 from app.demo_full import seed_full
 from app.modules.integrations.service import ensure_sources
+from app.modules.notifications.service import ensure_channels
 from app.modules.workflow.defaults import ensure_groups
 
 
 async def run(workflow_only: bool, full: bool) -> str:
     async with get_sessionmaker()() as session:
+        await ensure_channels(session)
         if workflow_only:
             await ensure_groups(session)
             await session.commit()

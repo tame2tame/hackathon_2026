@@ -30,6 +30,12 @@ from app.modules.interactions.models import (
     Transition,
 )
 from app.modules.metrics.models import ProgramMetric
+from app.modules.notifications.models import (
+    Notification,
+    NotificationAddress,
+    NotificationChannel,
+    NotificationDelivery,
+)
 from app.modules.radar.models import RadarSignal
 from app.modules.reports.models import ReportJob
 from app.modules.workflow.models import (
@@ -60,6 +66,10 @@ __all__ = [
     "Interaction",
     "InteractionContact",
     "InteractionNote",
+    "Notification",
+    "NotificationAddress",
+    "NotificationChannel",
+    "NotificationDelivery",
     "Product",
     "Program",
     "ProgramMetric",
