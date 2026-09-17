@@ -4903,6 +4903,311 @@ paths:
                 $ref: '#/components/schemas/Problem'
       security:
       - HTTPBearer: []
+  /api/v1/interactions/{interaction_id}/participants:
+    get:
+      tags:
+      - participants
+      summary: Обучающиеся и преподаватели по записи
+      description: 'ФИО и роль видит тот, кто видит запись. Почта показана сокращённо (и***@вуз.рф): адрес
+        целиком отдаёт отдельный метод, и его запрос пишется в аудит.'
+      operationId: read_participants_api_v1_interactions__interaction_id__participants_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      - name: role
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - student
+            - teacher
+            type: string
+          - type: 'null'
+          description: Только одна роль
+          title: Role
+        description: Только одна роль
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParticipantsOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      tags:
+      - participants
+      summary: Добавить обучающегося или преподавателя
+      operationId: post_participant_api_v1_interactions__interaction_id__participants_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParticipantCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParticipantOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/participants/{participant_id}/contact:
+    get:
+      tags:
+      - participants
+      summary: Почта участника целиком
+      description: 'Персональные данные: каждый просмотр пишется в журнал аудита.'
+      operationId: read_participant_contact_api_v1_participants__participant_id__contact_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: participant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Participant Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParticipantContactOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/participants/{participant_id}:
+    delete:
+      tags:
+      - participants
+      summary: Убрать участника из списка
+      description: 'Строка уходит из списка, а почта стирается: хранить её больше незачем.'
+      operationId: delete_participant_api_v1_participants__participant_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: participant_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Participant Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/interactions/{interaction_id}/participants/import:
+    post:
+      tags:
+      - participants
+      summary: Загрузить список файлом
+      description: 'JSON, CSV, XLSX или XLS с колонками «ФИО», «Email», «Роль» и «Идентификатор в LMS».
+        Человек находится по почте, а без почты — по ФИО и роли: повторная загрузка того же файла не создаёт
+        дублей. По умолчанию — предпросмотр (`dry_run=true`).'
+      operationId: post_participants_import_api_v1_interactions__interaction_id__participants_import_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_post_participants_import_api_v1_interactions__interaction_id__participants_import_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParticipantImportOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR · IMPORT_MAPPING_INVALID
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '413':
+          description: FILE_TOO_LARGE
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/interactions/{interaction_id}/participants/export:
+    get:
+      tags:
+      - participants
+      summary: Выгрузить список файлом
+      description: Те же колонки, что принимает загрузка. В файле почта целиком — выгрузка пишется в аудит.
+      operationId: read_participants_export_api_v1_interactions__interaction_id__participants_export_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: interaction_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Interaction Id
+      - name: format
+        in: query
+        required: false
+        schema:
+          enum:
+          - json
+          - csv
+          - xlsx
+          type: string
+          description: Формат файла
+          default: xlsx
+          title: Format
+        description: Формат файла
+      - name: encoding
+        in: query
+        required: false
+        schema:
+          enum:
+          - utf-8
+          - windows-1251
+          type: string
+          description: Кодировка CSV
+          default: utf-8
+          title: Encoding
+        description: Кодировка CSV
+      responses:
+        '200':
+          description: Файл списка
+          content:
+            application/json: {}
+            text/csv: {}
+            application/octet-stream: {}
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/events:
     get:
       tags:
@@ -5357,6 +5662,42 @@ components:
       required:
       - file
       title: Body_post_import_api_v1_imports_post
+    Body_post_participants_import_api_v1_interactions__interaction_id__participants_import_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          description: Файл списка
+        dry_run:
+          type: boolean
+          title: Dry Run
+          description: Только показать, что будет
+          default: true
+        role:
+          type: string
+          enum:
+          - student
+          - teacher
+          title: Role
+          description: Роль строк без колонки «Роль»
+          default: student
+        encoding:
+          anyOf:
+          - type: string
+            enum:
+            - utf-8
+            - windows-1251
+            - koi8-r
+            - cp866
+            - utf-16
+          - type: 'null'
+          title: Encoding
+          description: Кодировка CSV, если определилась неверно
+      type: object
+      required:
+      - file
+      title: Body_post_participants_import_api_v1_interactions__interaction_id__participants_import_post
     BulkItemResult:
       properties:
         interaction_id:
@@ -7480,6 +7821,188 @@ components:
       - page
       - page_size
       title: Page[UniversityOut]
+    ParticipantContactOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        full_name:
+          type: string
+          title: Full Name
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+      type: object
+      required:
+      - id
+      - full_name
+      - email
+      title: ParticipantContactOut
+      description: 'Полный контакт: показывается по запросу и пишется в аудит.'
+    ParticipantCountsOut:
+      properties:
+        students:
+          type: integer
+          title: Students
+        teachers:
+          type: integer
+          title: Teachers
+      type: object
+      required:
+      - students
+      - teachers
+      title: ParticipantCountsOut
+    ParticipantCreate:
+      properties:
+        role:
+          type: string
+          enum:
+          - student
+          - teacher
+          title: Role
+          default: student
+        full_name:
+          type: string
+          maxLength: 300
+          minLength: 3
+          title: Full Name
+        email:
+          anyOf:
+          - type: string
+            maxLength: 254
+            pattern: ^[^@\s]+@[^@\s.]+\.[^@\s]+$
+          - type: 'null'
+          title: Email
+        external_ref:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: External Ref
+          description: Идентификатор в LMS
+      type: object
+      required:
+      - full_name
+      title: ParticipantCreate
+    ParticipantImportOut:
+      properties:
+        dry_run:
+          type: boolean
+          title: Dry Run
+        created:
+          type: integer
+          title: Created
+        updated:
+          type: integer
+          title: Updated
+        unchanged:
+          type: integer
+          title: Unchanged
+        errors:
+          type: integer
+          title: Errors
+        rows:
+          items:
+            $ref: '#/components/schemas/ParticipantRowOut'
+          type: array
+          title: Rows
+      type: object
+      required:
+      - dry_run
+      - created
+      - updated
+      - unchanged
+      - errors
+      - rows
+      title: ParticipantImportOut
+    ParticipantOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        role:
+          type: string
+          enum:
+          - student
+          - teacher
+          title: Role
+        full_name:
+          type: string
+          title: Full Name
+        email:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Email
+          description: 'Почта скрыта: и***@вуз.рф. Целиком — в карточке участника'
+        has_email:
+          type: boolean
+          title: Has Email
+        source:
+          type: string
+          title: Source
+          description: manual — завели руками, import — из файла, lms — из LMS
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - role
+      - full_name
+      - email
+      - has_email
+      - source
+      - created_at
+      title: ParticipantOut
+    ParticipantRowOut:
+      properties:
+        row_no:
+          type: integer
+          title: Row No
+        key:
+          type: string
+          title: Key
+          description: ФИО строки — по нему видно, о ком речь
+        action:
+          type: string
+          enum:
+          - created
+          - updated
+          - unchanged
+          - error
+          title: Action
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Detail
+      type: object
+      required:
+      - row_no
+      - key
+      - action
+      - detail
+      title: ParticipantRowOut
+    ParticipantsOut:
+      properties:
+        counts:
+          $ref: '#/components/schemas/ParticipantCountsOut'
+        items:
+          items:
+            $ref: '#/components/schemas/ParticipantOut'
+          type: array
+          title: Items
+      type: object
+      required:
+      - counts
+      - items
+      title: ParticipantsOut
     PriorityUpdate:
       properties:
         priority:

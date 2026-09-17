@@ -34,6 +34,7 @@ from app.modules.integrations.router import router as integrations_router
 from app.modules.interactions.router import router as interactions_router
 from app.modules.notifications.router import admin_router as notifications_admin_router
 from app.modules.notifications.router import router as notifications_router
+from app.modules.participants.router import router as participants_router
 from app.modules.radar.router import router as radar_router
 from app.modules.reports.router import router as reports_router
 from app.modules.workflow.router import editor_router as workflow_editor_router
@@ -119,6 +120,7 @@ def create_app() -> FastAPI:
         admin_contacts_router,
         notifications_router,
         notifications_admin_router,
+        participants_router,
         events_router,
     ):
         app.include_router(router)

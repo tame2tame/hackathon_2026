@@ -41,6 +41,7 @@ from app.modules.notifications.models import (
     NotificationChannel,
     NotificationDelivery,
 )
+from app.modules.participants.models import Participant
 from app.modules.radar.models import RadarSignal
 from app.modules.reports.models import ReportJob
 from app.modules.workflow.models import (
@@ -76,6 +77,7 @@ __all__ = [
     "NotificationAddress",
     "NotificationChannel",
     "NotificationDelivery",
+    "Participant",
     "Product",
     "Program",
     "ProgramMetric",

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import crypto
 from app.core.roles import Role
 from app.modules.catalogs.models import (
     AppUser,
@@ -24,6 +25,7 @@ from app.modules.catalogs.models import (
 )
 from app.modules.interactions.models import Contract, Interaction, Transition
 from app.modules.notifications.models import NotificationAddress
+from app.modules.participants.models import Participant
 from app.modules.radar.service import recompute_signals
 from app.modules.workflow.defaults import BASE_STAGES, universities_group
 from app.modules.workflow.models import Stage
@@ -57,6 +59,14 @@ PROGRAMS: tuple[tuple[str, str, str, str], ...] = (
 # Руководитель отметил, какие курсы продвигаем в первую очередь: рейтинг считается по данным,
 # а очередь показа задаётся вручную.
 PROGRAM_PRIORITY: dict[str, int] = {"Анализ данных": 30, "DevOps-инженерия": 20}
+
+# Синтетические участники демо-группы: настоящих персональных данных в репозитории нет.
+DEMO_PARTICIPANTS: tuple[tuple[str, str, str], ...] = (
+    ("Ковалёв Артём Игоревич", "a.kovalev@student.example.com", "student"),
+    ("Миронова Дарья Сергеевна", "d.mironova@student.example.com", "student"),
+    ("Сафин Тимур Рустамович", "t.safin@student.example.com", "student"),
+    ("Громова Ольга Петровна", "o.gromova@itmo.example.com", "teacher"),
+)
 
 UNIVERSITIES: tuple[tuple[str, str, str, str], ...] = (
     ("МГТУ им. Н. Э. Баумана", "МГТУ", "Москва", "Москва"),
@@ -188,10 +198,28 @@ async def seed_demo(session: AsyncSession, now: datetime) -> bool:
             session, interaction, stages, spec.stage_code, entered_at
         )
         ids.append(interaction.id)
+        if spec.stage_code == "classes":
+            _add_participants(session, interaction)
 
     await session.flush()
     await recompute_signals(session, ids, now)
     return True
+
+
+def _add_participants(session: AsyncSession, interaction: Interaction) -> None:
+    """Идут занятия — значит, есть кого учить: список группы и преподаватель."""
+    for full_name, email, role in DEMO_PARTICIPANTS:
+        session.add(
+            Participant(
+                interaction_id=interaction.id,
+                role=role,
+                full_name=full_name,
+                # Без ключа шифрования список заводится без почты: хранить её открытой нельзя.
+                email_enc=crypto.encrypt(email) if crypto.is_configured() else None,
+                email_fp=crypto.fingerprint(email) if crypto.is_configured() else None,
+                source="lms",
+            )
+        )
 
 
 async def _seed_users(session: AsyncSession) -> dict[str, AppUser]:

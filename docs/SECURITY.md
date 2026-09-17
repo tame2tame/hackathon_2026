@@ -37,7 +37,9 @@
 |---|---|---|
 | Email и телефон контактов шифруются | Fernet по ключу `PD_ENCRYPTION_KEY`; без ключа контакт с ПДн не сохраняется | [`backend/app/core/crypto.py`](../backend/app/core/crypto.py) |
 | Email и телефон клиентов B2C шифруются тем же ключом | ИНН хранится только у организаций: у человека это лишние персональные данные | [`backend/app/modules/clients/service.py`](../backend/app/modules/clients/service.py) |
-| Просмотр ПДн фиксируется | Записи `contact.viewed` и `client.viewed` в аудит; в журнал попадает факт, не сами данные | [`backend/app/modules/admin/service.py`](../backend/app/modules/admin/service.py) |
+| Просмотр ПДн фиксируется | Записи `contact.viewed`, `client.viewed`, `participant.contact_viewed` и `participant.exported` в аудит; в журнал попадает факт, не сами данные | [`backend/app/modules/admin/service.py`](../backend/app/modules/admin/service.py) |
+| Почта обучающихся и преподавателей шифруется, а в списке показана сокращённо | `и***@вуз.рф` в списке, адрес целиком — отдельным запросом с записью в аудит; рядом лежит HMAC-отпечаток, по которому загрузка файла находит дубли, но адрес из него не восстановить | [`backend/app/modules/participants/service.py`](../backend/app/modules/participants/service.py) |
+| Ушедшего из группы убирают вместе с почтой | Строка уходит из списка, `email_enc` и отпечаток стираются: хранить их больше незачем | [`backend/app/modules/participants/service.py`](../backend/app/modules/participants/service.py) |
 | Человека видят только те, кто с ним работает | Карточку клиента-человека видят создатель, владельцы его записей, руководитель их команды и администратор; организации видны всем, чтобы не заводить дубли | [`backend/app/modules/clients/service.py`](../backend/app/modules/clients/service.py) |
 | ПДн не попадают в логи и тексты ошибок | Ошибки отдаются кодом каталога и `trace_id`; стек — только в журнал сервера | [`backend/app/core/errors.py`](../backend/app/core/errors.py) |
 | В репозитории только синтетические данные | Демо-пользователи на `example.com`, фикстуры генерируются | [`backend/app/demo.py`](../backend/app/demo.py) |

@@ -9,7 +9,7 @@
 import json
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import cache
 from app.core.config import get_settings
-from app.core.errors import AppError, ErrorCode, FieldError
+from app.core.errors import AppError, ErrorCode
 from app.core.security import CurrentUser
 from app.modules.audit.models import AuditLog
 from app.modules.catalogs.models import (
@@ -30,31 +30,20 @@ from app.modules.catalogs.models import (
     University,
     Vendor,
 )
-from app.modules.imports import reader
+from app.modules.imports import files
+from app.modules.imports.files import (
+    EXPORT_TYPES,
+    Action,
+    FieldSpec,
+    ImportOutcome,
+    RowError,
+    RowResult,
+)
 from app.modules.imports.mapping import normalize, short_name
 from app.modules.reports import renderers
 
-Action = Literal["created", "updated", "unchanged", "error"]
 TRUE_VALUES = {"да", "true", "1", "yes", "+", "истина"}
 FALSE_VALUES = {"нет", "false", "0", "no", "-", "ложь", ""}
-EXPORT_TYPES = {
-    "json": "application/json",
-    "csv": "text/csv",
-    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-}
-
-
-@dataclass(frozen=True, slots=True)
-class FieldSpec:
-    name: str
-    label: str
-    required: bool = False
-    is_bool: bool = False
-    aliases: tuple[str, ...] = ()
-
-    def matches(self, header: str) -> bool:
-        key = normalize(header)
-        return key in {normalize(self.name), normalize(self.label), *map(normalize, self.aliases)}
 
 
 SPECS: dict[str, tuple[FieldSpec, ...]] = {
@@ -101,28 +90,6 @@ KEY_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 
-@dataclass(slots=True)
-class RowResult:
-    row_no: int
-    key: str
-    action: Action
-    detail: str | None = None
-
-
-@dataclass(slots=True)
-class ImportOutcome:
-    kind: str
-    dry_run: bool
-    rows: list[RowResult] = field(default_factory=list)
-
-    def count(self, action: Action) -> int:
-        return sum(1 for row in self.rows if row.action == action)
-
-
-class RowError(Exception):
-    """Строку нельзя применить: причина уходит в итог по строке, остальные строки не страдают."""
-
-
 def specs_of(kind: str) -> tuple[FieldSpec, ...]:
     specs = SPECS.get(kind)
     if specs is None:
@@ -131,14 +98,6 @@ def specs_of(kind: str) -> tuple[FieldSpec, ...]:
             f"Неизвестный справочник: {kind}. Есть: {', '.join(SPECS)}.",
         )
     return specs
-
-
-def _clean(value: Any) -> str:
-    text = "" if value is None else str(value).strip()
-    # Апостроф перед формулой ставит наша же выгрузка: при загрузке он лишний.
-    if text.startswith("'") and text[1:2] in {"=", "+", "-", "@"}:
-        return text[1:]
-    return text
 
 
 def _priority(value: str) -> int:
@@ -160,74 +119,6 @@ def _bool(value: str) -> bool:
     if lowered in FALSE_VALUES:
         return False
     raise RowError(f"Не понятно, да или нет: «{value}»")
-
-
-def _parse_json(content: bytes) -> list[dict[str, Any]]:
-    try:
-        data = json.loads(content.decode("utf-8-sig"))
-    except (UnicodeDecodeError, ValueError) as error:
-        raise AppError(
-            ErrorCode.VALIDATION_ERROR,
-            "Файл JSON не разобран: нужен массив объектов или объект с полем items.",
-            errors=[FieldError(field="file", message="Некорректный JSON")],
-        ) from error
-    items = data.get("items") if isinstance(data, dict) else data
-    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
-        raise AppError(
-            ErrorCode.VALIDATION_ERROR,
-            "В JSON нужен массив объектов или объект с полем items.",
-            errors=[FieldError(field="file", message="Нет списка записей")],
-        )
-    return items
-
-
-def _records(file_name: str, content: bytes, encoding: str | None) -> list[dict[str, Any]]:
-    if file_name.lower().endswith(".json"):
-        return _parse_json(content)
-    if reader.file_kind(file_name) is None:
-        raise AppError(
-            ErrorCode.VALIDATION_ERROR,
-            "Справочник загружается из JSON, CSV, XLSX или XLS.",
-            errors=[FieldError(field="file", message="Неподдерживаемый формат")],
-        )
-    try:
-        sheet = reader.read(file_name, content, encoding)
-    except reader.SheetError as error:
-        raise AppError(
-            ErrorCode.VALIDATION_ERROR,
-            str(error),
-            errors=[FieldError(field="file", message="Файл не разобран")],
-        ) from error
-    return list(sheet.rows)
-
-
-def _normalized(kind: str, raw: dict[str, Any]) -> dict[str, str]:
-    """Колонки файла → поля справочника: подходят и имена полей, и русские заголовки."""
-    values: dict[str, str] = {}
-    for spec in specs_of(kind):
-        for header, value in raw.items():
-            if spec.matches(str(header)):
-                values[spec.name] = _clean(value)
-                break
-    return values
-
-
-def _check_columns(kind: str, records: list[dict[str, Any]]) -> None:
-    headers = {str(header) for record in records for header in record}
-    missing = [
-        spec
-        for spec in specs_of(kind)
-        if spec.required and not any(spec.matches(header) for header in headers)
-    ]
-    if records and missing:
-        raise AppError(
-            ErrorCode.IMPORT_MAPPING_INVALID,
-            f"Нет обязательных колонок: {', '.join(spec.label for spec in missing)}.",
-            errors=[
-                FieldError(field=spec.name, message=f"Нужна колонка «{spec.label}»")
-                for spec in missing
-            ],
-        )
 
 
 def _set(target: Any, attribute: str, value: Any, changed: list[str]) -> None:
@@ -432,15 +323,15 @@ async def import_catalog(
     settings = get_settings()
     if len(content) > settings.max_upload_bytes:
         raise AppError(ErrorCode.FILE_TOO_LARGE, f"Файл больше {settings.max_upload_mb} МБ.")
-    records = _records(upload.filename or "", content, encoding)
-    _check_columns(kind, records)
+    rows = files.records(upload.filename or "", content, encoding, "Справочник")
+    files.check_columns(specs, rows)
 
     outcome = ImportOutcome(kind=kind, dry_run=dry_run)
     seen: set[str] = set()
     savepoint = await session.begin_nested()
     index = await _Index.load(session)
-    for row_no, raw in enumerate(records, start=1):
-        values = _normalized(kind, raw)
+    for row_no, raw in enumerate(rows, start=1):
+        values = files.normalized(specs, raw)
         missing = [spec.label for spec in specs if spec.required and not values.get(spec.name)]
         if missing:
             outcome.rows.append(

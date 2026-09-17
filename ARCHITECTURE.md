@@ -30,6 +30,7 @@ CRM для сотрудников ИТ Школы Ростелекома (кей
 | ADR-020 | Состояние записи (`active`, `paused`, `completed`, `cancelled`) отделено от этапа процесса и меняется методом `PUT /interactions/{id}/status` с причиной для паузы и отмены. Приостановленная запись не копит сигналы простоя и не участвует в переходах; отменённая уходит из рабочих списков, но остаётся в карточке, истории и отчёте с фильтром по состоянию; завершённую и отменённую можно вернуть в работу, если связка «вуз — программа — продукт» ещё свободна | Пауза и отмена — обычная жизнь сделки: вуз взял паузу до бюджета, заявка оказалась ошибочной. Без отдельного состояния такие записи либо висят просроченными в радаре, либо удаляются вместе с историей, а история по ТЗ только дописывается |
 | ADR-021 | Порядок продвижения курсов задаётся вручную: `program.priority` от 0 до 100, справочник и рейтинг (`order=priority`) показывают отмеченные курсы первыми. Место и балл рейтинга при этом считаются только по данным и не меняются; приоритет правят руководитель и администратор, изменение пишется в аудит | Уточнение жюри 17.09: «приоритеты курсов можно и вручную». Данных LMS и сайта не хватает на решения вроде «в этом году продвигаем ИИ», но подменять ими расчётный рейтинг нельзя — иначе рейтинг перестаёт быть объяснимым (ADR-006) |
 | ADR-022 | Кэш двухуровневый. На сервере в Redis лежат готовые ответы справочников и рейтинга: ключ содержит номер поколения, изменение справочника увеличивает номер, и прежние ключи просто перестают попадаться. У клиента — условные запросы: ответы справочников, рейтинга и карточки идут с `ETag` и `Cache-Control: private, no-cache`, файлы вложений и готовых отчётов — с `ETag` и `private, max-age=86400, immutable`; повтор с `If-None-Match` отвечает `304` без тела. Недоступный Redis означает «в кэше ничего нет», а не ошибку | FR-13 «кэш действий пользователя»: повторное открытие карточки и списков не должно стоить ни запроса к базе, ни лишнего трафика. `private` и обязательная проверка на сервере не дают показать данные, которые пользователь больше не вправе видеть, а хэш файла — готовый и точный ETag |
+| ADR-023 | Обучающиеся и преподаватели — список у записи (`participant`), а не отдельный справочник людей. ФИО видит тот, кто видит запись; почта хранится зашифрованной, в списке показана сокращённо, а целиком отдаётся отдельным методом с записью в аудит. Список ведётся руками и файлом (JSON, CSV, XLSX, XLS), человек находится по HMAC-отпечатку почты, а без почты — по ФИО и роли | Уточнение жюри 17.09: нужны списки обучающихся и преподавателей с ФИО и email. Общий справочник людей — это отдельная база персональных данных без владельца; список у записи живёт ровно столько, сколько идёт обучение, и удаляется вместе с ним. Отпечаток нужен потому, что Fernet недетерминирован: искать по зашифрованному полю нельзя (152-ФЗ, ADR-010) |
 
 ## 2. Компоненты
 
@@ -173,6 +174,9 @@ integration_outbox id, source_id, interaction_id, reason, status (pending|sent|f
                    attempts, next_attempt_at, last_error, sent_at,
                    UNIQUE(source_id, interaction_id) WHERE status = 'pending'
 site_application   id, external_id UNIQUE, university_id, program_id, received_at, match_status, interaction_id
+participant        id, interaction_id → interaction, role (student|teacher), full_name,
+                   email_enc, email_fp (HMAC для поиска дублей), external_ref, source (manual|import|lms),
+                   created_by, archived_at, UNIQUE(interaction_id, email_fp) WHERE email_fp IS NOT NULL
 program_metric     id, university_id, program_id, period_month, metric (applications|students|streams), value, source
 radar_signal       id, interaction_id, kind, severity (low|medium|high), detected_at, resolved_at, evidence jsonb,
                    UNIQUE(interaction_id, kind) WHERE resolved_at IS NULL
@@ -243,6 +247,11 @@ notification_delivery id, notification_id, channel_kind, status (pending|sent|fa
 | `POST /api/v1/interactions/bulk-owner` | Групповая передача записей другому КАМу |
 | `POST /api/v1/interactions/{id}/attachments` | Загрузка документа (multipart: `file`, `document_type`) |
 | `GET /api/v1/interactions/{id}/attachments` | Документы взаимодействия |
+| `GET`, `POST /api/v1/interactions/{id}/participants` | Обучающиеся и преподаватели записи; почта в списке сокращена |
+| `GET /api/v1/participants/{id}/contact` | Почта участника целиком; просмотр пишется в аудит |
+| `DELETE /api/v1/participants/{id}` | Убрать участника: строка уходит, почта стирается |
+| `POST /api/v1/interactions/{id}/participants/import` | Список файлом с предпросмотром |
+| `GET /api/v1/interactions/{id}/participants/export` | Список файлом: JSON, CSV или XLSX |
 | `GET /api/v1/attachments/{id}/file` | Файл вложения с исходным именем |
 | `POST /api/v1/imports` | Загрузка выгрузки xls, xlsx или csv: колонки, подсказка соответствия, определённые кодировка и разделитель; `encoding` — указать вручную |
 | `PUT /api/v1/imports/{id}/mapping` | Соответствие колонок и предпросмотр по строкам |

@@ -5,6 +5,8 @@
 хранение открытым текстом.
 """
 
+import hashlib
+import hmac
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -49,3 +51,27 @@ def decrypt(value: bytes | None) -> str | None:
     except (InvalidToken, EncryptionNotConfiguredError):
         # Ключ сменился или данные испорчены: показываем пустоту, но не роняем список.
         return None
+
+
+def fingerprint(value: str | None) -> str | None:
+    """Отпечаток адреса: по нему находится дубль, но сам адрес из него не восстановить.
+
+    Шифрование Fernet каждый раз даёт разный результат, поэтому искать по `email_enc` нельзя.
+    Отпечаток — HMAC на том же ключе: без ключа он бесполезен даже вместе с копией базы.
+    """
+    if value is None or not value.strip():
+        return None
+    key = get_settings().pd_encryption_key
+    if not key:
+        raise EncryptionNotConfiguredError(
+            "Не задан PD_ENCRYPTION_KEY: персональные данные сохранять нельзя."
+        )
+    return hmac.new(key.encode(), value.strip().casefold().encode(), hashlib.sha256).hexdigest()
+
+
+def mask_email(value: str | None) -> str | None:
+    """Почта для списка: видно, чья она, но адрес целиком нужно запрашивать отдельно."""
+    if not value or "@" not in value:
+        return None
+    name, _, domain = value.partition("@")
+    return f"{name[0]}***@{domain}"
