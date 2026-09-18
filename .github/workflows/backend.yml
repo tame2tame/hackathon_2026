@@ -32,12 +32,54 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: backend/pyproject.toml
+      # Шрифт с кириллицей нужен отчётам в PDF.
+      - run: sudo apt-get update && sudo apt-get install --no-install-recommends -y fonts-dejavu-core
       - run: pip install -e ".[dev]"
       - name: Ruff
         run: ruff check . && ruff format --check .
       - name: Mypy
         run: mypy app scripts
+      - name: Миграции — одна голова Alembic
+        run: test "$(alembic heads | wc -l)" -eq 1
       - name: Контракт совпадает со схемой приложения
         run: python -m scripts.export_openapi --check
       - name: Тесты — миграции вниз и вверх, API, правила радара
         run: pytest
+      - name: Перечень библиотек
+        run: |
+          pip freeze > ../docs/dependencies.txt
+          echo "Библиотек: $(wc -l < ../docs/dependencies.txt)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependencies
+          path: docs/dependencies.txt
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка образа API
+        run: docker build backend
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Полная история нужна gitleaks: секрет мог попасть в давний коммит.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Известные уязвимости в зависимостях
+        run: |
+          pip install pip-audit
+          pip install -e backend
+          # Свой пакет не опубликован на PyPI, и --strict падал бы на нём самом:
+          # проверяем закреплённые версии всех остальных пакетов окружения.
+          pip freeze --exclude-editable > /tmp/requirements.txt
+          pip-audit --strict --desc -r /tmp/requirements.txt --disable-pip --no-deps
+      - name: Секреты в истории
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --redact --verbose --exit-code 1

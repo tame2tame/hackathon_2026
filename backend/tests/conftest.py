@@ -1,7 +1,9 @@
 """Тестовая БД: миграции и демо-данные один раз за сессию, откат после каждого теста."""
 
 import asyncio
+import base64
 import os
+import tempfile
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,10 +11,20 @@ from pathlib import Path
 import pytest
 
 TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL", "postgresql+asyncpg://radar:radar@127.0.0.1:5432/radar_test"
+    "TEST_DATABASE_URL", "postgresql+asyncpg://radar:radar@127.0.0.1:55432/radar_test"
 )
+# Вложения тестов пишутся во временный каталог, а не в рабочий var/uploads.
+TEST_UPLOAD_DIR = tempfile.mkdtemp(prefix="radar-uploads-")
 # Настройки читаются при первом обращении, поэтому окружение задаётся до импорта приложения.
-os.environ.update(APP_ENV="test", AUTH_MODE="dev", DATABASE_URL=TEST_DATABASE_URL)
+# Ключ шифрования контактов: фиксированный, чтобы тесты не зависели от окружения машины.
+TEST_PD_KEY = base64.urlsafe_b64encode(b"radar-test-key-32-bytes-exactly!").decode()
+os.environ.update(
+    APP_ENV="test",
+    AUTH_MODE="dev",
+    DATABASE_URL=TEST_DATABASE_URL,
+    UPLOAD_DIR=TEST_UPLOAD_DIR,
+    PD_ENCRYPTION_KEY=TEST_PD_KEY,
+)
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
@@ -20,6 +32,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, create_async_engine  # noqa: E402
 from sqlalchemy.pool import NullPool  # noqa: E402
 
+from app.core.cache import get_cache  # noqa: E402
 from app.core.db import get_session  # noqa: E402
 from app.demo import seed_demo  # noqa: E402
 from app.main import create_app  # noqa: E402
@@ -43,6 +56,12 @@ def database() -> None:
     command.downgrade(config, "base")
     command.upgrade(config, "head")
     asyncio.run(_seed())
+
+
+@pytest.fixture(autouse=True)
+def cache() -> None:
+    """Кэш живёт в памяти процесса, а база откатывается после теста: чистим и его."""
+    get_cache.cache_clear()
 
 
 @pytest.fixture

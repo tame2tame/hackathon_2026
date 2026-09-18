@@ -3,9 +3,9 @@
 import logging
 import uuid
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -24,9 +24,12 @@ class ErrorCode(StrEnum):
     AUTH_FORBIDDEN = "AUTH_FORBIDDEN"
     NOT_FOUND = "NOT_FOUND"
     INTERACTION_VERSION_CONFLICT = "INTERACTION_VERSION_CONFLICT"
+    INTERACTION_DUPLICATE = "INTERACTION_DUPLICATE"
     WF_TRANSITION_NOT_ALLOWED = "WF_TRANSITION_NOT_ALLOWED"
     WF_COMMENT_REQUIRED = "WF_COMMENT_REQUIRED"
     WF_ATTACHMENT_REQUIRED = "WF_ATTACHMENT_REQUIRED"
+    WF_VERSION_NOT_DRAFT = "WF_VERSION_NOT_DRAFT"
+    WF_MIGRATION_MAP_INCOMPLETE = "WF_MIGRATION_MAP_INCOMPLETE"
     FILE_TYPE_NOT_ALLOWED = "FILE_TYPE_NOT_ALLOWED"
     FILE_TOO_LARGE = "FILE_TOO_LARGE"
     IMPORT_MAPPING_INVALID = "IMPORT_MAPPING_INVALID"
@@ -41,9 +44,12 @@ _CATALOG: dict[ErrorCode, tuple[int, str]] = {
     ErrorCode.AUTH_FORBIDDEN: (403, "Недостаточно прав"),
     ErrorCode.NOT_FOUND: (404, "Не найдено"),
     ErrorCode.INTERACTION_VERSION_CONFLICT: (409, "Запись уже изменена"),
+    ErrorCode.INTERACTION_DUPLICATE: (409, "Такая запись уже ведётся"),
     ErrorCode.WF_TRANSITION_NOT_ALLOWED: (409, "Переход недоступен"),
     ErrorCode.WF_COMMENT_REQUIRED: (422, "Нужен комментарий"),
     ErrorCode.WF_ATTACHMENT_REQUIRED: (422, "Нужен документ"),
+    ErrorCode.WF_VERSION_NOT_DRAFT: (409, "Версия уже опубликована"),
+    ErrorCode.WF_MIGRATION_MAP_INCOMPLETE: (422, "Карта переноса неполная"),
     ErrorCode.FILE_TYPE_NOT_ALLOWED: (415, "Тип файла не поддерживается"),
     ErrorCode.FILE_TOO_LARGE: (413, "Файл слишком большой"),
     ErrorCode.IMPORT_MAPPING_INVALID: (422, "Маппинг колонок неполный"),
@@ -91,10 +97,13 @@ class AppError(Exception):
 
 
 def error_responses(*codes: ErrorCode) -> dict[int | str, dict[str, Any]]:
-    """Описание ответов с ошибками для OpenAPI."""
+    """Ответы с ошибками для OpenAPI: один ответ на статус со списком своих кодов."""
+    by_status: dict[int, list[str]] = {}
+    for code in codes:
+        by_status.setdefault(_CATALOG[code][0], []).append(code.value)
     return {
-        _CATALOG[code][0]: {"model": Problem, "description": ", ".join(c.value for c in codes)}
-        for code in codes
+        status: {"model": Problem, "description": " · ".join(values)}
+        for status, values in by_status.items()
     }
 
 
@@ -121,6 +130,16 @@ class TraceIdMiddleware:
 
 def _trace_id(request: Request) -> str:
     return str(getattr(request.state, "trace_id", "") or uuid.uuid4().hex[:16])
+
+
+def trace_id_of(request: Request) -> str | None:
+    """Идентификатор запроса для записей аудита. Зависимость вместо повтора в каждом методе."""
+    trace_id: str | None = getattr(request.state, "trace_id", None)
+    return trace_id
+
+
+# Роутеры объявляют TraceIdDep и не лезут в request.state руками.
+TraceIdDep = Annotated[str | None, Depends(trace_id_of)]
 
 
 def problem_response(

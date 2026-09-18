@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import crypto
 from app.core.roles import Role
 from app.modules.catalogs.models import (
     AppUser,
@@ -23,9 +24,12 @@ from app.modules.catalogs.models import (
     product_direction,
 )
 from app.modules.interactions.models import Contract, Interaction, Transition
+from app.modules.notifications.models import NotificationAddress
+from app.modules.participants.models import Participant
 from app.modules.radar.service import recompute_signals
-from app.modules.workflow.defaults import BASE_STAGES, ensure_default_workflow
+from app.modules.workflow.defaults import BASE_STAGES, universities_group
 from app.modules.workflow.models import Stage
+from app.modules.workflow.service import group_process
 
 DEMO_USERS: tuple[tuple[str, str, Role], ...] = (
     ("anna.smirnova@example.com", "Анна Смирнова", Role.KAM),
@@ -50,6 +54,18 @@ PROGRAMS: tuple[tuple[str, str, str, str], ...] = (
     ("Мобильная разработка", "mobile", "Открытая мобильная платформа", "ОС Аврора"),
     ("Анализ данных", "data_analysis", "Loginom", "Loginom"),
     ("Веб-разработка", "web", "Акола", "Акола"),
+)
+
+# Руководитель отметил, какие курсы продвигаем в первую очередь: рейтинг считается по данным,
+# а очередь показа задаётся вручную.
+PROGRAM_PRIORITY: dict[str, int] = {"Анализ данных": 30, "DevOps-инженерия": 20}
+
+# Синтетические участники демо-группы: настоящих персональных данных в репозитории нет.
+DEMO_PARTICIPANTS: tuple[tuple[str, str, str], ...] = (
+    ("Ковалёв Артём Игоревич", "a.kovalev@student.example.com", "student"),
+    ("Миронова Дарья Сергеевна", "d.mironova@student.example.com", "student"),
+    ("Сафин Тимур Рустамович", "t.safin@student.example.com", "student"),
+    ("Громова Ольга Петровна", "o.gromova@itmo.example.com", "teacher"),
 )
 
 UNIVERSITIES: tuple[tuple[str, str, str, str], ...] = (
@@ -127,11 +143,10 @@ async def seed_demo(session: AsyncSession, now: datetime) -> bool:
     if already is not None:
         return False
 
-    version = await ensure_default_workflow(session)
-    stages = {
-        stage.code: stage
-        for stage in await session.scalars(select(Stage).where(Stage.version_id == version.id))
-    }
+    # Группы и их процессы заводятся вместе с демо-данными: без них запись не создать.
+    group = await universities_group(session)
+    process = await group_process(session, group)
+    version, stages = process.version, process.stages
 
     users = await _seed_users(session)
     programs = await _seed_catalogs(session)
@@ -163,6 +178,7 @@ async def seed_demo(session: AsyncSession, now: datetime) -> bool:
 
         entered_at = now - timedelta(days=spec.days_on_stage)
         interaction = Interaction(
+            group_id=group.id,
             university_id=university.id,
             program_id=program.id,
             product_id=product.id,
@@ -176,12 +192,34 @@ async def seed_demo(session: AsyncSession, now: datetime) -> bool:
         )
         session.add(interaction)
         await session.flush()
-        _add_history(session, interaction, stages, spec.stage_code, entered_at)
+        # Дата создания совпадает с первым переходом: иначе отчёт за прошлый период
+        # не увидит взаимодействие, которое тогда уже велось.
+        interaction.created_at = _add_history(
+            session, interaction, stages, spec.stage_code, entered_at
+        )
         ids.append(interaction.id)
+        if spec.stage_code == "classes":
+            _add_participants(session, interaction)
 
     await session.flush()
     await recompute_signals(session, ids, now)
     return True
+
+
+def _add_participants(session: AsyncSession, interaction: Interaction) -> None:
+    """Идут занятия — значит, есть кого учить: список группы и преподаватель."""
+    for full_name, email, role in DEMO_PARTICIPANTS:
+        session.add(
+            Participant(
+                interaction_id=interaction.id,
+                role=role,
+                full_name=full_name,
+                # Без ключа шифрования список заводится без почты: хранить её открытой нельзя.
+                email_enc=crypto.encrypt(email) if crypto.is_configured() else None,
+                email_fp=crypto.fingerprint(email) if crypto.is_configured() else None,
+                source="lms",
+            )
+        )
 
 
 async def _seed_users(session: AsyncSession) -> dict[str, AppUser]:
@@ -192,6 +230,18 @@ async def _seed_users(session: AsyncSession) -> dict[str, AppUser]:
     session.add_all(users.values())
     await session.flush()
     manager = users["roman.kovalev@example.com"]
+    # Адреса для показа уведомлений на заглушках: чат Telegram и почта на example.com.
+    session.add_all(
+        [
+            NotificationAddress(user_id=manager.id, channel_kind="telegram", address="100200300"),
+            NotificationAddress(user_id=manager.id, channel_kind="email", address=manager.email),
+            NotificationAddress(
+                user_id=users["anna.smirnova@example.com"].id,
+                channel_kind="max",
+                address="200300400",
+            ),
+        ]
+    )
     team = Team(name="Центр и Северо-Запад", manager_user_id=manager.id)
     session.add(team)
     await session.flush()
@@ -211,7 +261,11 @@ async def _seed_catalogs(session: AsyncSession) -> dict[str, tuple[Program, Prod
         session.add(vendor)
         await session.flush()
         product = Product(vendor_id=vendor.id, name=product_name)
-        program = Program(direction_id=directions[direction_code].id, name=program_name)
+        program = Program(
+            direction_id=directions[direction_code].id,
+            name=program_name,
+            priority=PROGRAM_PRIORITY.get(program_name, 0),
+        )
         session.add_all([product, program])
         await session.flush()
         session.add(ProgramProduct(program_id=program.id, product_id=product.id, is_default=True))
@@ -230,8 +284,8 @@ def _add_history(
     stages: dict[str, Stage],
     current_code: str,
     entered_at: datetime,
-) -> None:
-    """История от первого этапа до текущего; необязательная доработка документов пропускается."""
+) -> datetime:
+    """История от первого этапа до текущего; возвращает дату первого перехода."""
     path = [s.code for s in BASE_STAGES if s.code != "documents_revision"]
     passed = path[: path.index(current_code) + 1]
     started_at = entered_at - timedelta(days=PREVIOUS_STAGE_DAYS * (len(passed) - 1))
@@ -250,3 +304,4 @@ def _add_history(
             )
         )
         previous = stage
+    return started_at

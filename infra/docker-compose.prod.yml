@@ -1,0 +1,213 @@
+# Профиль стенда. Значений по умолчанию нет намеренно: `${VAR:?}` не даст запустить
+# окружение с забытым паролем. Все переменные — в .env рядом с этим файлом (см. env.prod.example).
+# Запуск: docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+name: radar-vuzov-prod
+
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${CERTS_DIR:?путь к сертификатам}:/etc/nginx/certs:ro
+      - ${SPA_DIR:?путь к собранному фронтенду}:/usr/share/nginx/html:ro
+      - certbot-www:/var/www/certbot
+    depends_on:
+      - api
+      - keycloak
+    restart: unless-stopped
+
+  api:
+    build: ../backend
+    environment:
+      APP_ENV: production
+      AUTH_MODE: keycloak
+      DATABASE_URL: postgresql+asyncpg://radar:${POSTGRES_PASSWORD:?пароль базы}@postgres:5432/radar
+      REDIS_URL: redis://redis:6379/0
+      # Издатель токена — внешний адрес, ключи забираются по внутреннему.
+      KEYCLOAK_ISSUER: ${PUBLIC_URL:?адрес стенда}/auth/realms/radar-vuzov
+      KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/radar-vuzov/protocol/openid-connect/certs
+      KEYCLOAK_AUDIENCE: radar-api
+      CORS_ORIGINS: ${PUBLIC_URL:?адрес стенда}
+      PD_ENCRYPTION_KEY: ${PD_ENCRYPTION_KEY:?ключ шифрования контактов}
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:?логин MinIO}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?пароль MinIO}
+      S3_BUCKET: radar-vuzov
+      LOG_LEVEL: INFO
+      PUBLIC_URL: ${PUBLIC_URL:?адрес стенда}
+      # Внешние системы на стенде — заглушки из того же образа; настоящие адреса задаются здесь.
+      LMS_BASE_URL: http://mock-lms:8100
+      SITE_BASE_URL: http://mock-site:8101
+      TELEGRAM_API_URL: http://mock-messengers:8102
+      MAX_API_URL: http://mock-messengers:8102
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: ../backend
+    command: ["arq", "app.worker.WorkerSettings"]
+    environment:
+      APP_ENV: production
+      AUTH_MODE: keycloak
+      DATABASE_URL: postgresql+asyncpg://radar:${POSTGRES_PASSWORD:?пароль базы}@postgres:5432/radar
+      REDIS_URL: redis://redis:6379/0
+      PD_ENCRYPTION_KEY: ${PD_ENCRYPTION_KEY:?ключ шифрования контактов}
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:?логин MinIO}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?пароль MinIO}
+      S3_BUCKET: radar-vuzov
+      PUBLIC_URL: ${PUBLIC_URL:?адрес стенда}
+      LMS_BASE_URL: http://mock-lms:8100
+      SITE_BASE_URL: http://mock-site:8101
+      TELEGRAM_API_URL: http://mock-messengers:8102
+      MAX_API_URL: http://mock-messengers:8102
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Файлы вложений и отчётов. Отдельное хранилище от базы, как советует жюри; наружу не публикуется.
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?логин MinIO}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?пароль MinIO}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # Заглушки LMS, сайта и мессенджеров и почтовый сервер для писем: наружу не публикуются.
+  # Посмотреть полученное можно через SSH-туннель (см. docs/DEPLOY.md).
+  mock-lms:
+    build: ../backend
+    command: ["uvicorn", "mocks.lms:app", "--host", "0.0.0.0", "--port", "8100"]
+    restart: unless-stopped
+
+  mock-site:
+    build: ../backend
+    command: ["uvicorn", "mocks.site:app", "--host", "0.0.0.0", "--port", "8101"]
+    restart: unless-stopped
+
+  mock-messengers:
+    build: ../backend
+    command: ["uvicorn", "mocks.messengers:app", "--host", "0.0.0.0", "--port", "8102"]
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    command: ["start", "--import-realm", "--http-enabled=true"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:?логин администратора Keycloak}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?пароль администратора Keycloak}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: radar
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?пароль базы}
+      KC_HOSTNAME: ${PUBLIC_URL:?адрес стенда}/auth
+      KC_HTTP_RELATIVE_PATH: /auth
+      # За nginx: Keycloak должен верить заголовкам X-Forwarded-*.
+      KC_PROXY_HEADERS: xforwarded
+    volumes:
+      - ./keycloak/realm-radar-vuzov.json:/opt/keycloak/data/import/realm-radar-vuzov.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: radar
+      POSTGRES_USER: radar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?пароль базы}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radar -d radar"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # Файлы копируются отдельно от базы: тем же образом MinIO, в котором есть mc.
+  backup-files:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    entrypoint: ["sh", "-c", "while true; do sh /scripts/files.sh || echo 'копия файлов не удалась'; sleep 86400; done"]
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: radar-vuzov
+      BACKUP_DIR: /backups/files
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?логин MinIO}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?пароль MinIO}
+    volumes:
+      - ./backup:/scripts:ro
+      - backups:/backups
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backup:
+    image: postgres:16
+    environment:
+      PGHOST: postgres
+      PGUSER: radar
+      PGPASSWORD: ${POSTGRES_PASSWORD:?пароль базы}
+      PGDATABASE: radar
+      BACKUP_DIR: /backups
+      KEEP_DAYS: "14"
+    volumes:
+      - ./backup:/scripts:ro
+      - backups:/backups
+    command: ["sh", "-c", "while true; do sh /scripts/backup.sh; sleep 86400; done"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  minio-data:
+  backups:
+  certbot-www:

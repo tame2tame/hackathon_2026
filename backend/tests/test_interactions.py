@@ -1,4 +1,4 @@
-from typing import Any
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
@@ -9,20 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from app.modules.audit.models import AuditLog
 from app.modules.interactions.models import Interaction
 from app.modules.workflow.models import Stage
+from tests.api import find, stage_id, upload_pdf
 from tests.users import ALINA_ADMIN, ANNA_KAM, MIKHAIL_KAM, ROMAN_MANAGER, as_user
-
-
-async def find(client: AsyncClient, email: str, **params: Any) -> dict[str, Any]:
-    response = await client.get("/api/v1/interactions", params=params, headers=as_user(email))
-    assert response.status_code == 200
-    items: list[dict[str, Any]] = response.json()["items"]
-    assert len(items) == 1
-    return items[0]
-
-
-async def stage_id(client: AsyncClient, code: str) -> str:
-    workflow = (await client.get("/api/v1/workflows/default", headers=as_user(ALINA_ADMIN))).json()
-    return str(next(s["id"] for s in workflow["stages"] if s["code"] == code))
 
 
 @pytest.mark.parametrize(("email", "total"), [(ANNA_KAM, 4), (MIKHAIL_KAM, 2), (ROMAN_MANAGER, 6)])
@@ -41,6 +29,27 @@ async def test_filters_by_search_and_stage(client: AsyncClient) -> None:
     assert by_stage["days_on_stage"] == 41
 
 
+async def test_period_filter_covers_active_and_past(client: AsyncClient) -> None:
+    today = datetime.now(UTC).date()
+
+    recent = await client.get(
+        "/api/v1/interactions",
+        params={"period_from": str(today - timedelta(days=90)), "period_to": str(today)},
+        headers=as_user(ALINA_ADMIN),
+    )
+    long_ago = await client.get(
+        "/api/v1/interactions",
+        params={
+            "period_from": str(today - timedelta(days=400)),
+            "period_to": str(today - timedelta(days=365)),
+        },
+        headers=as_user(ALINA_ADMIN),
+    )
+
+    assert recent.json()["total"] == 6
+    assert long_ago.json()["total"] == 0
+
+
 async def test_card_has_history_transitions_and_signals(client: AsyncClient) -> None:
     item = await find(client, ANNA_KAM, stage_code="signing")
 
@@ -49,7 +58,12 @@ async def test_card_has_history_transitions_and_signals(client: AsyncClient) -> 
     assert response.status_code == 200
     card = response.json()
     assert card["history"][0]["to_stage"]["code"] == "signing"
-    assert [t["to_stage"]["code"] for t in card["allowed_transitions"]] == ["materials_transfer"]
+    # Вперёд — на передачу материалов, назад — на обмен документами или их доработку.
+    assert [t["to_stage"]["code"] for t in card["allowed_transitions"]] == [
+        "documents_exchange",
+        "documents_revision",
+        "materials_transfer",
+    ]
     assert {s["kind"] for s in card["signals"]} == {"stage_overdue", "missing_document"}
 
 
@@ -71,10 +85,17 @@ async def test_transition_moves_stage_and_closes_overdue(
 ) -> None:
     item = await find(client, ANNA_KAM, stage_code="signing")
     target = await stage_id(client, "materials_transfer")
+    # Выход с «Подписания» закрывается договором, поэтому сначала документ.
+    attachment = await upload_pdf(client, ANNA_KAM, item["id"], "signed_contract")
 
     response = await client.post(
         f"/api/v1/interactions/{item['id']}/transitions",
-        json={"to_stage_id": target, "comment": "Договор подписан", "expected_version": 1},
+        json={
+            "to_stage_id": target,
+            "comment": "Договор подписан",
+            "expected_version": 1,
+            "attachment_ids": [attachment["id"]],
+        },
         headers=as_user(ANNA_KAM),
     )
 
@@ -137,7 +158,7 @@ async def test_skipping_stages_is_not_allowed(client: AsyncClient) -> None:
     assert response.json()["code"] == "WF_TRANSITION_NOT_ALLOWED"
 
 
-async def test_final_stage_offers_no_transitions(
+async def test_final_stage_offers_only_the_way_back(
     client: AsyncClient, session: AsyncSession
 ) -> None:
     item = await find(client, ANNA_KAM, search="КФУ")
@@ -151,7 +172,8 @@ async def test_final_stage_offers_no_transitions(
 
     card = await client.get(f"/api/v1/interactions/{item['id']}", headers=as_user(ANNA_KAM))
 
-    assert card.json()["allowed_transitions"] == []
+    [back] = card.json()["allowed_transitions"]
+    assert back["to_stage"]["code"] == "teacher_upskilling"
 
 
 @pytest.mark.parametrize(
@@ -176,3 +198,38 @@ async def test_audit_log_is_append_only(connection: AsyncConnection, statement: 
     with pytest.raises(DBAPIError, match="только дописывается"):
         async with connection.begin_nested():
             await connection.execute(text(statement))
+
+
+async def test_kam_returns_to_the_previous_stage_without_a_document(client: AsyncClient) -> None:
+    item = await find(client, ANNA_KAM, stage_code="signing")
+    card = (
+        await client.get(f"/api/v1/interactions/{item['id']}", headers=as_user(ANNA_KAM))
+    ).json()
+    back = next(
+        t for t in card["allowed_transitions"] if t["to_stage"]["code"] == "documents_revision"
+    )
+    assert (back["requires_comment"], back["requires_attachment"]) == (True, False)
+
+    silent = await client.post(
+        f"/api/v1/interactions/{item['id']}/transitions",
+        json={
+            "to_stage_id": back["to_stage"]["id"],
+            "comment": " ",
+            "expected_version": item["version"],
+        },
+        headers=as_user(ANNA_KAM),
+    )
+    returned = await client.post(
+        f"/api/v1/interactions/{item['id']}/transitions",
+        json={
+            "to_stage_id": back["to_stage"]["id"],
+            "comment": "Юристы вуза вернули договор с правками",
+            "expected_version": item["version"],
+        },
+        headers=as_user(ANNA_KAM),
+    )
+
+    assert silent.status_code == 422
+    assert silent.json()["code"] == "WF_COMMENT_REQUIRED"
+    assert returned.status_code == 201, returned.text
+    assert returned.json()["interaction"]["stage"]["code"] == "documents_revision"

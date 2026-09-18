@@ -4,34 +4,48 @@ import uuid
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import ColumnElement, and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.core.events import SIGNAL_OPENED, SIGNAL_RESOLVED, get_event_bus
 from app.core.pagination import Page, PageParams
 from app.core.scope import apply_interaction_scope
 from app.core.security import CurrentUser
-from app.modules.catalogs.models import Product, Program, University
+from app.modules.catalogs.models import AppUser, Product, Program, University
+from app.modules.catalogs.schemas import UserRef
+from app.modules.clients.models import Client
 from app.modules.interactions.models import Attachment, Contract, Interaction
+from app.modules.interactions.period import period_condition
 from app.modules.radar.models import RadarSignal
 from app.modules.radar.rules import (
-    DEFAULT_THRESHOLDS,
     InteractionState,
     RadarThresholds,
+    SignalKind,
     evaluate_signals,
 )
-from app.modules.radar.schemas import InteractionRef, SignalListItem, SignalOut
+from app.modules.radar.schemas import (
+    InteractionRef,
+    SignalListItem,
+    SignalOut,
+    SignalSummaryOut,
+    SummaryRow,
+)
+from app.modules.radar.settings import load_thresholds
 from app.modules.workflow.models import Stage, StageNorm, WorkflowVersion
 
 
 @dataclass(slots=True)
 class SignalFilters:
+    group_id: list[uuid.UUID] = field(default_factory=list)
     kind: list[str] = field(default_factory=list)
     severity: list[str] = field(default_factory=list)
     owner_id: list[uuid.UUID] = field(default_factory=list)
     university_id: list[uuid.UUID] = field(default_factory=list)
+    period_from: date | None = None
+    period_to: date | None = None
     search: str | None = None
 
 
@@ -44,7 +58,7 @@ async def load_states(
     session: AsyncSession, interaction_ids: Sequence[uuid.UUID]
 ) -> dict[uuid.UUID, InteractionState]:
     rows = await session.execute(
-        select(Interaction, Stage, Contract, StageNorm.norm_days)
+        select(Interaction, Stage, Contract, StageNorm.norm_days, StageNorm.source)
         .join(Stage, Stage.id == Interaction.current_stage_id)
         .join(WorkflowVersion, WorkflowVersion.id == Interaction.workflow_version_id)
         .outerjoin(Contract, Contract.id == Interaction.contract_id)
@@ -72,7 +86,7 @@ async def load_states(
             uploaded[interaction_id].add(document_type)
 
     states: dict[uuid.UUID, InteractionState] = {}
-    for interaction, stage, contract, norm_days in rows.tuples():
+    for interaction, stage, contract, norm_days, norm_source in rows.tuples():
         states[interaction.id] = InteractionState(
             status=interaction.status,
             stage_code=stage.code,
@@ -81,6 +95,7 @@ async def load_states(
             stage_entered_at=interaction.stage_entered_at,
             last_activity_at=interaction.last_activity_at,
             norm_days=norm_days,
+            norm_source=norm_source,
             required_document_types=tuple(stage.required_document_types),
             uploaded_document_types=frozenset(uploaded[interaction.id]),
             contract_number=contract.number if contract else None,
@@ -93,10 +108,13 @@ async def recompute_signals(
     session: AsyncSession,
     interaction_ids: Sequence[uuid.UUID],
     now: datetime | None = None,
-    thresholds: RadarThresholds = DEFAULT_THRESHOLDS,
+    thresholds: RadarThresholds | None = None,
 ) -> None:
     """Открывает, обновляет и закрывает сигналы так, чтобы они соответствовали правилам на `now`."""
     now = now or datetime.now(UTC)
+    if not interaction_ids:
+        return
+    thresholds = thresholds or await load_thresholds(session)
     states = await load_states(session, interaction_ids)
     open_signals = await session.scalars(
         select(RadarSignal).where(
@@ -104,6 +122,18 @@ async def recompute_signals(
         )
     )
     current = {(signal.interaction_id, signal.kind): signal for signal in open_signals}
+
+    owners = {
+        interaction_id: owner_id
+        for interaction_id, owner_id in (
+            await session.execute(
+                select(Interaction.id, Interaction.owner_user_id).where(
+                    Interaction.id.in_(interaction_ids)
+                )
+            )
+        ).tuples()
+    }
+    bus = get_event_bus()
 
     for interaction_id, state in states.items():
         drafts = {draft.kind.value: draft for draft in evaluate_signals(state, now, thresholds)}
@@ -119,6 +149,15 @@ async def recompute_signals(
                         detected_at=now,
                     )
                 )
+                await bus.publish(
+                    SIGNAL_OPENED,
+                    {
+                        "interaction_id": str(interaction_id),
+                        "kind": kind,
+                        "severity": draft.severity.value,
+                    },
+                    owner_user_id=owners.get(interaction_id),
+                )
             else:
                 signal.severity = draft.severity.value
                 signal.evidence = draft.evidence
@@ -126,6 +165,11 @@ async def recompute_signals(
     # Всё, что осталось открытым без подтверждения правилом, закрывается.
     for signal in current.values():
         signal.resolved_at = now
+        await bus.publish(
+            SIGNAL_RESOLVED,
+            {"interaction_id": str(signal.interaction_id), "kind": signal.kind},
+            owner_user_id=owners.get(signal.interaction_id),
+        )
     await session.flush()
 
 
@@ -149,6 +193,47 @@ def _severity_rank() -> ColumnElement[int]:
     return case({"high": 0, "medium": 1, "low": 2}, value=RadarSignal.severity)
 
 
+async def signals_summary(
+    session: AsyncSession, user: CurrentUser, filters: SignalFilters
+) -> SignalSummaryOut:
+    """Сколько открытых сигналов каждого вида у каждого КАМа в области видимости."""
+    stmt = (
+        select(AppUser.id, AppUser.full_name, RadarSignal.kind, func.count())
+        .select_from(RadarSignal)
+        .join(Interaction, Interaction.id == RadarSignal.interaction_id)
+        .join(AppUser, AppUser.id == Interaction.owner_user_id)
+        .where(RadarSignal.resolved_at.is_(None), Interaction.status != "cancelled")
+        .group_by(AppUser.id, AppUser.full_name, RadarSignal.kind)
+    )
+    stmt = apply_interaction_scope(stmt, user)
+    if filters.group_id:
+        stmt = stmt.where(Interaction.group_id.in_(filters.group_id))
+    if filters.kind:
+        stmt = stmt.where(RadarSignal.kind.in_(filters.kind))
+    if filters.owner_id:
+        stmt = stmt.where(Interaction.owner_user_id.in_(filters.owner_id))
+    period = period_condition(filters.period_from, filters.period_to)
+    if period is not None:
+        stmt = stmt.where(period)
+
+    rows: dict[uuid.UUID, SummaryRow] = {}
+    for owner_id, full_name, kind, count in (await session.execute(stmt)).tuples():
+        row = rows.setdefault(
+            owner_id,
+            SummaryRow(
+                owner=UserRef(id=owner_id, full_name=full_name),
+                counts=dict.fromkeys(SignalKind, 0),
+                total=0,
+            ),
+        )
+        row.counts[SignalKind(kind)] = count
+        row.total += count
+    ordered = sorted(rows.values(), key=lambda row: (-row.total, row.owner.full_name))
+    return SignalSummaryOut(
+        kinds=list(SignalKind), rows=ordered, total=sum(row.total for row in ordered)
+    )
+
+
 async def list_signals(
     session: AsyncSession, user: CurrentUser, filters: SignalFilters, page: PageParams
 ) -> Page[SignalListItem]:
@@ -158,6 +243,8 @@ async def list_signals(
         .where(RadarSignal.resolved_at.is_(None), Interaction.status != "cancelled")
     )
     stmt = apply_interaction_scope(stmt, user)
+    if filters.group_id:
+        stmt = stmt.where(Interaction.group_id.in_(filters.group_id))
     if filters.kind:
         stmt = stmt.where(RadarSignal.kind.in_(filters.kind))
     if filters.severity:
@@ -166,6 +253,9 @@ async def list_signals(
         stmt = stmt.where(Interaction.owner_user_id.in_(filters.owner_id))
     if filters.university_id:
         stmt = stmt.where(Interaction.university_id.in_(filters.university_id))
+    period = period_condition(filters.period_from, filters.period_to)
+    if period is not None:
+        stmt = stmt.where(period)
     if filters.search:
         pattern = like_pattern(filters.search)
         stmt = stmt.where(
@@ -177,6 +267,9 @@ async def list_signals(
                             University.short_name.ilike(pattern, escape="\\"),
                         )
                     )
+                ),
+                Interaction.client_id.in_(
+                    select(Client.id).where(Client.name.ilike(pattern, escape="\\"))
                 ),
                 Interaction.program_id.in_(
                     select(Program.id).where(Program.name.ilike(pattern, escape="\\"))
@@ -190,7 +283,9 @@ async def list_signals(
     total = await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = await session.execute(
         stmt.options(
+            joinedload(Interaction.group),
             joinedload(Interaction.university),
+            joinedload(Interaction.client),
             joinedload(Interaction.program).joinedload(Program.direction),
             joinedload(Interaction.product).joinedload(Product.vendor),
             joinedload(Interaction.owner),

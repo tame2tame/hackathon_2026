@@ -1,0 +1,58 @@
+name: Deploy
+# Деплой только вручную: стенд общий, и решение о выкатке принимает человек.
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Загрузить демо-данные v1 после миграций
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-stand
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: stand
+    steps:
+      - name: Ключ доступа
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Обновление и запуск
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<'REMOTE'
+            cd /srv/radar/hackathon_2026
+            git fetch --all
+            git checkout "${{ github.ref_name }}"
+            git pull --ff-only
+            cd infra
+            docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+          REMOTE
+
+      - name: Миграции
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<'REMOTE'
+            cd /srv/radar/hackathon_2026/infra
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T api alembic upgrade head
+          REMOTE
+
+      - name: Демо-данные
+        if: ${{ inputs.seed }}
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<'REMOTE'
+            cd /srv/radar/hackathon_2026/infra
+            docker compose -f docker-compose.prod.yml --env-file .env exec -T api python -m scripts.seed --full
+          REMOTE
+
+      - name: Проверка стенда
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<'REMOTE'
+            cd /srv/radar/hackathon_2026
+            sh infra/smoke.sh "${{ secrets.PUBLIC_URL }}"
+          REMOTE

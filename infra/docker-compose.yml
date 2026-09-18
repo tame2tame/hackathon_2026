@@ -10,7 +10,9 @@ services:
       POSTGRES_USER: radar
       POSTGRES_PASSWORD: radar
     ports:
-      - "127.0.0.1:5432:5432"
+      # Порт 5432 на машине разработчика обычно занят локальным PostgreSQL, поэтому наружу 55432.
+      # Внутри сети compose (Keycloak, api) адрес остаётся postgres:5432.
+      - "127.0.0.1:55432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -26,6 +28,25 @@ services:
       - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # S3-хранилище файлов: API на 9000, консоль на http://127.0.0.1:9001 (radar / radar-minio).
+  minio:
+    # С осени 2025 образы MinIO публикуются только на quay.io.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: radar
+      MINIO_ROOT_PASSWORD: radar-minio
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -60,6 +81,17 @@ services:
       KEYCLOAK_ISSUER: http://127.0.0.1:8080/realms/radar-vuzov
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/radar-vuzov/protocol/openid-connect/certs
       KEYCLOAK_AUDIENCE: radar-api
+      REDIS_URL: redis://redis:6379/0
+      LMS_BASE_URL: http://mock-lms:8100
+      SITE_BASE_URL: http://mock-site:8101
+      TELEGRAM_API_URL: http://mock-messengers:8102
+      MAX_API_URL: http://mock-messengers:8102
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: minio:9000
+      S3_ACCESS_KEY: radar
+      S3_SECRET_KEY: radar-minio
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -67,6 +99,86 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # Ночные задачи: полный пересчёт радара и подсказки норм (00:00 UTC — 03:00 МСК).
+  worker:
+    build: ../backend
+    command: ["arq", "app.worker.WorkerSettings"]
+    environment:
+      APP_ENV: local
+      AUTH_MODE: keycloak
+      DATABASE_URL: postgresql+asyncpg://radar:radar@postgres:5432/radar
+      REDIS_URL: redis://redis:6379/0
+      LMS_BASE_URL: http://mock-lms:8100
+      SITE_BASE_URL: http://mock-site:8101
+      TELEGRAM_API_URL: http://mock-messengers:8102
+      MAX_API_URL: http://mock-messengers:8102
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: minio:9000
+      S3_ACCESS_KEY: radar
+      S3_SECRET_KEY: radar-minio
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # Моки внешних систем: демо не зависит от доступности настоящих LMS и сайта.
+  mock-lms:
+    build: ../backend
+    command: ["uvicorn", "mocks.lms:app", "--host", "0.0.0.0", "--port", "8100"]
+    ports:
+      - "127.0.0.1:8100:8100"
+
+  mock-site:
+    build: ../backend
+    command: ["uvicorn", "mocks.site:app", "--host", "0.0.0.0", "--port", "8101"]
+    ports:
+      - "127.0.0.1:8101:8101"
+
+  # Заглушка Telegram и Max: полученные сообщения — на http://127.0.0.1:8102/sent.
+  mock-messengers:
+    build: ../backend
+    command: ["uvicorn", "mocks.messengers:app", "--host", "0.0.0.0", "--port", "8102"]
+    ports:
+      - "127.0.0.1:8102:8102"
+
+  # Почтовый сервер для проверки писем: SMTP на 1025, письма в браузере на http://127.0.0.1:8025.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+  # Ежедневный дамп базы. Профиль ops: локальная разработка его не поднимает.
+  # Запуск: docker compose --profile ops up -d backup
+  backup:
+    image: postgres:16
+    profiles: ["ops"]
+    environment:
+      PGHOST: postgres
+      PGUSER: radar
+      PGPASSWORD: radar
+      PGDATABASE: radar
+      BACKUP_DIR: /backups
+      KEEP_DAYS: "7"
+    volumes:
+      - ./backup:/scripts:ro
+      - backups:/backups
+    # Команда списком и без своего entrypoint: иначе `compose run backup sh /scripts/backup.sh`
+    # подставит путь в $0 и скрипт молча не выполнится.
+    command: ["sh", "-c", "while true; do sh /scripts/backup.sh; sleep 86400; done"]
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres-data:
+  minio-data:
+  backups:

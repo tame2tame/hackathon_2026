@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Модель «Радара вузов» в формате ArchiMate Open Exchange: открывается в Archi через
+     File → Import → Model from Open Exchange File. -->
+<model xmlns="http://www.opengroup.org/xsd/archimate/3.0/"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.opengroup.org/xsd/archimate/3.0/ http://www.opengroup.org/xsd/archimate/3.1/archimate3_Model.xsd"
+       identifier="radar-vuzov-model">
+  <name xml:lang="ru">Радар вузов</name>
+  <documentation xml:lang="ru">CRM контроля взаимодействия ИТ Школы Ростелекома с вузами. Кейс №6 ЛЦТ 2026.</documentation>
+
+  <elements>
+    <element identifier="actor-kam" xsi:type="BusinessActor">
+      <name xml:lang="ru">КАМ</name>
+      <documentation xml:lang="ru">Ведёт свои взаимодействия с вузами.</documentation>
+    </element>
+    <element identifier="actor-manager" xsi:type="BusinessActor">
+      <name xml:lang="ru">Руководитель</name>
+      <documentation xml:lang="ru">Видит команду, назначает ответственных, задаёт нормы и веса рейтинга.</documentation>
+    </element>
+    <element identifier="actor-admin" xsi:type="BusinessActor">
+      <name xml:lang="ru">Администратор</name>
+      <documentation xml:lang="ru">Пользователи, правила доступа, настройки, аудит, каталоги.</documentation>
+    </element>
+
+    <element identifier="proc-interaction" xsi:type="BusinessProcess">
+      <name xml:lang="ru">Ведение взаимодействия</name>
+      <documentation xml:lang="ru">Четырнадцать этапов от поиска контактов до контроля этапов.</documentation>
+    </element>
+    <element identifier="proc-import" xsi:type="BusinessProcess">
+      <name xml:lang="ru">Импорт выгрузки</name>
+    </element>
+    <element identifier="proc-report" xsi:type="BusinessProcess">
+      <name xml:lang="ru">Отчётность за период</name>
+    </element>
+    <element identifier="proc-escalation" xsi:type="BusinessProcess">
+      <name xml:lang="ru">Эскалация зависшей записи</name>
+      <documentation xml:lang="ru">Запись без изменений дольше срока — уведомление роли, а не человеку.</documentation>
+    </element>
+    <element identifier="proc-training" xsi:type="BusinessProcess">
+      <name xml:lang="ru">Обучение по программе</name>
+      <documentation xml:lang="ru">Списки обучающихся и преподавателей по записи.</documentation>
+    </element>
+
+    <element identifier="svc-radar" xsi:type="ApplicationService">
+      <name xml:lang="ru">Радар</name>
+      <documentation xml:lang="ru">Находит просрочки, истекающие лицензии, недостающие документы и простои.</documentation>
+    </element>
+    <element identifier="svc-rating" xsi:type="ApplicationService">
+      <name xml:lang="ru">Рейтинг востребованности</name>
+    </element>
+    <element identifier="svc-events" xsi:type="ApplicationService">
+      <name xml:lang="ru">Поток событий</name>
+    </element>
+    <element identifier="svc-notifications" xsi:type="ApplicationService">
+      <name xml:lang="ru">Уведомления и эскалация</name>
+      <documentation xml:lang="ru">Лента в интерфейсе, Telegram, Max и почта за общим интерфейсом отправителя (ADR-016).</documentation>
+    </element>
+    <element identifier="svc-exchange" xsi:type="ApplicationService">
+      <name xml:lang="ru">Двусторонний обмен</name>
+      <documentation xml:lang="ru">Входящий — по расписанию, исходящий — очередью outbox документом radar-vuzov/interaction@1 (ADR-018).</documentation>
+    </element>
+    <element identifier="svc-cache" xsi:type="ApplicationService">
+      <name xml:lang="ru">Кэш ответов</name>
+      <documentation xml:lang="ru">Справочники и рейтинг в Redis, ETag и 304 у клиента (ADR-022).</documentation>
+    </element>
+    <element identifier="svc-files" xsi:type="ApplicationService">
+      <name xml:lang="ru">Хранение файлов</name>
+      <documentation xml:lang="ru">Вложения и готовые отчёты в S3-совместимом хранилище за интерфейсом Storage (ADR-017).</documentation>
+    </element>
+
+    <element identifier="comp-api" xsi:type="ApplicationComponent">
+      <name xml:lang="ru">API</name>
+      <documentation xml:lang="ru">FastAPI: REST /api/v1 и SSE.</documentation>
+    </element>
+    <element identifier="comp-worker" xsi:type="ApplicationComponent">
+      <name xml:lang="ru">Воркер</name>
+      <documentation xml:lang="ru">arq: ночной пересчёт радара, подсказки норм, отчёты, синхронизация.</documentation>
+    </element>
+    <element identifier="comp-web" xsi:type="ApplicationComponent">
+      <name xml:lang="ru">SPA и nginx</name>
+    </element>
+    <element identifier="comp-keycloak" xsi:type="ApplicationComponent">
+      <name xml:lang="ru">Keycloak</name>
+    </element>
+
+    <element identifier="data-interaction" xsi:type="DataObject">
+      <name xml:lang="ru">Взаимодействие</name>
+      <documentation xml:lang="ru">Вуз × ИТ-программа × ИТ-продукт — центральная запись.</documentation>
+    </element>
+    <element identifier="data-transition" xsi:type="DataObject">
+      <name xml:lang="ru">История переходов</name>
+      <documentation xml:lang="ru">Только дописывается; по ней восстанавливается прошлое состояние.</documentation>
+    </element>
+    <element identifier="data-signal" xsi:type="DataObject">
+      <name xml:lang="ru">Сигнал радара</name>
+    </element>
+    <element identifier="data-metric" xsi:type="DataObject">
+      <name xml:lang="ru">Метрика программы</name>
+    </element>
+    <element identifier="data-group" xsi:type="DataObject">
+      <name xml:lang="ru">Группа контрагентов</name>
+      <documentation xml:lang="ru">Вузы (B2B) и частные лица (B2C); у каждой свой процесс (ADR-015).</documentation>
+    </element>
+    <element identifier="data-participant" xsi:type="DataObject">
+      <name xml:lang="ru">Обучающиеся и преподаватели</name>
+      <documentation xml:lang="ru">ФИО и почта по записи; почта шифруется (ADR-023).</documentation>
+    </element>
+    <element identifier="data-attachment" xsi:type="DataObject">
+      <name xml:lang="ru">Документ взаимодействия</name>
+      <documentation xml:lang="ru">Файл в S3; ключ совпадает с attachment.storage_key.</documentation>
+    </element>
+    <element identifier="data-outbox" xsi:type="DataObject">
+      <name xml:lang="ru">Очередь исходящего обмена</name>
+      <documentation xml:lang="ru">Отметка об изменении в той же транзакции, что и само изменение.</documentation>
+    </element>
+    <element identifier="data-audit" xsi:type="DataObject">
+      <name xml:lang="ru">Журнал аудита</name>
+      <documentation xml:lang="ru">Только дописывается; просмотр персональных данных тоже попадает сюда.</documentation>
+    </element>
+
+    <element identifier="node-postgres" xsi:type="Node">
+      <name xml:lang="ru">PostgreSQL</name>
+    </element>
+    <element identifier="node-redis" xsi:type="Node">
+      <name xml:lang="ru">Redis</name>
+    </element>
+    <element identifier="node-lms" xsi:type="Node">
+      <name xml:lang="ru">LMS</name>
+    </element>
+    <element identifier="node-site" xsi:type="Node">
+      <name xml:lang="ru">Сайт ИТ Школы</name>
+    </element>
+    <element identifier="node-minio" xsi:type="Node">
+      <name xml:lang="ru">MinIO (S3)</name>
+      <documentation xml:lang="ru">Файлы отдельно от базы; на стенде — том minio-data, копия раз в сутки.</documentation>
+    </element>
+    <element identifier="node-messengers" xsi:type="Node">
+      <name xml:lang="ru">Telegram, Max, SMTP</name>
+      <documentation xml:lang="ru">На стенде — заглушки mock-messengers и Mailpit.</documentation>
+    </element>
+    <element identifier="node-backup" xsi:type="Node">
+      <name xml:lang="ru">Резервные копии</name>
+      <documentation xml:lang="ru">Дамп базы и зеркало бакета раз в сутки в том backups.</documentation>
+    </element>
+  </elements>
+
+  <relationships>
+    <relationship identifier="r1" source="actor-kam" target="proc-interaction" xsi:type="Assignment"/>
+    <relationship identifier="r2" source="actor-manager" target="proc-interaction" xsi:type="Assignment"/>
+    <relationship identifier="r3" source="actor-manager" target="proc-report" xsi:type="Assignment"/>
+    <relationship identifier="r4" source="actor-admin" target="proc-import" xsi:type="Assignment"/>
+    <relationship identifier="r5" source="comp-api" target="svc-radar" xsi:type="Realization"/>
+    <relationship identifier="r6" source="comp-worker" target="svc-radar" xsi:type="Realization"/>
+    <relationship identifier="r7" source="comp-api" target="svc-rating" xsi:type="Realization"/>
+    <relationship identifier="r8" source="comp-api" target="svc-events" xsi:type="Realization"/>
+    <relationship identifier="r9" source="svc-radar" target="proc-interaction" xsi:type="Serving"/>
+    <relationship identifier="r10" source="svc-rating" target="proc-report" xsi:type="Serving"/>
+    <relationship identifier="r11" source="comp-api" target="data-interaction" xsi:type="Access"/>
+    <relationship identifier="r12" source="comp-api" target="data-transition" xsi:type="Access"/>
+    <relationship identifier="r13" source="svc-radar" target="data-signal" xsi:type="Access"/>
+    <relationship identifier="r14" source="comp-worker" target="data-metric" xsi:type="Access"/>
+    <relationship identifier="r15" source="node-postgres" target="comp-api" xsi:type="Serving"/>
+    <relationship identifier="r16" source="node-redis" target="comp-worker" xsi:type="Serving"/>
+    <relationship identifier="r17" source="node-lms" target="comp-worker" xsi:type="Serving"/>
+    <relationship identifier="r18" source="node-site" target="comp-worker" xsi:type="Serving"/>
+    <relationship identifier="r19" source="comp-web" target="comp-api" xsi:type="Serving"/>
+    <relationship identifier="r20" source="comp-keycloak" target="comp-api" xsi:type="Serving"/>
+    <relationship identifier="r21" source="comp-api" target="svc-notifications" xsi:type="Realization"/>
+    <relationship identifier="r22" source="comp-worker" target="svc-notifications" xsi:type="Realization"/>
+    <relationship identifier="r23" source="svc-notifications" target="proc-escalation" xsi:type="Serving"/>
+    <relationship identifier="r24" source="actor-manager" target="proc-escalation" xsi:type="Assignment"/>
+    <relationship identifier="r25" source="comp-worker" target="svc-exchange" xsi:type="Realization"/>
+    <relationship identifier="r26" source="svc-exchange" target="data-outbox" xsi:type="Access"/>
+    <relationship identifier="r27" source="svc-exchange" target="node-lms" xsi:type="Serving"/>
+    <relationship identifier="r28" source="svc-exchange" target="node-site" xsi:type="Serving"/>
+    <relationship identifier="r29" source="comp-api" target="svc-cache" xsi:type="Realization"/>
+    <relationship identifier="r30" source="node-redis" target="svc-cache" xsi:type="Serving"/>
+    <relationship identifier="r31" source="comp-api" target="svc-files" xsi:type="Realization"/>
+    <relationship identifier="r32" source="node-minio" target="svc-files" xsi:type="Serving"/>
+    <relationship identifier="r33" source="svc-files" target="data-attachment" xsi:type="Access"/>
+    <relationship identifier="r34" source="data-group" target="data-interaction" xsi:type="Association"/>
+    <relationship identifier="r35" source="comp-api" target="data-participant" xsi:type="Access"/>
+    <relationship identifier="r36" source="data-participant" target="proc-training" xsi:type="Association"/>
+    <relationship identifier="r37" source="actor-kam" target="proc-training" xsi:type="Assignment"/>
+    <relationship identifier="r38" source="comp-api" target="data-audit" xsi:type="Access"/>
+    <relationship identifier="r39" source="actor-admin" target="data-audit" xsi:type="Access"/>
+    <relationship identifier="r40" source="node-messengers" target="svc-notifications" xsi:type="Serving"/>
+    <relationship identifier="r41" source="node-postgres" target="node-backup" xsi:type="Association"/>
+    <relationship identifier="r42" source="node-minio" target="node-backup" xsi:type="Association"/>
+  </relationships>
+</model>

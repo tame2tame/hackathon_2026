@@ -1,4 +1,4 @@
-"""Каталоги: вузы, направления, программы, вендоры, продукты, контакты, команды, пользователи."""
+"""Каталоги: группы контрагентов, вузы, программы, продукты, контакты, команды, пользователи."""
 
 import uuid
 from datetime import datetime
@@ -11,12 +11,32 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Table,
+    Text,
     UniqueConstraint,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base, Timestamps, UUIDPrimaryKey
+
+
+class CounterpartyGroup(UUIDPrimaryKey, Timestamps, Base):
+    """Группа контрагентов со своим процессом: вузы (B2B), частные лица (B2C) и новые группы.
+
+    Процесс привязан к группе, а не к записи: сменить его для группы значит сменить для всех
+    её записей, как и требует единый workflow.
+    """
+
+    __tablename__ = "counterparty_group"
+
+    code: Mapped[str] = mapped_column(String(60), unique=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    workflow_template_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workflow_template.id", ondelete="RESTRICT"), index=True
+    )
+    position: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class University(UUIDPrimaryKey, Timestamps, Base):
@@ -37,19 +57,28 @@ class Direction(UUIDPrimaryKey, Timestamps, Base):
 
     code: Mapped[str] = mapped_column(String(60), unique=True)
     name: Mapped[str] = mapped_column(String(200))
+    # Каталоги не удаляются: на них ссылается история, поэтому запись архивируется.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Program(UUIDPrimaryKey, Timestamps, Base):
     """ИТ-программа: методические материалы и практика по направлению."""
 
     __tablename__ = "program"
-    __table_args__ = (UniqueConstraint("direction_id", "name"),)
+    __table_args__ = (
+        UniqueConstraint("direction_id", "name"),
+        CheckConstraint("priority BETWEEN 0 AND 100", name="priority_range"),
+    )
 
     direction_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("direction.id", ondelete="RESTRICT"), index=True
     )
     name: Mapped[str] = mapped_column(String(300))
     lms_course_ref: Mapped[str | None] = mapped_column(String(120))
+    # Ручной приоритет курса: рейтинг считается по данным, но руководитель может сказать,
+    # что продвигать в первую очередь. Ноль — приоритет не задан.
+    priority: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     direction: Mapped[Direction] = relationship(lazy="raise")
 
@@ -58,6 +87,7 @@ class Vendor(UUIDPrimaryKey, Timestamps, Base):
     __tablename__ = "vendor"
 
     name: Mapped[str] = mapped_column(String(200), unique=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 product_direction = Table(
@@ -78,6 +108,7 @@ class Product(UUIDPrimaryKey, Timestamps, Base):
         ForeignKey("vendor.id", ondelete="RESTRICT"), index=True
     )
     name: Mapped[str] = mapped_column(String(200))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     vendor: Mapped[Vendor] = relationship(lazy="raise")
 
@@ -108,6 +139,7 @@ class ContactPerson(UUIDPrimaryKey, Timestamps, Base):
     position: Mapped[str | None] = mapped_column(String(200))
     email_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
     phone_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Team(UUIDPrimaryKey, Timestamps, Base):

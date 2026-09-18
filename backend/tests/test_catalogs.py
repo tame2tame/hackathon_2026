@@ -59,3 +59,6 @@ async def test_default_workflow_has_fourteen_stages(client: AsyncClient) -> None
     by_id = {s["id"]: s["code"] for s in stages}
     pairs = {(by_id[t["from_stage_id"]], by_id[t["to_stage_id"]]) for t in body["transitions"]}
     assert ("documents_exchange", "signing") in pairs
+    # У каждого перехода вперёд есть возврат на шаг назад.
+    assert ("signing", "documents_exchange") in pairs
+    assert len(pairs) == 28

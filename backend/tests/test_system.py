@@ -11,6 +11,7 @@ async def test_health_reports_database(client: AsyncClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["database"] == "ok"
+    assert response.json()["storage"] == "ok"
     assert response.headers["X-Trace-Id"]
 
 

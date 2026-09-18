@@ -21,10 +21,13 @@ class Severity(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class RadarThresholds:
+    """Пороги в днях; администратор меняет их в настройках (`radar_thresholds`)."""
+
     license_warn_days: int = 60
     license_critical_days: int = 30
-    inactivity_low_days: int = 21
-    inactivity_medium_days: int = 42
+    # Простой: жюри назвало ориентиром одну-две недели без изменений.
+    inactivity_low_days: int = 14
+    inactivity_medium_days: int = 28
 
 
 DEFAULT_THRESHOLDS = RadarThresholds()
@@ -41,6 +44,7 @@ class InteractionState:
     stage_entered_at: datetime
     last_activity_at: datetime
     norm_days: int | None = None
+    norm_source: str | None = None
     required_document_types: tuple[str, ...] = ()
     uploaded_document_types: frozenset[str] = frozenset()
     contract_number: str | None = None
@@ -76,6 +80,7 @@ def evaluate_signals(
                         **stage,
                         "days_on_stage": days_on_stage,
                         "norm_days": state.norm_days,
+                        "norm_source": state.norm_source,
                         "stage_entered_at": state.stage_entered_at.isoformat(),
                     },
                 )
@@ -93,6 +98,7 @@ def evaluate_signals(
                         **stage,
                         "days_on_stage": days_on_stage,
                         "norm_days": state.norm_days,
+                        "norm_source": state.norm_source,
                         "missing_document_types": missing,
                     },
                 )

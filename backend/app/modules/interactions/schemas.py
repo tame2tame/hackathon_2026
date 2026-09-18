@@ -2,10 +2,20 @@
 
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.catalogs.schemas import ProductRef, ProgramRef, UniversityRef, UserRef
+from app.core.errors import ErrorCode
+from app.modules.catalogs.schemas import (
+    CounterpartyRef,
+    GroupRef,
+    ProductRef,
+    ProgramRef,
+    UniversityRef,
+    UserRef,
+)
+from app.modules.clients.schemas import ClientRef
 from app.modules.radar.rules import Severity, SignalKind
 from app.modules.radar.schemas import SignalOut
 from app.modules.workflow.schemas import AllowedTransitionOut, StageRef
@@ -30,9 +40,12 @@ class SignalBrief(BaseModel):
 
 class InteractionListItem(BaseModel):
     id: uuid.UUID
-    university: UniversityRef
+    group: GroupRef = Field(description="Группа контрагентов: от неё зависит процесс")
+    counterparty: CounterpartyRef = Field(description="Вуз или клиент — одной ссылкой")
+    university: UniversityRef | None = Field(description="Вуз, если контрагент — вуз")
+    client: ClientRef | None = Field(description="Клиент, если контрагент — не вуз")
     program: ProgramRef
-    product: ProductRef
+    product: ProductRef | None = Field(description="Пусто у продуктонезависимой программы")
     owner: UserRef
     stage: StageRef
     stage_entered_at: datetime
@@ -62,6 +75,22 @@ class InteractionDetail(InteractionListItem):
     signals: list[SignalOut]
 
 
+class InteractionCreate(BaseModel):
+    """Новая запись вручную. Контрагент — ровно один: вуз или клиент."""
+
+    group_id: uuid.UUID
+    university_id: uuid.UUID | None = None
+    client_id: uuid.UUID | None = None
+    program_id: uuid.UUID
+    product_id: uuid.UUID | None = Field(
+        default=None, description="Продукт из программы; у продуктонезависимой программы пусто"
+    )
+    owner_id: uuid.UUID | None = Field(
+        default=None, description="Ответственный; по умолчанию — тот, кто создаёт запись"
+    )
+    comment: str = Field(default="", max_length=4000, description="Попадёт в первую запись истории")
+
+
 class TransitionCreate(BaseModel):
     to_stage_id: uuid.UUID
     comment: str = Field(default="", max_length=4000)
@@ -72,3 +101,60 @@ class TransitionCreate(BaseModel):
 class TransitionResult(BaseModel):
     transition: TransitionOut
     interaction: InteractionDetail
+
+
+class NoteCreate(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class NoteOut(BaseModel):
+    id: uuid.UUID
+    text: str
+    author: UserRef
+    created_at: datetime
+
+
+class BulkTransitionRequest(BaseModel):
+    interaction_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    to_stage_code: str = Field(
+        max_length=60, description="Код этапа назначения в версии процесса взаимодействия"
+    )
+    comment: str = Field(default="", max_length=4000)
+
+
+class StatusChange(BaseModel):
+    """Приостановка, завершение, отмена и возврат в работу. Этап сам по себе ничего не завершает."""
+
+    status: Literal["active", "paused", "completed", "cancelled"]
+    reason: str = Field(
+        default="", max_length=4000, description="Обязателен для паузы и отмены: почему"
+    )
+    expected_version: int = Field(ge=1, description="Версия записи, которую видел пользователь")
+
+
+class OwnerChange(BaseModel):
+    owner_id: uuid.UUID
+    reason: str = Field(default="", max_length=4000)
+    expected_version: int = Field(ge=1, description="Версия записи, которую видел пользователь")
+
+
+class BulkOwnerRequest(BaseModel):
+    interaction_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    owner_id: uuid.UUID
+    reason: str = Field(default="", max_length=4000)
+
+
+class BulkItemResult(BaseModel):
+    interaction_id: uuid.UUID
+    ok: bool
+    version: int | None = Field(default=None, description="Новая версия записи при успехе")
+    code: ErrorCode | None = Field(default=None, description="Код ошибки из каталога при отказе")
+    detail: str | None = None
+
+
+class BulkResult(BaseModel):
+    """Частичный успех — обычный ответ: у каждой записи свой итог."""
+
+    results: list[BulkItemResult]
+    succeeded: int
+    failed: int
