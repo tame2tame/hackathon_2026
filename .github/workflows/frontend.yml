@@ -1,9 +1,9 @@
 name: Frontend
 on:
   push:
-    paths: ['frontend/**', '.github/workflows/frontend.yml']
+    paths: ['frontend/**', 'contracts/**', '.github/workflows/frontend.yml']
   pull_request:
-    paths: ['frontend/**', '.github/workflows/frontend.yml']
+    paths: ['frontend/**', 'contracts/**', '.github/workflows/frontend.yml']
 jobs:
   check:
     runs-on: ubuntu-latest

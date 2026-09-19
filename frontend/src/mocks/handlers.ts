@@ -4,6 +4,8 @@ import {
   createFixtures,
   mockUsers,
   mockWorkflow,
+  mockGroups,
+  mockClientWorkflow,
 } from "./fixtures";
 import type { Interaction, Schema, Signal, University } from "../api/types";
 let records = createFixtures();
@@ -54,13 +56,14 @@ function matching(i: Interaction, url: URL) {
   const q = url.searchParams;
   const search = q.get("search")?.toLowerCase() || "";
   const text =
-    `${i.university.name} ${i.university.short_name} ${i.program.name} ${i.product.name}`.toLowerCase();
+    `${i.counterparty.name} ${i.counterparty.short_name} ${i.program.name} ${i.product?.name || ""}`.toLowerCase();
   return (
     text.includes(search) &&
     [
-      ["university_id", i.university.id],
+      ["group_id", i.group.id],
+      ["university_id", i.university?.id || ""],
       ["program_id", i.program.id],
-      ["product_id", i.product.id],
+      ["product_id", i.product?.id || ""],
       ["owner_id", i.owner.id],
       ["direction_id", i.program.direction.id],
       ["stage_code", i.stage.code],
@@ -72,23 +75,48 @@ function matching(i: Interaction, url: URL) {
 function universityRows(items: Interaction[]): University[] {
   return [
     ...new Map(
-      items.map((i) => [
-        i.university.id,
-        {
-          ...i.university,
-          city: i.university.region,
-          interactions_count: items.filter(
-            (x) => x.university.id === i.university.id,
-          ).length,
-          open_signals_count: items
-            .filter((x) => x.university.id === i.university.id)
-            .reduce((n, x) => n + x.signals.length, 0),
-        },
-      ]),
+      items
+        .filter(
+          (
+            i,
+          ): i is Interaction & {
+            university: NonNullable<Interaction["university"]>;
+          } => i.university !== null,
+        )
+        .map((i) => [
+          i.university.id,
+          {
+            ...i.university,
+            city: i.university.region,
+            interactions_count: items.filter(
+              (x) => x.university?.id === i.university.id,
+            ).length,
+            open_signals_count: items
+              .filter((x) => x.university?.id === i.university.id)
+              .reduce((n, x) => n + x.signals.length, 0),
+          },
+        ]),
     ).values(),
   ];
 }
 export const handlers = [
+  http.get("*/api/v1/counterparty-groups", ({ request }) =>
+    user(request)
+      ? HttpResponse.json(mockGroups)
+      : problem("AUTH_REQUIRED", 401, "Нужна авторизация"),
+  ),
+  http.get("*/api/v1/workflows/:id", ({ request, params }) => {
+    if (!user(request))
+      return problem("AUTH_REQUIRED", 401, "Нужна авторизация");
+    const workflow = [mockWorkflow, mockClientWorkflow].find(
+      (w) =>
+        w.template_id === params.id ||
+        (params.id === "default" && w === mockWorkflow),
+    );
+    return workflow
+      ? HttpResponse.json(workflow)
+      : problem("NOT_FOUND", 404, "Процесс недоступен");
+  }),
   http.get("*/api/v1/me", ({ request }) =>
     user(request)
       ? HttpResponse.json(user(request))
@@ -155,6 +183,9 @@ export const handlers = [
           ...s,
           interaction: {
             id: i.id,
+            group: i.group,
+            counterparty: i.counterparty,
+            client: i.client,
             university: i.university,
             program: i.program,
             product: i.product,
@@ -245,7 +276,10 @@ export const handlers = [
         kind,
         severity,
       }));
-      i.allowed_transitions = allowedFor(i.stage.id);
+      i.allowed_transitions = allowedFor(
+        i.stage.id,
+        i.group.code === "b2c" ? mockClientWorkflow : mockWorkflow,
+      );
       return HttpResponse.json({ interaction: i, transition }, { status: 201 });
     },
   ),

@@ -19,9 +19,64 @@ afterAll(() => server.close());
 const api = (email = "anna.smirnova@example.com") =>
   new ApiClient("http://localhost:8000", async () => ({ "X-Dev-User": email }));
 describe("клиент на MSW-контракте", () => {
+  it("фильтрует B2C и использует процесс выбранной группы", async () => {
+    const client = api("mikhail.volkov@example.com");
+    const group = (await client.groups()).find((g) => g.code === "b2c")!;
+    const list = await client.interactions({ group_id: [group.id] });
+    expect(list.items).toHaveLength(1);
+    expect(list.items[0]).toMatchObject({
+      university: null,
+      product: null,
+      counterparty: { kind: "person" },
+    });
+    const workflow = await client.workflowByTemplate(
+      group.workflow_template_id,
+    );
+    expect(workflow.stages.map((s) => s.code)).toEqual([
+      "application",
+      "enrollment",
+    ]);
+    const signals = await client.signals({ group_id: [group.id] });
+    expect(signals.total).toBe(1);
+    expect(signals.items[0].interaction.counterparty.short_name).toBe(
+      "Демо Клиент",
+    );
+    expect((await api().interactions({ group_id: [group.id] })).total).toBe(0);
+    await expect(api().interaction(uid(290))).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(
+      api().transition(uid(290), {
+        to_stage_id: uid(911),
+        comment: "Готово",
+        expected_version: 1,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    const card = await client.interaction(uid(290));
+    const moved = await client.transition(card.id, {
+      to_stage_id: uid(911),
+      comment: "Готово",
+      expected_version: card.version,
+    });
+    expect(moved.interaction.allowed_transitions[0].to_stage.id).toBe(uid(910));
+    await expect(
+      client.transition(card.id, {
+        to_stage_id: uid(910),
+        comment: " ",
+        expected_version: 2,
+      }),
+    ).rejects.toMatchObject({ code: "WF_COMMENT_REQUIRED" });
+    const returned = await client.transition(card.id, {
+      to_stage_id: uid(910),
+      comment: "Уточнение заявки",
+      expected_version: 2,
+    });
+    expect(returned.interaction.stage.id).toBe(uid(910));
+    expect(returned.interaction.history).toHaveLength(2);
+  });
   it("считывает профиль, несколько сигналов на запись и настоящую пагинацию", async () => {
     expect((await api().me()).role).toBe("kam");
-    expect((await api("alina.denisova@example.com").signals()).total).toBe(7);
+    expect((await api("alina.denisova@example.com").signals()).total).toBe(8);
     const p = await api().interactions({ page: 2, page_size: 2 });
     expect(p.items).toHaveLength(2);
     expect(p.total).toBe(4);

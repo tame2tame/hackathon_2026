@@ -32,6 +32,7 @@ import {
   CalendarClock,
   FileWarning,
   CirclePause,
+  UserRound,
 } from "lucide-react";
 import { navigation, planned, Heading, Planned, Empty } from "./App";
 import { Button } from "./components/ui/button";
@@ -364,7 +365,7 @@ function QueryState({ query }: { query: UseQueryResult<unknown, Error> }) {
 function SearchField({
   value,
   onChange,
-  placeholder = "Вуз, программа или продукт",
+  placeholder = "Контрагент, программа или продукт",
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -425,7 +426,7 @@ function Pagination({
     </div>
   );
 }
-function SignalRow({ signal: s }: { signal: Signal }) {
+export function SignalRow({ signal: s }: { signal: Signal }) {
   const Icon = icons[s.kind];
   return (
     <Link className="signal" to={`/interactions/${s.interaction.id}`}>
@@ -434,11 +435,12 @@ function SignalRow({ signal: s }: { signal: Signal }) {
       </span>
       <div className="signal-main">
         <div className="signal-title">
-          <strong>{s.interaction.university.name}</strong>
+          <strong>{s.interaction.counterparty.short_name}</strong>
           <span className={`badge ${s.severity}`}>{labels[s.severity]}</span>
         </div>
         <p>
-          {s.interaction.program.name} · {s.interaction.product.name}
+          {s.interaction.program.name} ·{" "}
+          {s.interaction.product?.name || "Без продукта"}
         </p>
         <div className="signal-reason">{cleanCopy(s.message)}</div>
         <div className="signal-meta">
@@ -450,18 +452,62 @@ function SignalRow({ signal: s }: { signal: Signal }) {
     </Link>
   );
 }
+function GroupSelect({
+  value,
+  onChange,
+  groups,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  groups: UseQueryResult<Schema["CounterpartyGroupOut"][], Error>;
+}) {
+  return (
+    <div className="group-filter">
+      <label htmlFor="counterparty-group">Группа контрагентов</label>
+      <select
+        id="counterparty-group"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={!groups.data}
+      >
+        <option value="">Все группы</option>
+        {groups.data?.map((g) => (
+          <option key={g.id} value={g.id}>
+            {g.name}
+          </option>
+        ))}
+      </select>
+      {groups.isError && (
+        <span role="alert">
+          Не удалось загрузить группы.{" "}
+          <button onClick={() => void groups.refetch()}>Повторить</button>
+        </span>
+      )}
+    </div>
+  );
+}
+function useGroups() {
+  return useQuery({
+    queryKey: ["groups"],
+    queryFn: ({ signal }) => api.groups(signal),
+  });
+}
 function RadarPage({ me }: { me: Me }) {
+  const [group, setGroup] = useState("");
+  const groups = useGroups();
+  const groupFilter = group ? [group] : undefined;
   const { search, setSearch, value } = useSearch();
   const [kind, setKind] = useState<Schema["SignalKind"] | "">("");
   const [severity, setSeverity] = useState<Schema["Severity"] | "">("");
   const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [value, kind, severity]);
+  useEffect(() => setPage(1), [value, kind, severity, group]);
   const results = useQuery({
-    queryKey: ["signals", value, kind, severity, page],
+    queryKey: ["signals", value, kind, severity, group, page],
     queryFn: ({ signal }) =>
       api.signals(
         {
           search: value || undefined,
+          group_id: groupFilter,
           kind: kind ? [kind] : undefined,
           severity: severity ? [severity] : undefined,
           page,
@@ -471,20 +517,26 @@ function RadarPage({ me }: { me: Me }) {
       ),
   });
   const counts = useQuery({
-    queryKey: ["signal-counts"],
+    queryKey: ["signal-counts", group],
     queryFn: async ({ signal }) =>
       Object.fromEntries(
         await Promise.all(
           (Object.keys(kinds) as Schema["SignalKind"][]).map(async (k) => [
             k,
-            (await api.signals({ kind: [k], page_size: 1 }, signal)).total,
+            (
+              await api.signals(
+                { kind: [k], page_size: 1, group_id: groupFilter },
+                signal,
+              )
+            ).total,
           ]),
         ),
       ),
   });
   const overview = useQuery({
-    queryKey: ["interaction-count"],
-    queryFn: ({ signal }) => api.interactions({ page_size: 1 }, signal),
+    queryKey: ["interaction-count", group],
+    queryFn: ({ signal }) =>
+      api.interactions({ page_size: 1, group_id: groupFilter }, signal),
   });
   return (
     <>
@@ -503,6 +555,7 @@ function RadarPage({ me }: { me: Me }) {
           </Link>
         </Button>
       </Heading>
+      <GroupSelect value={group} onChange={setGroup} groups={groups} />
       <div className="crm-intro">
         <div>
           <span className="eyebrow">В ФОКУСЕ</span>
@@ -547,7 +600,7 @@ function RadarPage({ me }: { me: Me }) {
         <div className="section-heading">
           <div>
             <h2>Требуют внимания</h2>
-            <p>Каждый сигнал содержит объяснение от сервера</p>
+            <p>Причина, срок и ответственный по каждому сигналу</p>
           </div>
           <Button
             variant="ghost"
@@ -610,7 +663,7 @@ function RadarPage({ me }: { me: Me }) {
     </>
   );
 }
-function InteractionRows({
+export function InteractionRows({
   items,
 }: {
   items: Schema["InteractionListItem"][];
@@ -624,12 +677,16 @@ function InteractionRows({
           key={i.id}
         >
           <span className="university-icon">
-            <Building2 size={21} />
+            {i.counterparty.kind === "person" ? (
+              <UserRound size={21} />
+            ) : (
+              <Building2 size={21} />
+            )}
           </span>
           <div>
-            <strong>{i.university.name}</strong>
+            <strong>{i.counterparty.short_name}</strong>
             <p>
-              {i.program.name} · {i.product.name}
+              {i.program.name} · {i.product?.name || "Без продукта"}
             </p>
             <small>
               {i.owner.full_name} · Сигналов: {i.open_signals.length}
@@ -646,20 +703,30 @@ function InteractionRows({
   );
 }
 function InteractionsPage({ universityId }: { universityId?: string }) {
+  const [group, setGroup] = useState("");
+  const groups = useGroups();
+  const templateId = groups.data?.find(
+    (g) => g.id === group,
+  )?.workflow_template_id;
   const { search, setSearch, value } = useSearch();
   const [stage, setStage] = useState("");
   const [owner, setOwner] = useState("");
   const [page, setPage] = useState(1);
   const workflow = useQuery({
-    queryKey: ["workflow"],
-    queryFn: ({ signal }) => api.workflow(signal),
+    queryKey: ["workflow", universityId ? "default" : templateId],
+    queryFn: ({ signal }) =>
+      universityId
+        ? api.workflow(signal)
+        : api.workflowByTemplate(templateId!, signal),
+    enabled: Boolean(universityId || templateId),
   });
   const users = useQuery({
     queryKey: ["users"],
     queryFn: ({ signal }) => api.users(signal),
   });
-  useEffect(() => setPage(1), [value, stage, owner, universityId]);
+  useEffect(() => setPage(1), [value, stage, owner, universityId, group]);
   const filters: InteractionFilters = {
+    group_id: group ? [group] : undefined,
     search: value || undefined,
     stage_code: stage ? [stage] : undefined,
     owner_id: owner ? [owner] : undefined,
@@ -677,7 +744,18 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
         <Heading
           eyebrow="РАБОЧЕЕ ПРОСТРАНСТВО"
           title="Взаимодействия"
-          text="Вуз × программа × продукт. Этапы и ответственные из API."
+          text="Вузы и клиенты, программы и этапы совместной работы."
+        />
+      )}
+      {!universityId && (
+        <GroupSelect
+          value={group}
+          onChange={(value) => {
+            setGroup(value);
+            setStage("");
+            setPage(1);
+          }}
+          groups={groups}
         />
       )}
       <section className="panel">
@@ -689,7 +767,9 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
             onChange={(e) => setStage(e.target.value)}
             disabled={!workflow.data}
           >
-            <option value="">Все этапы</option>
+            <option value="">
+              {group || universityId ? "Все этапы" : "Сначала выберите группу"}
+            </option>
             {workflow.data?.stages.map((s) => (
               <option key={s.id} value={s.code}>
                 {s.name}
@@ -800,8 +880,8 @@ function Detail({ card }: { card: Card }) {
       </Link>
       <Heading
         eyebrow={`ВЕРСИЯ ЗАПИСИ ${card.version}`}
-        title={card.university.name}
-        text={`${card.program.name} · ${card.product.name}`}
+        title={card.counterparty.name}
+        text={`${card.program.name} · ${card.product?.name || "Без продукта"}`}
       >
         <Button
           disabled={
@@ -830,11 +910,15 @@ function Detail({ card }: { card: Card }) {
               <strong>{card.owner.full_name}</strong>
             </div>
             <div>
-              <small>Вуз</small>
+              <small>{card.group.name}</small>
               <strong>
-                <Link to={`/universities/${card.university.id}`}>
-                  {card.university.short_name} <ArrowUpRight size={12} />
-                </Link>
+                {card.university ? (
+                  <Link to={`/universities/${card.university.id}`}>
+                    {card.university.short_name} <ArrowUpRight size={12} />
+                  </Link>
+                ) : (
+                  card.counterparty.short_name
+                )}
               </strong>
             </div>
           </div>
@@ -900,9 +984,8 @@ function Detail({ card }: { card: Card }) {
             <>
               <h3>Документы</h3>
               <p>
-                Методы загрузки файлов ещё не опубликованы в контракте API. Если
-                переход требует документ, он будет недоступен до подключения
-                загрузки.
+                Загрузка документов пока не подключена к интерфейсу. Для
+                переходов, требующих вложения, сначала нужно добавить документ.
               </p>
             </>
           )}
@@ -924,7 +1007,8 @@ function Detail({ card }: { card: Card }) {
           <Dialog.Content className="dialog-content">
             <Dialog.Title>Изменить этап</Dialog.Title>
             <Dialog.Description>
-              Выберите переход, разрешённый сервером для текущей версии записи.
+              Выберите доступный этап и опишите причину перехода. Комментарий
+              сохранится в истории.
             </Dialog.Description>
             <form
               onSubmit={(e) => {
@@ -971,7 +1055,8 @@ function Detail({ card }: { card: Card }) {
               <small>{comment.length} / 4000</small>
               {target?.requires_attachment && (
                 <p role="alert" className="form-note">
-                  Для этого перехода нужен файл. Загрузка ожидает контракт v1.
+                  Для этого перехода нужен файл. Загрузка пока не подключена к
+                  интерфейсу.
                 </p>
               )}
               {mutation.isError && (

@@ -76,6 +76,15 @@ export class ApiClient {
   me = (signal?: AbortSignal) => this.request<Me>("/api/v1/me", { signal });
   workflow = (signal?: AbortSignal) =>
     this.request<Workflow>("/api/v1/workflows/default", { signal });
+  groups = (signal?: AbortSignal) =>
+    this.request<Schema["CounterpartyGroupOut"][]>(
+      "/api/v1/counterparty-groups",
+      { signal },
+    );
+  workflowByTemplate = (id: string, signal?: AbortSignal) =>
+    this.request<Workflow>(`/api/v1/workflows/${encodeURIComponent(id)}`, {
+      signal,
+    });
   interactions = (filters: InteractionFilters = {}, signal?: AbortSignal) =>
     this.request<Schema["Page_InteractionListItem_"]>(
       "/api/v1/interactions" + queryString(filters),

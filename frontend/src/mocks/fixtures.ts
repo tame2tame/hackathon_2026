@@ -77,16 +77,22 @@ export const mockWorkflow: Workflow = {
   })),
   transitions: [],
 };
-// v0 default rules currently require a comment, but not an attachment (see handoff).
+// Возвраты разрешены с комментарием и без документа.
 mockWorkflow.transitions = [
   ...codes
-    .slice(0, -1)
+    .slice(1)
     .map((_, i) => ({
-      from_stage_id: uid(100 + i),
-      to_stage_id: uid(101 + i),
+      from_stage_id: uid(101 + i),
+      to_stage_id: uid(100 + i),
       requires_comment: true,
       requires_attachment: false,
     })),
+  ...codes.slice(0, -1).map((_, i) => ({
+    from_stage_id: uid(100 + i),
+    to_stage_id: uid(101 + i),
+    requires_comment: true,
+    requires_attachment: false,
+  })),
   {
     from_stage_id: uid(103),
     to_stage_id: uid(105),
@@ -96,18 +102,72 @@ mockWorkflow.transitions = [
 ];
 export function allowedFor(
   stageId: string,
+  workflow: Workflow = mockWorkflow,
 ): Interaction["allowed_transitions"] {
-  return mockWorkflow.transitions
+  return workflow.transitions
     .filter((r) => r.from_stage_id === stageId)
     .map((r) => ({
-      to_stage: mockWorkflow.stages.find((s) => s.id === r.to_stage_id)!,
+      to_stage: workflow.stages.find((s) => s.id === r.to_stage_id)!,
       requires_comment: r.requires_comment,
       requires_attachment: r.requires_attachment,
     }));
 }
+export const mockGroups: Schema["CounterpartyGroupOut"][] = [
+  {
+    id: uid(30),
+    code: "b2b",
+    name: "Вузы (B2B)",
+    description: null,
+    workflow_template_id: uid(21),
+    position: 0,
+  },
+  {
+    id: uid(31),
+    code: "b2c",
+    name: "Частные лица (B2C)",
+    description: null,
+    workflow_template_id: uid(22),
+    position: 1,
+  },
+];
+export const mockClientWorkflow: Workflow = {
+  id: uid(23),
+  template_id: uid(22),
+  name: "Обучение клиентов",
+  version_no: 1,
+  stages: [
+    {
+      ...mockWorkflow.stages[0],
+      id: uid(910),
+      code: "application",
+      name: "Заявка",
+    },
+    {
+      ...mockWorkflow.stages[1],
+      id: uid(911),
+      code: "enrollment",
+      name: "Зачисление",
+    },
+  ],
+  transitions: [],
+};
+mockClientWorkflow.transitions = [
+  {
+    from_stage_id: uid(910),
+    to_stage_id: uid(911),
+    requires_comment: true,
+    requires_attachment: false,
+  },
+  {
+    from_stage_id: uid(911),
+    to_stage_id: uid(910),
+    requires_comment: true,
+    requires_attachment: false,
+  },
+];
 const time = "2026-09-16T09:00:00Z";
 export function createFixtures(): Interaction[] {
-  return initialData.map((i, n) => {
+  const universities: Interaction[] = initialData.map((i, n) => {
     const owner = mockUsers[i.owner === "Анна Смирнова" ? 0 : 1];
     const stage = mockWorkflow.stages[i.stage];
     const signal: Schema["SignalOut"] = {
@@ -116,7 +176,10 @@ export function createFixtures(): Interaction[] {
       severity: i.severity,
       detected_at: time,
       resolved_at: null,
-      message: i.evidence,
+      message:
+        i.kind === "inactivity"
+          ? "Нет активности 23 дня, порог составляет 14 дней."
+          : i.evidence,
       evidence: {
         stage_code: stage.code,
         days_on_stage: i.days,
@@ -136,6 +199,14 @@ export function createFixtures(): Interaction[] {
       });
     return {
       id: uid(200 + n),
+      group: mockGroups[0],
+      counterparty: {
+        id: uid(300 + n),
+        kind: "university",
+        name: i.university,
+        short_name: i.short,
+      },
+      client: null,
       university: {
         id: uid(300 + n),
         name: i.university,
@@ -145,6 +216,7 @@ export function createFixtures(): Interaction[] {
       program: {
         id: uid(400 + n),
         name: i.program,
+        priority: 0,
         direction: {
           id: uid(450 + n),
           name: i.program,
@@ -182,4 +254,42 @@ export function createFixtures(): Interaction[] {
       signals,
     };
   });
+  const client: Interaction = {
+    ...universities[0],
+    id: uid(290),
+    group: mockGroups[1],
+    counterparty: {
+      id: uid(900),
+      kind: "person",
+      name: "Демо Клиент",
+      short_name: "Демо Клиент",
+    },
+    client: { id: uid(900), kind: "person", name: "Демо Клиент" },
+    university: null,
+    product: null,
+    owner: { id: mockUsers[1].id, full_name: mockUsers[1].full_name },
+    program: {
+      ...universities[0].program,
+      id: uid(490),
+      name: "Управление проектами",
+    },
+    stage: mockClientWorkflow.stages[0],
+    workflow_version_id: mockClientWorkflow.id,
+    days_on_stage: 16,
+    norm_days: 14,
+    allowed_transitions: allowedFor(uid(910), mockClientWorkflow),
+    contract: null,
+    history: [],
+    signals: [
+      {
+        ...universities[0].signals[0],
+        id: uid(590),
+        kind: "inactivity",
+        message: "Нет активности 16 дней, порог составляет 14 дней.",
+        evidence: { idle_days: 16, threshold_days: 14 },
+      },
+    ],
+    open_signals: [{ kind: "inactivity", severity: "high" }],
+  };
+  return [...universities, client];
 }
