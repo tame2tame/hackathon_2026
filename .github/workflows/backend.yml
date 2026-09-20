@@ -43,6 +43,8 @@ jobs:
         run: test "$(alembic heads | wc -l)" -eq 1
       - name: Контракт совпадает со схемой приложения
         run: python -m scripts.export_openapi --check
+      - name: Руководство совпадает со встроенной справкой
+        run: python -m scripts.export_help --check
       - name: Тесты — миграции вниз и вверх, API, правила радара
         run: pytest
       - name: Перечень библиотек

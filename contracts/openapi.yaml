@@ -4903,6 +4903,73 @@ paths:
                 $ref: '#/components/schemas/Problem'
       security:
       - HTTPBearer: []
+  /api/v1/help:
+    get:
+      tags:
+      - help
+      summary: Разделы встроенной справки
+      description: 'Руководство пользователя внутри продукта. Разделы отдаются по роли: то, что настраивает
+        администратор, КАМу не показывается.'
+      operationId: read_topics_api_v1_help_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/HelpTopicRef'
+                type: array
+                title: Response Read Topics Api V1 Help Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/help/{slug}:
+    get:
+      tags:
+      - help
+      summary: Раздел справки
+      description: 'Текст в Markdown: заголовки, списки и таблицы.'
+      operationId: read_topic_api_v1_help__slug__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Slug
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelpTopicOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/messages:
     get:
       tags:
@@ -7319,6 +7386,45 @@ components:
       - database
       - storage
       title: HealthOut
+    HelpTopicOut:
+      properties:
+        slug:
+          type: string
+          title: Slug
+        title:
+          type: string
+          title: Title
+        summary:
+          type: string
+          title: Summary
+        body:
+          type: string
+          title: Body
+          description: Текст раздела в Markdown
+      type: object
+      required:
+      - slug
+      - title
+      - summary
+      - body
+      title: HelpTopicOut
+    HelpTopicRef:
+      properties:
+        slug:
+          type: string
+          title: Slug
+        title:
+          type: string
+          title: Title
+        summary:
+          type: string
+          title: Summary
+      type: object
+      required:
+      - slug
+      - title
+      - summary
+      title: HelpTopicRef
     ImportBatchOut:
       properties:
         id:
