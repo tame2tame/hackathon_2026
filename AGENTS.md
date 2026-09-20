@@ -15,6 +15,8 @@
 Уточнения жюри от 17.09 и решения по ним — [`docs/JURY_QA.md`](docs/JURY_QA.md); при расхождении
 с ТЗ они уточняют, а не отменяют его.
 
+Сценарий показа жюри — [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md).
+
 Диаграммы связей, программно-аппаратной архитектуры и базы данных —
 [`docs/architecture/DIAGRAMS.md`](docs/architecture/DIAGRAMS.md).
 
