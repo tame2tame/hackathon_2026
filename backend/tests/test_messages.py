@@ -1,10 +1,15 @@
 """Переписка внутри сервиса: диалоги, непрочитанные и ссылка на запись."""
 
+import uuid
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import current_user_for
+from app.modules.catalogs.models import AppUser
+from app.modules.messages.service import list_dialogs
 from tests.api import find, user_id
 from tests.users import ALINA_ADMIN, ANNA_KAM, MIKHAIL_KAM, ROMAN_MANAGER, as_user
 
@@ -132,3 +137,57 @@ async def test_message_needs_a_real_colleague(client: AsyncClient, session: Asyn
     assert to_self.json()["errors"][0]["field"] == "recipient_id"
     assert to_nobody.status_code == 404
     assert empty.status_code == 201
+
+
+async def test_dialogs_take_one_query_per_page(client: AsyncClient, session: AsyncSession) -> None:
+    anna = str(await user_id(session, ANNA_KAM))
+    mikhail = str(await user_id(session, MIKHAIL_KAM))
+    await send(client, ROMAN_MANAGER, anna, "Первый собеседник")
+    await send(client, MIKHAIL_KAM, anna, "Второй собеседник")
+    await send(client, ALINA_ADMIN, anna, "Третий собеседник")
+    await send(client, ANNA_KAM, mikhail, "Ответ второму")
+
+    anna_user = await session.get(AppUser, uuid.UUID(anna))
+    assert anna_user is not None
+    queries: list[str] = []
+
+    def record(state: object) -> None:
+        queries.append("q")
+
+    anna_current = await current_user_for(session, anna_user)
+    event.listen(session.sync_session, "do_orm_execute", record)
+    try:
+        dialogs = await list_dialogs(session, anna_current)
+    finally:
+        event.remove(session.sync_session, "do_orm_execute", record)
+
+    assert dialogs.items[0].peer.full_name == "Михаил Волков"
+    assert dialogs.unread_total == 3
+    # Раньше список делал запрос на каждый диалог: у руководителя с полусотней собеседников
+    # это полсотни лишних запросов на одно открытие экрана.
+    assert len(queries) == 1, queries
+
+
+async def test_conversation_with_a_leaver_still_opens(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    anna_id = await user_id(session, ANNA_KAM)
+    mikhail_id = await user_id(session, MIKHAIL_KAM)
+    await send(client, MIKHAIL_KAM, str(anna_id), "Передаю тебе КФУ")
+    mikhail = await session.get(AppUser, mikhail_id)
+    assert mikhail is not None
+    mikhail.is_active = False
+    await session.commit()
+
+    dialogs = await client.get(MESSAGES, headers=as_user(ANNA_KAM))
+    history = await client.get(f"{MESSAGES}/{mikhail_id}", headers=as_user(ANNA_KAM))
+    answer = await client.post(
+        MESSAGES,
+        json={"recipient_id": str(mikhail_id), "body": "Принял"},
+        headers=as_user(ANNA_KAM),
+    )
+
+    # Уволенный собеседник не должен превращать переписку в «сотрудник не найден».
+    assert [item["peer"]["full_name"] for item in dialogs.json()["items"]] == ["Михаил Волков"]
+    assert [item["body"] for item in history.json()] == ["Передаю тебе КФУ"]
+    assert answer.status_code == 404

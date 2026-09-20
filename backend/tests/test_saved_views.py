@@ -82,3 +82,28 @@ async def test_view_does_not_become_a_storage(client: AsyncClient) -> None:
     assert fat.status_code == 422
     assert fat.json()["errors"][0]["field"] == "filters"
     assert unknown_page.status_code == 422
+
+
+async def test_columns_are_names_not_a_place_to_store_things(client: AsyncClient) -> None:
+    fat_column = await client.post(
+        VIEWS,
+        json={**OVERDUE, "columns": ["university", "я" * 5000]},
+        headers=as_user(ANNA_KAM),
+    )
+    many = await client.post(
+        VIEWS,
+        json={**OVERDUE, "name": "Много колонок", "columns": [f"c{i}" for i in range(60)]},
+        headers=as_user(ANNA_KAM),
+    )
+    patched = await client.post(
+        VIEWS, json={**OVERDUE, "name": "Обычный"}, headers=as_user(ANNA_KAM)
+    )
+    fat_patch = await client.patch(
+        f"{VIEWS}/{patched.json()['id']}",
+        json={"columns": ["я" * 5000]},
+        headers=as_user(ANNA_KAM),
+    )
+
+    assert fat_column.status_code == 422
+    assert many.status_code == 422
+    assert fat_patch.status_code == 422

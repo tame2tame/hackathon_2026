@@ -948,7 +948,15 @@ async def change_status(
             trace_id=trace_id,
         )
     )
-    await session.flush()
+    try:
+        # Проверка дубля выше конкурента не блокирует: последнее слово за уникальным индексом.
+        async with session.begin_nested():
+            await session.flush()
+    except IntegrityError as error:
+        raise AppError(
+            ErrorCode.INTERACTION_DUPLICATE,
+            "С этим контрагентом по этой программе и продукту уже ведётся другая запись.",
+        ) from error
     # Неактивная запись не даёт сигналов: правила радара сами закроют открытые.
     await recompute_signals(session, [interaction.id], now)
     await mark_changed(session, [interaction.id], "status")

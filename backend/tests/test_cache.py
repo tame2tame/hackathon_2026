@@ -1,5 +1,6 @@
 """Кэш действий пользователя: ETag у карточки и файлов, серверный кэш справочников и рейтинга."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -7,9 +8,11 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import MemoryCache
 from app.modules.catalogs.models import Direction, Program, University
 from app.modules.metrics.models import ProgramMetric
 from tests.api import find, stage_id, upload_pdf
+from tests.test_analytics import seed_metrics
 from tests.users import ALINA_ADMIN, ANNA_KAM, ROMAN_MANAGER, as_user
 
 CARD = "/api/v1/interactions"
@@ -176,3 +179,49 @@ async def test_transition_shows_the_card_anew(client: AsyncClient) -> None:
 
     assert after.status_code == 200
     assert after.json()["stage"]["code"] == "documents_exchange"
+
+
+async def test_catalogue_file_with_priorities_refreshes_the_rating(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    await seed_metrics(session)
+    today = datetime.now(UTC).date()
+    params: dict[str, Any] = {
+        "period_from": str(today - timedelta(days=30)),
+        "period_to": str(today),
+    }
+    first = await client.get(RATING, params=params, headers=as_user(ROMAN_MANAGER))
+    program = await session.get(Program, uuid.UUID(first.json()["rows"][0]["id"]))
+    assert program is not None
+    direction = await session.get(Direction, program.direction_id)
+    assert direction is not None
+
+    content = (
+        f"Код направления;Название;Приоритет\r\n{direction.code};{program.name};77\r\n".encode(
+            "cp1251"
+        )
+    )
+    loaded = await client.post(
+        "/api/v1/admin/catalogs/programs/import",
+        files={"file": ("программы.csv", content, "text/csv")},
+        data={"dry_run": "false"},
+        headers=as_user(ALINA_ADMIN),
+    )
+    after = await client.get(RATING, params=params, headers=as_user(ROMAN_MANAGER))
+
+    assert loaded.json()["updated"] == 1
+    # Приоритет из файла виден в рейтинге сразу, а не через пять минут жизни кэша.
+    assert [row["priority"] for row in after.json()["rows"] if row["id"] == str(program.id)] == [77]
+
+
+async def test_memory_cache_forgets_by_itself() -> None:
+    cache = MemoryCache()
+    await cache.set("cache:catalogs:0:directions", "[]", ttl=60)
+    fresh = await cache.get("cache:catalogs:0:directions")
+
+    await cache.set("cache:catalogs:0:products", "[]", ttl=0)
+    stale = await cache.get("cache:catalogs:0:products")
+
+    # Запуск без Redis не должен жить с вечным кэшем: обещание «не дольше срока жизни» общее.
+    assert fresh == "[]"
+    assert stale is None

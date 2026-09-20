@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core import cache
 from app.core.db import SessionDep
 from app.core.errors import ErrorCode, TraceIdDep, error_responses
 from app.core.roles import Role
@@ -52,6 +53,7 @@ async def post_sync(source_id: uuid.UUID, session: SessionDep, _user: ManagerDep
     source = await get_source(session, source_id)
     run = await sync_source(session, source)
     await session.commit()
+    await cache.invalidate(cache.RATING)
     return SyncRunOut.model_validate(run)
 
 

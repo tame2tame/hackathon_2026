@@ -191,7 +191,9 @@ async def set_program_priority(
 ) -> ProgramRef:
     """Ручной приоритет курса: данных LMS может не хватать, и решение остаётся за человеком."""
     program = await session.scalar(
-        select(Program).where(Program.id == program_id).options(joinedload(Program.direction))
+        select(Program)
+        .where(Program.id == program_id, Program.archived_at.is_(None))
+        .options(joinedload(Program.direction))
     )
     if program is None:
         raise AppError(ErrorCode.NOT_FOUND, "Программа не найдена.")

@@ -8999,6 +8999,8 @@ components:
         columns:
           items:
             type: string
+            maxLength: 60
+            minLength: 1
           type: array
           maxItems: 40
           title: Columns
@@ -9067,6 +9069,8 @@ components:
           anyOf:
           - items:
               type: string
+              maxLength: 60
+              minLength: 1
             type: array
             maxItems: 40
           - type: 'null'

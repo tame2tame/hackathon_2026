@@ -8,6 +8,7 @@ import json
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, ErrorCode, FieldError
@@ -72,9 +73,19 @@ async def create_view(
         page=payload.page,
         name=name,
         filters=payload.filters,
-        columns=payload.columns,
+        columns=list(payload.columns),
     )
     session.add(view)
+    try:
+        # Двойной клик обходит проверку выше: последнее слово за уникальным индексом.
+        async with session.begin_nested():
+            await session.flush()
+    except IntegrityError as error:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Вид с таким названием уже сохранён: выберите другое название.",
+            errors=[FieldError(field="name", message="Название занято")],
+        ) from error
     await session.commit()
     return SavedViewOut.model_validate(view)
 
@@ -105,7 +116,7 @@ async def update_view(
         _check_size(payload.filters)
         view.filters = payload.filters
     if payload.columns is not None:
-        view.columns = payload.columns
+        view.columns = list(payload.columns)
     await session.commit()
     # `updated_at` проставляет база: без обновления объекта его ещё нет.
     await session.refresh(view)

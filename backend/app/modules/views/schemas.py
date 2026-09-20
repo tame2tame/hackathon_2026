@@ -2,12 +2,15 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 ViewPage = Literal["interactions", "radar", "reports", "rating", "clients"]
 MAX_FILTERS_BYTES = 4096
+# Колонка — это имя поля, а не текст: длинная строка здесь означает, что видом пытаются
+# что-то хранить.
+Column = Annotated[str, StringConstraints(min_length=1, max_length=60)]
 
 
 class SavedViewOut(BaseModel):
@@ -27,7 +30,7 @@ class SavedViewCreate(BaseModel):
     filters: dict[str, Any] = Field(
         default_factory=dict, description="Параметры запроса страницы: сервер их не толкует"
     )
-    columns: list[str] = Field(
+    columns: list[Column] = Field(
         default_factory=list, max_length=40, description="Колонки списка в нужном порядке"
     )
 
@@ -35,4 +38,4 @@ class SavedViewCreate(BaseModel):
 class SavedViewUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     filters: dict[str, Any] | None = None
-    columns: list[str] | None = Field(default=None, max_length=40)
+    columns: list[Column] | None = Field(default=None, max_length=40)

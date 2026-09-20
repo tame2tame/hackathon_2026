@@ -6,12 +6,14 @@
 """
 
 import json
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
 from fastapi import UploadFile
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import crypto
@@ -25,6 +27,7 @@ from app.modules.imports.files import EXPORT_TYPES, FieldSpec, ImportOutcome, Ro
 from app.modules.imports.mapping import normalize
 from app.modules.participants.models import Participant
 from app.modules.participants.schemas import (
+    EMAIL_PATTERN,
     ROLE_NAMES,
     ParticipantContactOut,
     ParticipantCountsOut,
@@ -122,23 +125,12 @@ async def add_participant(
     email = str(payload.email) if payload.email else None
     _require_key(email)
     fingerprint = crypto.fingerprint(email)
-    if fingerprint is not None:
-        taken = await session.scalar(
-            select(Participant.id).where(
-                Participant.interaction_id == interaction_id,
-                Participant.email_fp == fingerprint,
-            )
-        )
-        if taken is not None:
-            raise AppError(
-                ErrorCode.VALIDATION_ERROR,
-                "Человек с этой почтой уже есть в списке записи.",
-                errors=[FieldError(field="email", message="Почта уже в списке")],
-            )
+    name = payload.full_name.strip()
+    await _check_free(session, interaction_id, fingerprint, payload.role, name)
     participant = Participant(
         interaction_id=interaction_id,
         role=payload.role,
-        full_name=payload.full_name.strip(),
+        full_name=name,
         email_enc=crypto.encrypt(email),
         email_fp=fingerprint,
         external_ref=payload.external_ref,
@@ -146,7 +138,16 @@ async def add_participant(
         created_by=user.id,
     )
     session.add(participant)
-    await session.flush()
+    try:
+        # Двойной клик обходит проверку выше: последнее слово за уникальным индексом.
+        async with session.begin_nested():
+            await session.flush()
+    except IntegrityError as error:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Человек с этой почтой уже есть в списке записи.",
+            errors=[FieldError(field="email", message="Почта уже в списке")],
+        ) from error
     # В журнал идёт факт, но не персональные данные.
     session.add(
         AuditLog(
@@ -160,6 +161,43 @@ async def add_participant(
     )
     await session.commit()
     return _out(participant)
+
+
+async def _check_free(
+    session: AsyncSession,
+    interaction_id: uuid.UUID,
+    fingerprint: str | None,
+    role: str,
+    full_name: str,
+) -> None:
+    """Один человек в списке записи один раз: по почте, а без почты — по ФИО и роли."""
+    if fingerprint is not None:
+        taken = await session.scalar(
+            select(Participant.id).where(
+                Participant.interaction_id == interaction_id,
+                Participant.email_fp == fingerprint,
+            )
+        )
+        if taken is not None:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                "Человек с этой почтой уже есть в списке записи.",
+                errors=[FieldError(field="email", message="Почта уже в списке")],
+            )
+        return
+    same_name = await session.scalars(
+        select(Participant.full_name).where(
+            Participant.interaction_id == interaction_id,
+            Participant.role == role,
+            Participant.archived_at.is_(None),
+        )
+    )
+    if normalize(full_name) in {normalize(item) for item in same_name}:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Человек с таким ФИО уже есть в списке записи.",
+            errors=[FieldError(field="full_name", message="Уже в списке")],
+        )
 
 
 async def get_contact(
@@ -259,6 +297,9 @@ async def import_participants(
                 await session.flush()
         except RowError as error:
             outcome.rows.append(RowResult(row_no, name, "error", str(error)))
+        except IntegrityError:
+            # Строка упёрлась в ограничение базы: остальные строки файла не виноваты.
+            outcome.rows.append(RowResult(row_no, name, "error", "Такой человек уже есть в списке"))
         else:
             outcome.rows.append(RowResult(row_no, name, action, detail))
 
@@ -296,17 +337,20 @@ async def _apply_row(
 ) -> tuple[Literal["created", "updated", "unchanged"], str | None]:
     name = values["full_name"][:300]
     email = values.get("email") or None
-    if email and "@" not in email:
+    if email and not re.match(EMAIL_PATTERN, email):
         raise RowError(f"Это не почта: «{email}»")
     _require_key(email)
     role = _role_of(values.get("role", ""), default_role)
     fingerprint = crypto.fingerprint(email)
-    key = fingerprint or f"{role}:{normalize(name)}"
-    if key in seen:
+    by_name = f"{role}:{normalize(name)}"
+    key = fingerprint or by_name
+    if key in seen or (fingerprint is not None and by_name in seen):
         raise RowError("Тот же человек уже есть выше в файле")
     seen.add(key)
 
-    participant = existing.get(key)
+    # Человека, заведённого раньше без почты, ищем по ФИО и роли: иначе список с адресами
+    # из LMS завёл бы вторую строку на того же слушателя.
+    participant = existing.get(key) or (existing.get(by_name) if fingerprint else None)
     if participant is None:
         participant = Participant(
             interaction_id=interaction_id,
@@ -314,7 +358,7 @@ async def _apply_row(
             full_name=name,
             email_enc=crypto.encrypt(email),
             email_fp=fingerprint,
-            external_ref=values.get("external_ref") or None,
+            external_ref=(values.get("external_ref") or "")[:120] or None,
             source="import",
             created_by=user.id,
         )
@@ -332,9 +376,11 @@ async def _apply_row(
     if email and participant.email_enc is None:
         participant.email_enc = crypto.encrypt(email)
         participant.email_fp = fingerprint
+        existing[key] = participant
         changed.append("почта")
-    if values.get("external_ref") and participant.external_ref != values["external_ref"]:
-        participant.external_ref = values["external_ref"][:120]
+    external_ref = (values.get("external_ref") or "")[:120]
+    if external_ref and participant.external_ref != external_ref:
+        participant.external_ref = external_ref
         changed.append("идентификатор в LMS")
     if not changed:
         return "unchanged", None

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from app.core.db import SessionDep
-from app.core.errors import ErrorCode, error_responses
+from app.core.errors import AppError, ErrorCode, error_responses
 from app.core.http_cache import (
     IMMUTABLE,
     NOT_MODIFIED,
@@ -81,6 +81,8 @@ async def read_report_file(
     request: Request, report_id: uuid.UUID, session: SessionDep, user: CurrentUserDep
 ) -> Response:
     job = await get_job(session, user, report_id)
+    if job.status != "done" or not job.file_key:
+        raise AppError(ErrorCode.NOT_FOUND, "Файл ещё не готов.")
     # Готовый отчёт не перестраивается: тот же запуск — тот же файл.
     etag = etag_of(f"{job.id}:{job.finished_at}")
     headers = {"ETag": etag, "Cache-Control": IMMUTABLE}

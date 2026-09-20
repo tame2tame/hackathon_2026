@@ -26,22 +26,26 @@ from app.modules.messages.schemas import (
     MessageInteractionRef,
     MessageOut,
 )
-from app.modules.notifications.service import interaction_label
+from app.modules.notifications.service import interaction_labels
 
 PREVIEW = 120
 DIALOG_LIMIT = 200
 
 
-async def _peer(session: AsyncSession, user: CurrentUser, peer_id: uuid.UUID) -> AppUser:
+async def _peer(
+    session: AsyncSession, user: CurrentUser, peer_id: uuid.UUID, *, active_only: bool = True
+) -> AppUser:
+    """Собеседник. Уволенному писать нельзя, но прочитать переписку с ним — можно."""
     if peer_id == user.id:
         raise AppError(
             ErrorCode.VALIDATION_ERROR,
             "Сообщение самому себе — это заметка: она есть в карточке записи.",
             errors=[FieldError(field="recipient_id", message="Нужен другой сотрудник")],
         )
-    peer = await session.scalar(
-        select(AppUser).where(AppUser.id == peer_id, AppUser.is_active.is_(True))
-    )
+    stmt = select(AppUser).where(AppUser.id == peer_id)
+    if active_only:
+        stmt = stmt.where(AppUser.is_active.is_(True))
+    peer = await session.scalar(stmt)
     if peer is None:
         raise AppError(ErrorCode.NOT_FOUND, "Сотрудник не найден.")
     return peer
@@ -54,10 +58,12 @@ async def _visible_labels(
     wanted = {message.interaction_id for message in messages if message.interaction_id}
     if not wanted:
         return {}
-    visible = await session.scalars(
-        apply_interaction_scope(select(Interaction.id).where(Interaction.id.in_(wanted)), user)
+    visible = list(
+        await session.scalars(
+            apply_interaction_scope(select(Interaction.id).where(Interaction.id.in_(wanted)), user)
+        )
     )
-    return {item: await interaction_label(session, item) for item in visible}
+    return await interaction_labels(session, visible)
 
 
 def _out(
@@ -91,7 +97,7 @@ async def read_dialog(
     session: AsyncSession, user: CurrentUser, peer_id: uuid.UUID, limit: int = 50
 ) -> list[MessageOut]:
     """Переписка с одним собеседником: сначала старые, чтобы читать сверху вниз."""
-    await _peer(session, user, peer_id)
+    await _peer(session, user, peer_id, active_only=False)
     messages = list(
         await session.scalars(
             select(Message)
@@ -101,7 +107,7 @@ async def read_dialog(
                     (Message.sender_id == peer_id) & (Message.recipient_id == user.id),
                 )
             )
-            .order_by(Message.created_at.desc())
+            .order_by(Message.created_at.desc(), Message.id.desc())
             .limit(min(limit, DIALOG_LIMIT))
         )
     )
@@ -114,54 +120,52 @@ async def read_dialog(
 
 
 async def list_dialogs(session: AsyncSession, user: CurrentUser) -> DialogsOut:
-    """С кем и о чём шла переписка: последнее сообщение и число непрочитанных."""
+    """С кем и о чём шла переписка: последнее сообщение и число непрочитанных.
+
+    Собеседник, последнее сообщение и счётчик берутся одним запросом: при полусотне диалогов
+    запрос на каждый из них обошёлся бы дороже самого ответа.
+    """
     peer = case(
         (Message.sender_id == user.id, Message.recipient_id), else_=Message.sender_id
     ).label("peer_id")
+    mine = select(
+        peer,
+        Message.body,
+        Message.created_at,
+        ((Message.recipient_id == user.id) & Message.read_at.is_(None)).label("is_unread"),
+    ).where(or_(Message.sender_id == user.id, Message.recipient_id == user.id))
+    dialog = mine.subquery()
+    last = (
+        select(dialog.c.peer_id, dialog.c.body, dialog.c.created_at)
+        .distinct(dialog.c.peer_id)
+        .order_by(dialog.c.peer_id, dialog.c.created_at.desc())
+        .subquery()
+    )
+    counts = (
+        select(
+            dialog.c.peer_id,
+            func.count().filter(dialog.c.is_unread).label("unread"),
+        )
+        .group_by(dialog.c.peer_id)
+        .subquery()
+    )
     rows = (
         await session.execute(
-            select(
-                peer,
-                func.max(Message.created_at).label("last_at"),
-                func.count()
-                .filter(Message.recipient_id == user.id, Message.read_at.is_(None))
-                .label("unread"),
-            )
-            .where(or_(Message.sender_id == user.id, Message.recipient_id == user.id))
-            .group_by(peer)
-            .order_by(func.max(Message.created_at).desc())
+            select(AppUser, last.c.body, last.c.created_at, counts.c.unread)
+            .join(last, last.c.peer_id == AppUser.id)
+            .join(counts, counts.c.peer_id == AppUser.id)
+            .order_by(last.c.created_at.desc())
         )
     ).all()
-    if not rows:
-        return DialogsOut(unread_total=0, items=[])
-
-    people = {
-        person.id: person
-        for person in await session.scalars(
-            select(AppUser).where(AppUser.id.in_([row.peer_id for row in rows]))
+    items = [
+        DialogOut(
+            peer=UserRef.model_validate(person),
+            last_message=(body or "")[:PREVIEW],
+            last_at=last_at,
+            unread=unread,
         )
-    }
-    items: list[DialogOut] = []
-    for row in rows:
-        last = await session.scalar(
-            select(Message.body)
-            .where(
-                or_(
-                    (Message.sender_id == user.id) & (Message.recipient_id == row.peer_id),
-                    (Message.sender_id == row.peer_id) & (Message.recipient_id == user.id),
-                )
-            )
-            .order_by(Message.created_at.desc())
-            .limit(1)
-        )
-        items.append(
-            DialogOut(
-                peer=UserRef.model_validate(people[row.peer_id]),
-                last_message=(last or "")[:PREVIEW],
-                last_at=row.last_at,
-                unread=row.unread,
-            )
-        )
+        for person, body, last_at, unread in rows
+    ]
     return DialogsOut(unread_total=sum(item.unread for item in items), items=items)
 
 
@@ -198,7 +202,7 @@ async def send_message(
 
 async def mark_read(session: AsyncSession, user: CurrentUser, peer_id: uuid.UUID) -> int:
     """Прочитанными становятся только входящие: свои сообщения отмечать нечего."""
-    await _peer(session, user, peer_id)
+    await _peer(session, user, peer_id, active_only=False)
     updated = await session.scalars(
         update(Message)
         .where(

@@ -217,3 +217,21 @@ async def test_report_from_the_worker_keeps_the_access_rules(
     # Отчёт из очереди подчиняется тем же правилам доступа, что и список в интерфейсе.
     assert rows
     assert {"Вуз": "МГТУ им. Н. Э. Баумана"} not in rows
+
+
+async def test_unfinished_report_is_not_a_cached_file(client: AsyncClient) -> None:
+    job = await order(client, format="json")
+    ready = await client.get(f"{REPORTS}/{job['id']}/file", headers=as_user(ANNA_KAM))
+    etag = ready.headers["etag"]
+
+    pending = await client.post(REPORTS, json={"format": "pdf"}, headers=as_user(ANNA_KAM))
+    unfinished = await client.get(
+        f"{REPORTS}/{pending.json()['id']}/file",
+        headers={**as_user(ANNA_KAM), "If-None-Match": etag},
+    )
+
+    assert ready.status_code == 200
+    # Неготовый отчёт не должен притворяться неизменившимся файлом.
+    assert unfinished.status_code in (200, 404)
+    if unfinished.status_code == 404:
+        assert unfinished.json()["code"] == "NOT_FOUND"

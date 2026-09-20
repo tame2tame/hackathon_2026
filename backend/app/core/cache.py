@@ -11,6 +11,7 @@
 
 import logging
 from functools import lru_cache
+from time import monotonic
 from typing import Protocol
 
 from redis.asyncio import Redis
@@ -39,20 +40,31 @@ class Cache(Protocol):
 
 
 class MemoryCache:
-    """Кэш в памяти процесса: тесты и запуск без Redis. Срок жизни не нужен — процесс короткий."""
+    """Кэш в памяти процесса: тесты и запуск без Redis.
+
+    Срок жизни соблюдается и здесь: иначе запуск без Redis жил бы с вечным кэшем, а обещание
+    «устаревший ответ проживёт не дольше срока жизни ключа» перестало бы выполняться.
+    """
 
     def __init__(self) -> None:
-        self._values: dict[str, str] = {}
+        self._values: dict[str, tuple[float, str]] = {}
         self._generations: dict[str, int] = {}
 
     async def generation(self, namespace: str) -> int:
         return self._generations.get(namespace, 0)
 
     async def get(self, key: str) -> str | None:
-        return self._values.get(key)
+        stored = self._values.get(key)
+        if stored is None:
+            return None
+        expires_at, value = stored
+        if expires_at <= monotonic():
+            del self._values[key]
+            return None
+        return value
 
     async def set(self, key: str, value: str, ttl: int) -> None:
-        self._values[key] = value
+        self._values[key] = (monotonic() + ttl, value)
 
     async def bump(self, namespace: str) -> None:
         self._generations[namespace] = self._generations.get(namespace, 0) + 1

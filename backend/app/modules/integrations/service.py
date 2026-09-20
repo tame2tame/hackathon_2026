@@ -379,8 +379,6 @@ async def sync_source(
         run.status = "done"
         run.stats = dict(stats)
         source.last_sync_at = now
-        # Витрина метрик обновилась: рейтинг из кэша уже не тот.
-        await cache.invalidate(cache.RATING)
     run.finished_at = datetime.now(UTC)
     await session.flush()
     return run
@@ -390,6 +388,9 @@ async def sync_all(session: AsyncSession, now: datetime | None = None) -> list[S
     """Синхронизирует все источники: отказ одного не мешает остальным."""
     runs = [await sync_source(session, source, now=now) for source in await list_sources(session)]
     await session.commit()
+    # Витрина метрик обновилась: сбрасываем кэш рейтинга уже после фиксации, иначе параллельный
+    # запрос успел бы посчитать рейтинг по старым данным и положить его в новое поколение.
+    await cache.invalidate(cache.RATING)
     return runs
 
 
