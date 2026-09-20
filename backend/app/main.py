@@ -32,6 +32,7 @@ from app.modules.exchange.router import router as exchange_router
 from app.modules.imports.router import router as imports_router
 from app.modules.integrations.router import router as integrations_router
 from app.modules.interactions.router import router as interactions_router
+from app.modules.messages.router import router as messages_router
 from app.modules.notifications.router import admin_router as notifications_admin_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.participants.router import router as participants_router
@@ -121,6 +122,7 @@ def create_app() -> FastAPI:
         admin_contacts_router,
         notifications_router,
         notifications_admin_router,
+        messages_router,
         participants_router,
         views_router,
         events_router,
