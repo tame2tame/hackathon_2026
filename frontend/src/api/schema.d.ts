@@ -1648,6 +1648,107 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/help": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Разделы встроенной справки
+     * @description Руководство пользователя внутри продукта. Разделы отдаются по роли: то, что настраивает администратор, КАМу не показывается.
+     */
+    get: operations["read_topics_api_v1_help_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/help/{slug}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Раздел справки
+     * @description Текст в Markdown: заголовки, списки и таблицы.
+     */
+    get: operations["read_topic_api_v1_help__slug__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/messages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Мои переписки
+     * @description С кем шла переписка, последнее сообщение и сколько сообщений не прочитано. Общее число непрочитанных — `unread_total`, для значка в шапке.
+     */
+    get: operations["read_dialogs_api_v1_messages_get"];
+    put?: never;
+    /**
+     * Написать сотруднику
+     * @description Сообщение видят только двое. Можно сослаться на свою запись: собеседник увидит ссылку, если запись доступна и ему.
+     */
+    post: operations["post_message_api_v1_messages_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/messages/{peer_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Переписка с сотрудником
+     * @description Сначала старые сообщения. Чужую переписку не покажет: видно только свою.
+     */
+    get: operations["read_messages_api_v1_messages__peer_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/messages/{peer_id}/read": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Отметить переписку прочитанной */
+    post: operations["post_read_api_v1_messages__peer_id__read_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/interactions/{interaction_id}/participants": {
     parameters: {
       query?: never;
@@ -2635,6 +2736,32 @@ export interface components {
        */
       created_at: string;
     };
+    /** DialogOut */
+    DialogOut: {
+      peer: components["schemas"]["UserRef"];
+      /**
+       * Last Message
+       * @description Начало последнего сообщения в переписке
+       */
+      last_message: string;
+      /**
+       * Last At
+       * Format: date-time
+       */
+      last_at: string;
+      /**
+       * Unread
+       * @description Сколько его сообщений вы ещё не читали
+       */
+      unread: number;
+    };
+    /** DialogsOut */
+    DialogsOut: {
+      /** Unread Total */
+      unread_total: number;
+      /** Items */
+      items: components["schemas"]["DialogOut"][];
+    };
     /** DirectionRef */
     DirectionRef: {
       /**
@@ -2920,6 +3047,29 @@ export interface components {
        * @constant
        */
       storage: "ok";
+    };
+    /** HelpTopicOut */
+    HelpTopicOut: {
+      /** Slug */
+      slug: string;
+      /** Title */
+      title: string;
+      /** Summary */
+      summary: string;
+      /**
+       * Body
+       * @description Текст раздела в Markdown
+       */
+      body: string;
+    };
+    /** HelpTopicRef */
+    HelpTopicRef: {
+      /** Slug */
+      slug: string;
+      /** Title */
+      title: string;
+      /** Summary */
+      summary: string;
     };
     /** ImportBatchOut */
     ImportBatchOut: {
@@ -3255,6 +3405,55 @@ export interface components {
        * @enum {string}
        */
       scope: "own" | "team" | "all";
+    };
+    /** MessageCreate */
+    MessageCreate: {
+      /**
+       * Recipient Id
+       * Format: uuid
+       */
+      recipient_id: string;
+      /** Body */
+      body: string;
+      /**
+       * Interaction Id
+       * @description Запись, о которой сообщение
+       */
+      interaction_id?: string | null;
+    };
+    /**
+     * MessageInteractionRef
+     * @description Запись, о которой речь. Показывается только тому, кому она доступна.
+     */
+    MessageInteractionRef: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Label */
+      label: string;
+    };
+    /** MessageOut */
+    MessageOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      sender: components["schemas"]["UserRef"];
+      recipient: components["schemas"]["UserRef"];
+      /** Body */
+      body: string;
+      /** @description Запись, о которой сообщение, если она доступна читателю */
+      interaction?: components["schemas"]["MessageInteractionRef"] | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Read At */
+      read_at: string | null;
     };
     /** NormUpdate */
     NormUpdate: {
@@ -3709,6 +3908,11 @@ export interface components {
        * Updated
        * @description Сколько уведомлений отмечено прочитанными
        */
+      updated: number;
+    };
+    /** ReadOut */
+    ReadOut: {
+      /** Updated */
       updated: number;
     };
     /**
@@ -9678,6 +9882,265 @@ export interface operations {
       };
       /** @description AUTH_FORBIDDEN */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description VALIDATION_ERROR */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  read_topics_api_v1_help_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HelpTopicRef"][];
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  read_topic_api_v1_help__slug__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HelpTopicOut"];
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  read_dialogs_api_v1_messages_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DialogsOut"];
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  post_message_api_v1_messages_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["MessageCreate"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageOut"];
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description VALIDATION_ERROR */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  read_messages_api_v1_messages__peer_id__get: {
+    parameters: {
+      query?: {
+        /** @description Сколько последних сообщений */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        peer_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageOut"][];
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description VALIDATION_ERROR */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  post_read_api_v1_messages__peer_id__read_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        peer_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadOut"];
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
         headers: {
           [name: string]: unknown;
         };
