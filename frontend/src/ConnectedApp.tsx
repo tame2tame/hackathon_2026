@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Link,
   NavLink,
@@ -33,6 +33,12 @@ import {
   FileWarning,
   CirclePause,
   UserRound,
+  CheckCircle2,
+  SlidersHorizontal,
+  ChevronDown,
+  ArrowLeft,
+  FileText,
+  History,
 } from "lucide-react";
 import { navigation, planned, Heading, Planned, Empty } from "./App";
 import { Button } from "./components/ui/button";
@@ -47,6 +53,8 @@ import type {
   Interaction as Card,
   InteractionFilters,
 } from "./api/types";
+import { useListControls } from "./lib/use-list-controls";
+import { listReturnTo, pageRange, recordStatus } from "./lib/list-state";
 import { mode } from "./auth/config";
 import {
   currentDevUser,
@@ -77,6 +85,11 @@ export default function ConnectedApp() {
   const [changing, setChanging] = useState(false);
   const client = useQueryClient();
   const location = useLocation();
+  useEffect(() => {
+    const name =
+      navigation.find((n) => n.path === location.pathname)?.title || "Карточка";
+    document.title = `${name} · Радар вузов`;
+  }, [location.pathname]);
   useEffect(() => {
     let active = true;
     initializeSession()
@@ -170,28 +183,53 @@ export default function ConnectedApp() {
             <small>{profile.team?.name || "Все команды"}</small>
           </div>
         </div>
-        <nav>
-          {allowed.map((n) => (
-            <div key={n.path}>
-              {n.section && <div className="nav-label">{n.section}</div>}
+        <nav aria-label="Главная навигация">
+          <div className="nav-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+          {allowed
+            .filter((n) => !planned[n.path])
+            .map((n) => (
               <NavLink
+                key={n.path}
                 to={n.path}
                 className={({ isActive }) =>
                   isActive ? "nav-link active" : "nav-link"
                 }
               >
                 <n.icon size={18} />
-                {n.title}
+                <span>{n.title}</span>
               </NavLink>
-            </div>
-          ))}
+            ))}
+          <details
+            className="planned-nav"
+            open={Object.keys(planned).includes(location.pathname) || undefined}
+          >
+            <summary>
+              Будущие разделы <ChevronDown size={15} />
+            </summary>
+            <p>В разработке</p>
+            {allowed
+              .filter((n) => planned[n.path])
+              .map((n) => (
+                <NavLink
+                  key={n.path}
+                  to={n.path}
+                  className={({ isActive }) =>
+                    isActive ? "nav-link active" : "nav-link"
+                  }
+                >
+                  <n.icon size={17} />
+                  <span>{n.title}</span>
+                  <small>Скоро</small>
+                </NavLink>
+              ))}
+          </details>
         </nav>
         <div className="sidebar-bottom">
           <ShieldCheck size={15} />{" "}
-          {mode === "mock"
-            ? "Демо по контракту API"
-            : "Область данных от сервера"}
-          <small>Версия API 0.1.0</small>
+          {mode === "mock" ? "Демонстрационный режим" : "Доступ по вашей роли"}
+          <small>
+            {profile.full_name} · {roleNames[profile.role]}
+          </small>
         </div>
       </aside>
       <div className="app-body">
@@ -206,10 +244,10 @@ export default function ConnectedApp() {
           <div className="top-actions">
             <span className="demo-badge">
               {mode === "mock"
-                ? "MSW · демо"
+                ? "Демо"
                 : mode === "dev"
-                  ? "API · локальный доступ"
-                  : "Keycloak"}
+                  ? "Локальный режим"
+                  : "Рабочий режим"}
             </span>
             {mode !== "keycloak" ? (
               <label>
@@ -240,10 +278,17 @@ export default function ConnectedApp() {
                 Выйти
               </Button>
             )}
+            <span className="profile-avatar" aria-hidden="true">
+              {profile.full_name
+                .split(" ")
+                .slice(0, 2)
+                .map((part) => part[0])
+                .join("")}
+            </span>
             <span className="profile-role">{roleNames[profile.role]}</span>
           </div>
         </header>
-        <main id="main">
+        <main id="main" tabIndex={-1}>
           <Routes>
             <Route path="/" element={<Navigate to="/radar" replace />} />
             <Route
@@ -371,28 +416,108 @@ function SearchField({
   onChange: (v: string) => void;
   placeholder?: string;
 }) {
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "k" &&
+        !document.querySelector('[role="dialog"]')
+      ) {
+        event.preventDefault();
+        input.current?.focus();
+        input.current?.select();
+      }
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  }, []);
   return (
-    <label className="search">
-      <Search size={16} />
+    <div className="search">
+      <Search size={18} aria-hidden="true" />
       <input
+        ref={input}
         type="search"
         aria-label="Поиск"
+        aria-keyshortcuts="Control+k Meta+k"
         maxLength={100}
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onChange("");
+        }}
       />
-    </label>
+      {value ? (
+        <button
+          className="search-clear"
+          aria-label="Очистить поиск"
+          onClick={() => {
+            onChange("");
+            input.current?.focus();
+          }}
+        >
+          <X size={16} />
+        </button>
+      ) : (
+        <kbd aria-hidden="true">⌘ / Ctrl K</kbd>
+      )}
+    </div>
   );
 }
-function useSearch() {
-  const [search, setSearch] = useState("");
-  const [value, setValue] = useState("");
-  useEffect(() => {
-    const timer = setTimeout(() => setValue(search.trim()), 250);
-    return () => clearTimeout(timer);
-  }, [search]);
-  return { search, setSearch, value };
+function FilterSummary({
+  filtered,
+  reset,
+  total,
+  fetching,
+}: {
+  filtered: boolean;
+  reset: () => void;
+  total?: number;
+  fetching: boolean;
+}) {
+  return (
+    <div className="filter-summary">
+      <span role="status" aria-live="polite">
+        {fetching
+          ? "Обновляем список…"
+          : total === undefined
+            ? ""
+            : `Найдено: ${total}`}
+      </span>
+      {filtered && (
+        <button onClick={reset}>
+          <X size={14} /> Сбросить фильтры
+        </button>
+      )}
+    </div>
+  );
+}
+function ListEmpty({
+  filtered,
+  reset,
+  title = "Пока ничего нет",
+}: {
+  filtered: boolean;
+  reset: () => void;
+  title?: string;
+}) {
+  return (
+    <div className="list-empty">
+      {filtered ? <Search size={28} /> : <CheckCircle2 size={28} />}
+      <h3>{filtered ? "Нет совпадений" : title}</h3>
+      <p>
+        {filtered
+          ? "Попробуйте другой запрос или уберите часть фильтров."
+          : "Здесь появятся записи, когда они будут доступны."}
+      </p>
+      {filtered && (
+        <Button variant="outline" onClick={reset}>
+          Сбросить фильтры
+        </Button>
+      )}
+    </div>
+  );
 }
 function Pagination({
   page,
@@ -407,7 +532,7 @@ function Pagination({
   return (
     <div className="pagination">
       <span>
-        Всего: {total} · Страница {page} из {pages}
+        {pageRange(page, total)} · Страница {page} из {pages}
       </span>
       <Button
         variant="outline"
@@ -428,8 +553,14 @@ function Pagination({
 }
 export function SignalRow({ signal: s }: { signal: Signal }) {
   const Icon = icons[s.kind];
+  const location = useLocation();
   return (
-    <Link className="signal" to={`/interactions/${s.interaction.id}`}>
+    <Link
+      className="signal"
+      data-severity={s.severity}
+      state={{ returnTo: location.pathname + location.search }}
+      to={`/interactions/${s.interaction.id}`}
+    >
       <span className={`signal-icon ${s.kind}`}>
         <Icon size={19} />
       </span>
@@ -493,14 +624,22 @@ function useGroups() {
   });
 }
 function RadarPage({ me }: { me: Me }) {
-  const [group, setGroup] = useState("");
+  const controls = useListControls();
+  const {
+    group,
+    setGroup,
+    search,
+    setSearch,
+    value,
+    kind,
+    setKind,
+    severity,
+    setSeverity,
+    page,
+    setPage,
+  } = controls;
   const groups = useGroups();
   const groupFilter = group ? [group] : undefined;
-  const { search, setSearch, value } = useSearch();
-  const [kind, setKind] = useState<Schema["SignalKind"] | "">("");
-  const [severity, setSeverity] = useState<Schema["Severity"] | "">("");
-  const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [value, kind, severity, group]);
   const results = useQuery({
     queryKey: ["signals", value, kind, severity, group, page],
     queryFn: ({ signal }) =>
@@ -541,13 +680,9 @@ function RadarPage({ me }: { me: Me }) {
   return (
     <>
       <Heading
-        eyebrow={
-          mode === "mock"
-            ? "ДЕМОНСТРАЦИЯ ПО КОНТРАКТУ API"
-            : "РАБОЧЕЕ ПРОСТРАНСТВО"
-        }
-        title={me.role === "kam" ? "Всё важное на радаре" : "Радар команды"}
-        text={`${me.full_name}, здесь собраны сигналы в вашей области доступа.`}
+        eyebrow="ОБЗОР РАБОТЫ"
+        title={me.role === "kam" ? "Ваш радар" : "Радар команды"}
+        text="Замечайте важное вовремя. Выберите сигнал и продолжите работу с записью."
       >
         <Button asChild variant="outline">
           <Link to="/interactions">
@@ -555,31 +690,33 @@ function RadarPage({ me }: { me: Me }) {
           </Link>
         </Button>
       </Heading>
-      <GroupSelect value={group} onChange={setGroup} groups={groups} />
-      <div className="crm-intro">
-        <div>
-          <span className="eyebrow">В ФОКУСЕ</span>
-          <h2>От контакта к результату</h2>
-          <p>
-            Контролируйте этапы, сроки лицензий и документы в одном
-            пространстве.
-          </p>
-        </div>
-        <div className="intro-total">
-          <strong>{overview.data?.total ?? "…"}</strong>
-          <span>взаимодействий</span>
+      <div className="radar-toolbar">
+        <GroupSelect value={group} onChange={setGroup} groups={groups} />
+        <div className="overview-inline">
+          <Layers3 size={16} />
+          {overview.isError ? (
+            <button onClick={() => void overview.refetch()}>
+              Повторить загрузку счётчика
+            </button>
+          ) : (
+            <span>
+              <strong>{overview.data?.total ?? "…"}</strong> взаимодействий в
+              выбранных группах
+            </span>
+          )}
         </div>
       </div>
       {counts.isError ? (
         <ErrorState error={counts.error} retry={() => void counts.refetch()} />
       ) : (
         <section className="metric-grid">
-          {(Object.keys(kinds) as Schema["SignalKind"][]).map((k, n) => {
+          {(Object.keys(kinds) as Schema["SignalKind"][]).map((k) => {
             const Icon = icons[k];
             return (
               <button
                 key={k}
-                className={`metric-card metric-${n} ${kind === k ? "selected" : ""}`}
+                className={`metric-card ${kind === k ? "selected" : ""}`}
+                data-kind={k}
                 aria-pressed={kind === k}
                 onClick={() => setKind(kind === k ? "" : k)}
               >
@@ -599,19 +736,24 @@ function RadarPage({ me }: { me: Me }) {
       <section className="panel">
         <div className="section-heading">
           <div>
-            <h2>Требуют внимания</h2>
+            <h2>
+              Требуют внимания{" "}
+              <span className="count-pill">{results.data?.total ?? "…"}</span>
+            </h2>
             <p>Причина, срок и ответственный по каждому сигналу</p>
           </div>
           <Button
             variant="ghost"
             aria-label="Обновить радар"
+            disabled={results.isFetching || counts.isFetching}
+            className={results.isFetching ? "refreshing" : ""}
             onClick={() => {
               void results.refetch();
               void counts.refetch();
               void overview.refetch();
             }}
           >
-            <RefreshCw size={17} />
+            <RefreshCw size={17} /> Обновить
           </Button>
         </div>
         <div className="filters">
@@ -629,11 +771,17 @@ function RadarPage({ me }: { me: Me }) {
             ))}
           </select>
           {kind && (
-            <Button variant="ghost" onClick={() => setKind("")}>
-              Все сигналы <X size={14} />
-            </Button>
+            <button className="filter-chip" onClick={() => setKind("")}>
+              {kinds[kind]} <X size={14} />
+            </button>
           )}
         </div>
+        <FilterSummary
+          filtered={controls.filtered}
+          reset={controls.reset}
+          total={results.data?.total}
+          fetching={results.isFetching}
+        />
         {!results.data ? (
           <QueryState query={results} />
         ) : results.isError ? (
@@ -647,9 +795,10 @@ function RadarPage({ me }: { me: Me }) {
               <SignalRow key={s.id} signal={s} />
             ))}
             {!results.data.items.length && (
-              <Empty
-                title="Сигналов нет"
-                text="Измените фильтры или продолжайте работу с взаимодействиями."
+              <ListEmpty
+                filtered={controls.filtered}
+                reset={controls.reset}
+                title="Всё под контролем: открытых сигналов нет"
               />
             )}
             <Pagination
@@ -668,11 +817,13 @@ export function InteractionRows({
 }: {
   items: Schema["InteractionListItem"][];
 }) {
+  const location = useLocation();
   return (
     <>
       {items.map((i) => (
         <Link
           className="interaction-card"
+          state={{ returnTo: location.pathname + location.search }}
           to={`/interactions/${i.id}`}
           key={i.id}
         >
@@ -689,7 +840,15 @@ export function InteractionRows({
               {i.program.name} · {i.product?.name || "Без продукта"}
             </p>
             <small>
-              {i.owner.full_name} · Сигналов: {i.open_signals.length}
+              {i.owner.full_name}{" "}
+              <span className={`record-status status-${i.status}`}>
+                {recordStatus[i.status] || "Состояние не указано"}
+              </span>
+              {i.open_signals.length > 0 && (
+                <span className="record-signal-count">
+                  {i.open_signals.length} сигналов
+                </span>
+              )}
             </small>
           </div>
           <div className="stage-tag">
@@ -703,15 +862,24 @@ export function InteractionRows({
   );
 }
 function InteractionsPage({ universityId }: { universityId?: string }) {
-  const [group, setGroup] = useState("");
+  const controls = useListControls();
+  const {
+    group,
+    setGroup,
+    search,
+    setSearch,
+    value,
+    stage,
+    setStage,
+    owner,
+    setOwner,
+    page,
+    setPage,
+  } = controls;
   const groups = useGroups();
   const templateId = groups.data?.find(
     (g) => g.id === group,
   )?.workflow_template_id;
-  const { search, setSearch, value } = useSearch();
-  const [stage, setStage] = useState("");
-  const [owner, setOwner] = useState("");
-  const [page, setPage] = useState(1);
   const workflow = useQuery({
     queryKey: ["workflow", universityId ? "default" : templateId],
     queryFn: ({ signal }) =>
@@ -724,7 +892,6 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
     queryKey: ["users"],
     queryFn: ({ signal }) => api.users(signal),
   });
-  useEffect(() => setPage(1), [value, stage, owner, universityId, group]);
   const filters: InteractionFilters = {
     group_id: group ? [group] : undefined,
     search: value || undefined,
@@ -748,17 +915,16 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
         />
       )}
       {!universityId && (
-        <GroupSelect
-          value={group}
-          onChange={(value) => {
-            setGroup(value);
-            setStage("");
-            setPage(1);
-          }}
-          groups={groups}
-        />
+        <GroupSelect value={group} onChange={setGroup} groups={groups} />
       )}
       <section className="panel">
+        <div className="section-heading">
+          <div>
+            <h2>Все взаимодействия</h2>
+            <p>Контрагенты, ответственные и текущие этапы</p>
+          </div>
+          <SlidersHorizontal size={20} aria-hidden="true" />
+        </div>
         <div className="filters">
           <SearchField value={search} onChange={setSearch} />
           <select
@@ -790,6 +956,12 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
             ))}
           </select>
         </div>
+        <FilterSummary
+          filtered={controls.filtered}
+          reset={controls.reset}
+          total={results.data?.total}
+          fetching={results.isFetching}
+        />
         {workflow.isError && (
           <ErrorState
             error={workflow.error}
@@ -810,9 +982,10 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
           <>
             <InteractionRows items={results.data.items} />
             {!results.data.items.length && (
-              <Empty
-                title="Ничего не найдено"
-                text="Измените запрос или фильтры."
+              <ListEmpty
+                filtered={controls.filtered}
+                reset={controls.reset}
+                title="Взаимодействий пока нет"
               />
             )}
             <Pagination
@@ -837,6 +1010,8 @@ function DetailPage() {
   return <Detail key={id} card={result.data} />;
 }
 function Detail({ card }: { card: Card }) {
+  const location = useLocation();
+  const returnTo = listReturnTo(location.state?.returnTo);
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
   const [comment, setComment] = useState("");
@@ -875,11 +1050,14 @@ function Detail({ card }: { card: Card }) {
     mutation.error instanceof ApiError && mutation.error.status === 409;
   return (
     <>
-      <Link to="/interactions" className="back-link">
-        ← Все взаимодействия
+      <Link to={returnTo} className="back-link">
+        <ArrowLeft size={16} />{" "}
+        {returnTo.startsWith("/radar")
+          ? "К сигналам радара"
+          : "К списку взаимодействий"}
       </Link>
       <Heading
-        eyebrow={`ВЕРСИЯ ЗАПИСИ ${card.version}`}
+        eyebrow={card.group.name}
         title={card.counterparty.name}
         text={`${card.program.name} · ${card.product?.name || "Без продукта"}`}
       >
@@ -888,7 +1066,7 @@ function Detail({ card }: { card: Card }) {
             !card.allowed_transitions.length || card.status !== "active"
           }
           onClick={() => {
-            setTargetId(card.allowed_transitions[0]?.to_stage.id || "");
+            setTargetId("");
             mutation.reset();
             setOpen(true);
           }}
@@ -896,14 +1074,51 @@ function Detail({ card }: { card: Card }) {
           Изменить этап <ArrowRight size={16} />
         </Button>
       </Heading>
+      {success && (
+        <div className="save-notice" role="status">
+          <CheckCircle2 size={20} />
+          <span>{success}</span>
+          <button
+            aria-label="Скрыть уведомление"
+            onClick={() => setSuccess("")}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      <div className="record-context">
+        <span className={`record-status status-${card.status}`}>
+          {recordStatus[card.status] || "Состояние не указано"}
+        </span>
+        <span>Последнее действие: {date(card.last_activity_at)}</span>
+      </div>
+      {card.status !== "active" && (
+        <p className="form-note">
+          Смена этапа доступна только у записей в работе.
+        </p>
+      )}
       <div className="detail-grid">
         <section className="panel detail-summary">
           <span className="eyebrow">ТЕКУЩИЙ ЭТАП</span>
           <h2>{card.stage.name}</h2>
-          <p>
-            {card.days_on_stage} дн. на этапе
-            {card.norm_days !== null ? ` · Норма ${card.norm_days} дн.` : ""}
-          </p>
+          <div className="stage-timing">
+            <div>
+              <strong>
+                {card.days_on_stage}
+                <span> дн.</span>
+              </strong>
+              <small>На текущем этапе</small>
+            </div>
+            <div>
+              <strong>
+                {card.norm_days ?? "—"}
+                <span>{card.norm_days !== null ? " дн." : ""}</span>
+              </strong>
+              <small>
+                {card.norm_days !== null ? "Норма этапа" : "Норма не задана"}
+              </small>
+            </div>
+          </div>
           <div className="detail-fields">
             <div>
               <small>Ответственный</small>
@@ -923,20 +1138,75 @@ function Detail({ card }: { card: Card }) {
             </div>
           </div>
         </section>
-        <section className="tip">
-          <h3>Сигналы: {card.signals.length}</h3>
+        <section className="panel detail-alerts">
+          <h3>
+            {card.signals.length
+              ? `Требуют внимания · ${card.signals.length}`
+              : "Всё под контролем"}
+          </h3>
           {card.signals.length ? (
-            card.signals.map((s) => <p key={s.id}>{cleanCopy(s.message)}</p>)
+            card.signals.map((s) => {
+              const Icon = icons[s.kind];
+              return (
+                <div
+                  className="detail-alert"
+                  data-severity={s.severity}
+                  key={s.id}
+                >
+                  <span className={`signal-icon ${s.kind}`}>
+                    <Icon size={18} />
+                  </span>
+                  <div>
+                    <strong>{kinds[s.kind]}</strong>
+                    <span className={`badge ${s.severity}`}>
+                      {labels[s.severity]}
+                    </span>
+                    <p>{cleanCopy(s.message)}</p>
+                  </div>
+                </div>
+              );
+            })
           ) : (
-            <p>Открытых сигналов нет.</p>
+            <p>
+              <CheckCircle2 size={20} /> Открытых сигналов нет. Продолжайте
+              работу по плану.
+            </p>
           )}
         </section>
       </div>
       <section className="panel">
-        <div className="tabs detail-tabs">
+        <div
+          className="tabs detail-tabs"
+          role="tablist"
+          aria-label="Разделы карточки"
+        >
           {["История", "Договор", "Документы"].map((t) => (
             <button
               key={t}
+              role="tab"
+              id={`detail-tab-${t}`}
+              aria-selected={tab === t}
+              aria-controls="detail-tab-panel"
+              tabIndex={tab === t ? 0 : -1}
+              onKeyDown={(e) => {
+                const names = ["История", "Договор", "Документы"];
+                const index = names.indexOf(t);
+                const next =
+                  e.key === "ArrowRight"
+                    ? (index + 1) % 3
+                    : e.key === "ArrowLeft"
+                      ? (index + 2) % 3
+                      : e.key === "Home"
+                        ? 0
+                        : e.key === "End"
+                          ? 2
+                          : -1;
+                if (next >= 0) {
+                  e.preventDefault();
+                  setTab(names[next]);
+                  document.getElementById(`detail-tab-${names[next]}`)?.focus();
+                }
+              }}
               className={tab === t ? "tab active" : "tab"}
               onClick={() => setTab(t)}
             >
@@ -944,7 +1214,13 @@ function Detail({ card }: { card: Card }) {
             </button>
           ))}
         </div>
-        <div className="detail-content">
+        <div
+          className="detail-content"
+          id="detail-tab-panel"
+          role="tabpanel"
+          aria-labelledby={`detail-tab-${tab}`}
+          tabIndex={0}
+        >
           {tab === "История" ? (
             <>
               <h3>История переходов</h3>
@@ -984,18 +1260,14 @@ function Detail({ card }: { card: Card }) {
             <>
               <h3>Документы</h3>
               <p>
-                Загрузка документов пока не подключена к интерфейсу. Для
-                переходов, требующих вложения, сначала нужно добавить документ.
+                Загрузка документов ещё в разработке. Переходы, требующие файл,
+                пока недоступны.
               </p>
             </>
           )}
         </div>
       </section>
-      {success && (
-        <p role="status" className="success-message">
-          {success}
-        </p>
-      )}
+
       <Dialog.Root
         open={open}
         onOpenChange={(value) => {
@@ -1016,12 +1288,16 @@ function Detail({ card }: { card: Card }) {
                 if (
                   target &&
                   !target.requires_attachment &&
+                  (!target.requires_comment || !!comment.trim()) &&
                   !conflict &&
                   !mutation.isPending
                 )
                   mutation.mutate();
               }}
             >
+              <p>
+                Сейчас: <strong>{card.stage.name}</strong>
+              </p>
               <label className="form-label" htmlFor="target">
                 Новый этап
               </label>
@@ -1126,9 +1402,9 @@ function Detail({ card }: { card: Card }) {
   );
 }
 function UniversitiesPage() {
-  const { search, setSearch, value } = useSearch();
-  const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [value]);
+  const controls = useListControls();
+  const { search, setSearch, value, page, setPage } = controls;
+  const location = useLocation();
   const result = useQuery({
     queryKey: ["universities", value, page],
     queryFn: ({ signal }) =>
@@ -1159,6 +1435,7 @@ function UniversitiesPage() {
             {result.data.items.map((u) => (
               <Link
                 to={`/universities/${u.id}`}
+                state={{ returnTo: location.pathname + location.search }}
                 key={u.id}
                 className="panel university-card"
               >
@@ -1176,7 +1453,11 @@ function UniversitiesPage() {
             ))}
           </div>
           {!result.data.items.length && (
-            <Empty title="Вузы не найдены" text="Измените поисковый запрос." />
+            <ListEmpty
+              filtered={controls.filtered}
+              reset={controls.reset}
+              title="Вузов пока нет"
+            />
           )}
           <Pagination page={page} total={result.data.total} onPage={setPage} />
         </>
@@ -1185,6 +1466,7 @@ function UniversitiesPage() {
   );
 }
 function UniversityPage() {
+  const location = useLocation();
   const { id = "" } = useParams();
   const result = useQuery({
     queryKey: ["university", id],
@@ -1197,7 +1479,10 @@ function UniversityPage() {
     );
   return (
     <>
-      <Link className="back-link" to="/universities">
+      <Link
+        className="back-link"
+        to={listReturnTo(location.state?.returnTo, "/universities")}
+      >
         ← Все вузы
       </Link>
       <Heading
@@ -1213,35 +1498,93 @@ function Help() {
   return (
     <>
       <Heading
-        eyebrow="СПРАВКА"
-        title="Работа с API v0"
-        text="Фронтенд и сервер используют общий контракт."
+        eyebrow="ПОМОЩЬ В РАБОТЕ"
+        title="Начните с самого важного"
+        text="Короткий маршрут от сигнала до следующего шага."
       />
+      <div className="help-cards">
+        {[
+          {
+            icon: Radar,
+            title: "1. Проверьте радар",
+            text: "Красная метка указывает на высокий приоритет. Цвет иконки помогает отличить тип проблемы.",
+            to: "/radar",
+            action: "Открыть радар",
+          },
+          {
+            icon: Search,
+            title: "2. Найдите запись",
+            text: "Ищите по контрагенту, программе или продукту. Фильтры сохраняются при возврате из карточки.",
+            to: "/interactions",
+            action: "К взаимодействиям",
+          },
+          {
+            icon: History,
+            title: "3. Продолжите работу",
+            text: "Откройте карточку, изучите историю и выберите доступный этап. Объясните изменение в комментарии.",
+            to: "/interactions",
+            action: "Выбрать запись",
+          },
+        ].map(({ icon: Icon, ...item }) => (
+          <section className="panel help-card" key={item.title}>
+            <span className="help-card-icon">
+              <Icon size={24} />
+            </span>
+            <h2>{item.title}</h2>
+            <p>{item.text}</p>
+            <Link to={item.to}>
+              {item.action}
+              <ArrowRight size={16} />
+            </Link>
+          </section>
+        ))}
+      </div>
       <section className="panel help-section">
-        <h2>Как проверить взаимодействие</h2>
-        <ol>
-          <li>Откройте сигнал радара.</li>
-          <li>Изучите историю и договор.</li>
-          <li>Выберите один из разрешённых переходов.</li>
-          <li>Добавьте комментарий и сохраните.</li>
-        </ol>
-        <p>
-          При конфликте версий обновите карточку. Комментарий останется в форме.
-          Повторный переход требует вашего подтверждения.
-        </p>
-        <h3>Текущий режим: {mode}</h3>
-        <p>
-          {mode === "mock"
-            ? "MSW возвращает синтетические ответы по контракту. Изменения хранятся в памяти вкладки и сбрасываются при перезагрузке. Это не живой бэкенд."
-            : mode === "dev"
-              ? "Запросы уходят в настоящий API с X-Dev-User. Режим разрешён только для локальной разработки."
-              : "Вход через Keycloak. API проверяет роль и область данных. Токены хранятся только в памяти."}
-        </p>
-        <p>
-          Загрузка документов, импорт, отчёты, рейтинг и SSE ожидают следующие
-          версии API.
-        </p>
+        <h2>Полезно знать</h2>
+        <details open>
+          <summary>Быстрый поиск и клавиатура</summary>
+          <p>
+            ⌘K на Mac или Ctrl+K на Windows переводит фокус в поиск. Escape
+            очищает запрос. Tab перемещает по элементам, стрелки переключают
+            вкладки карточки.
+          </p>
+        </details>
+        <details>
+          <summary>Запись уже изменил коллега</summary>
+          <p>
+            Обновите карточку в диалоге перехода, проверьте актуальный этап и
+            подтвердите действие снова. Введённый комментарий сохранится,
+            повторная отправка не происходит автоматически.
+          </p>
+        </details>
+        <details>
+          <summary>Почему переход недоступен?</summary>
+          <p>
+            Запись должна быть в работе, а переход — разрешён процессом. Для
+            части переходов обязателен документ; загрузка файлов пока не
+            подключена. Отсутствие доступа к чужой записи также может выглядеть
+            как «Запись не найдена».
+          </p>
+        </details>
+        <details>
+          <summary>Какие разделы уже работают?</summary>
+          <p>
+            Доступны радар, поиск и фильтрация взаимодействий, карточки,
+            переходы и каталог вузов. Разделы с отметкой «Скоро» ещё в
+            разработке.
+          </p>
+        </details>
       </section>
+      {mode === "mock" && (
+        <div className="demo-explanation">
+          <FileText size={20} />
+          <p>
+            <strong>Вы в демо.</strong> Данные синтетические, изменения
+            сбрасываются после перезагрузки. Переключатель пользователя помогает
+            посмотреть разные области доступа.
+          </p>
+        </div>
+      )}
     </>
   );
 }
