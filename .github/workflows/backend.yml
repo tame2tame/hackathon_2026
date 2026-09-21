@@ -43,11 +43,13 @@ jobs:
         run: test "$(alembic heads | wc -l)" -eq 1
       - name: Контракт совпадает со схемой приложения
         run: python -m scripts.export_openapi --check
+      - name: Руководство совпадает со встроенной справкой
+        run: python -m scripts.export_help --check
       - name: Тесты — миграции вниз и вверх, API, правила радара
         run: pytest
       - name: Перечень библиотек
         run: |
-          pip freeze > ../docs/dependencies.txt
+          pip freeze --exclude-editable > ../docs/dependencies.txt
           echo "Библиотек: $(wc -l < ../docs/dependencies.txt)"
       - uses: actions/upload-artifact@v4
         with:

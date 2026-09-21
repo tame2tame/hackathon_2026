@@ -214,19 +214,30 @@ async def notify(
     return [notification_id for notification_id, _ in created]
 
 
-async def interaction_label(session: AsyncSession, interaction_id: uuid.UUID) -> str:
-    """«Контрагент — программа» одной строкой для текста уведомления."""
-    row = (
+async def interaction_labels(
+    session: AsyncSession, interaction_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """«Контрагент — программа» для каждой записи одним запросом."""
+    ids = list(dict.fromkeys(interaction_ids))
+    if not ids:
+        return {}
+    rows = (
         await session.execute(
-            select(func.coalesce(University.short_name, Client.name), Program.name)
+            select(Interaction.id, func.coalesce(University.short_name, Client.name), Program.name)
             .select_from(Interaction)
             .outerjoin(University, University.id == Interaction.university_id)
             .outerjoin(Client, Client.id == Interaction.client_id)
             .join(Program, Program.id == Interaction.program_id)
-            .where(Interaction.id == interaction_id)
+            .where(Interaction.id.in_(ids))
         )
-    ).first()
-    return f"{row[0]} — {row[1]}" if row else "Взаимодействие"
+    ).all()
+    return {row[0]: f"{row[1]} — {row[2]}" for row in rows}
+
+
+async def interaction_label(session: AsyncSession, interaction_id: uuid.UUID) -> str:
+    """«Контрагент — программа» одной строкой для текста уведомления."""
+    labels = await interaction_labels(session, [interaction_id])
+    return labels.get(interaction_id, "Взаимодействие")
 
 
 async def list_notifications(

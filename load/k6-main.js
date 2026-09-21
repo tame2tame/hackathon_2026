@@ -1,11 +1,14 @@
 // Нагрузка на рабочий день КАМа и руководителя: радар, списки, карточка, заметка.
 // Запуск: k6 run -e BASE_URL=http://127.0.0.1:8000 load/k6-main.js
+// Число пользователей задаётся переменной VUS: `-e VUS=300` — проверка запаса по НФТ.
 // Стенд поднимается с AUTH_MODE=dev, поэтому пользователь передаётся заголовком X-Dev-User.
 
 import http from 'k6/http';
 import { check, group, sleep } from 'k6';
 
 const BASE_URL = __ENV.BASE_URL || 'http://127.0.0.1:8000';
+// Полка нагрузки: по умолчанию полсотни пользователей из НФТ.
+const VUS = Number(__ENV.VUS || 50);
 const USERS = [
   'anna.smirnova@example.com',
   'mikhail.volkov@example.com',
@@ -15,8 +18,8 @@ const USERS = [
 
 export const options = {
   stages: [
-    { duration: '30s', target: 50 },
-    { duration: '2m', target: 50 },
+    { duration: '30s', target: VUS },
+    { duration: '2m', target: VUS },
     { duration: '30s', target: 0 },
   ],
   thresholds: {

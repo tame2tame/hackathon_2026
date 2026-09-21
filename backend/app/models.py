@@ -34,6 +34,7 @@ from app.modules.interactions.models import (
     InteractionNote,
     Transition,
 )
+from app.modules.messages.models import Message
 from app.modules.metrics.models import ProgramMetric
 from app.modules.notifications.models import (
     Notification,
@@ -74,6 +75,7 @@ __all__ = [
     "Interaction",
     "InteractionContact",
     "InteractionNote",
+    "Message",
     "Notification",
     "NotificationAddress",
     "NotificationChannel",

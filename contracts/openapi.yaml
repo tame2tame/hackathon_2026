@@ -4903,6 +4903,233 @@ paths:
                 $ref: '#/components/schemas/Problem'
       security:
       - HTTPBearer: []
+  /api/v1/help:
+    get:
+      tags:
+      - help
+      summary: Разделы встроенной справки
+      description: 'Руководство пользователя внутри продукта. Разделы отдаются по роли: то, что настраивает
+        администратор, КАМу не показывается.'
+      operationId: read_topics_api_v1_help_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/HelpTopicRef'
+                type: array
+                title: Response Read Topics Api V1 Help Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/help/{slug}:
+    get:
+      tags:
+      - help
+      summary: Раздел справки
+      description: 'Текст в Markdown: заголовки, списки и таблицы.'
+      operationId: read_topic_api_v1_help__slug__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Slug
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelpTopicOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/messages:
+    get:
+      tags:
+      - messages
+      summary: Мои переписки
+      description: С кем шла переписка, последнее сообщение и сколько сообщений не прочитано. Общее число
+        непрочитанных — `unread_total`, для значка в шапке.
+      operationId: read_dialogs_api_v1_messages_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DialogsOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - messages
+      summary: Написать сотруднику
+      description: 'Сообщение видят только двое. Можно сослаться на свою запись: собеседник увидит ссылку,
+        если запись доступна и ему.'
+      operationId: post_message_api_v1_messages_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      security:
+      - HTTPBearer: []
+  /api/v1/messages/{peer_id}:
+    get:
+      tags:
+      - messages
+      summary: Переписка с сотрудником
+      description: 'Сначала старые сообщения. Чужую переписку не покажет: видно только свою.'
+      operationId: read_messages_api_v1_messages__peer_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: peer_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Peer Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          description: Сколько последних сообщений
+          default: 50
+          title: Limit
+        description: Сколько последних сообщений
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MessageOut'
+                title: Response Read Messages Api V1 Messages  Peer Id  Get
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/messages/{peer_id}/read:
+    post:
+      tags:
+      - messages
+      summary: Отметить переписку прочитанной
+      operationId: post_read_api_v1_messages__peer_id__read_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: peer_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Peer Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadOut'
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: VALIDATION_ERROR
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/interactions/{interaction_id}/participants:
     get:
       tags:
@@ -6720,6 +6947,44 @@ components:
       - sent_at
       - created_at
       title: DeliveryOut
+    DialogOut:
+      properties:
+        peer:
+          $ref: '#/components/schemas/UserRef'
+        last_message:
+          type: string
+          title: Last Message
+          description: Начало последнего сообщения в переписке
+        last_at:
+          type: string
+          format: date-time
+          title: Last At
+        unread:
+          type: integer
+          title: Unread
+          description: Сколько его сообщений вы ещё не читали
+      type: object
+      required:
+      - peer
+      - last_message
+      - last_at
+      - unread
+      title: DialogOut
+    DialogsOut:
+      properties:
+        unread_total:
+          type: integer
+          title: Unread Total
+        items:
+          items:
+            $ref: '#/components/schemas/DialogOut'
+          type: array
+          title: Items
+      type: object
+      required:
+      - unread_total
+      - items
+      title: DialogsOut
     DirectionRef:
       properties:
         id:
@@ -7121,6 +7386,45 @@ components:
       - database
       - storage
       title: HealthOut
+    HelpTopicOut:
+      properties:
+        slug:
+          type: string
+          title: Slug
+        title:
+          type: string
+          title: Title
+        summary:
+          type: string
+          title: Summary
+        body:
+          type: string
+          title: Body
+          description: Текст раздела в Markdown
+      type: object
+      required:
+      - slug
+      - title
+      - summary
+      - body
+      title: HelpTopicOut
+    HelpTopicRef:
+      properties:
+        slug:
+          type: string
+          title: Slug
+        title:
+          type: string
+          title: Title
+        summary:
+          type: string
+          title: Summary
+      type: object
+      required:
+      - slug
+      - title
+      - summary
+      title: HelpTopicRef
     ImportBatchOut:
       properties:
         id:
@@ -7678,6 +7982,81 @@ components:
       - team
       - scope
       title: MeOut
+    MessageCreate:
+      properties:
+        recipient_id:
+          type: string
+          format: uuid
+          title: Recipient Id
+        body:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Body
+        interaction_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Interaction Id
+          description: Запись, о которой сообщение
+      type: object
+      required:
+      - recipient_id
+      - body
+      title: MessageCreate
+    MessageInteractionRef:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        label:
+          type: string
+          title: Label
+      type: object
+      required:
+      - id
+      - label
+      title: MessageInteractionRef
+      description: Запись, о которой речь. Показывается только тому, кому она доступна.
+    MessageOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        sender:
+          $ref: '#/components/schemas/UserRef'
+        recipient:
+          $ref: '#/components/schemas/UserRef'
+        body:
+          type: string
+          title: Body
+        interaction:
+          anyOf:
+          - $ref: '#/components/schemas/MessageInteractionRef'
+          - type: 'null'
+          description: Запись, о которой сообщение, если она доступна читателю
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        read_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Read At
+      type: object
+      required:
+      - id
+      - sender
+      - recipient
+      - body
+      - created_at
+      - read_at
+      title: MessageOut
     NormUpdate:
       properties:
         norm_days:
@@ -8397,6 +8776,15 @@ components:
       required:
       - updated
       title: ReadAllOut
+    ReadOut:
+      properties:
+        updated:
+          type: integer
+          title: Updated
+      type: object
+      required:
+      - updated
+      title: ReadOut
     ReportCreate:
       properties:
         format:
@@ -8611,6 +8999,8 @@ components:
         columns:
           items:
             type: string
+            maxLength: 60
+            minLength: 1
           type: array
           maxItems: 40
           title: Columns
@@ -8679,6 +9069,8 @@ components:
           anyOf:
           - items:
               type: string
+              maxLength: 60
+              minLength: 1
             type: array
             maxItems: 40
           - type: 'null'

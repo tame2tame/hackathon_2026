@@ -229,3 +229,85 @@ async def test_export_loads_back_unchanged_and_is_audited(
         await session.scalars(select(AuditLog).where(AuditLog.action == "participant.exported"))
     )
     assert [entry.after["format"] for entry in entries] == ["csv", "json"]
+
+
+async def test_broken_address_does_not_break_the_list(client: AsyncClient) -> None:
+    itmo = await classes(client)
+    content = (
+        "ФИО;Email;Роль\r\n"
+        "Петров Пётр Петрович;@vuz.ru;обучающийся\r\n"
+        "Сидоров Сидор Сидорович;s.sidorov@;обучающийся\r\n"
+    ).encode()
+
+    result = await load(client, itmo["id"], content, dry_run=False)
+    listed = await client.get(
+        f"/api/v1/interactions/{itmo['id']}/participants", headers=as_user(ANNA_KAM)
+    )
+
+    # Адрес без имени ящика раньше проходил в базу и навсегда ронял список записи.
+    assert [row["action"] for row in result["rows"]] == ["error", "error"]
+    assert result["rows"][0]["detail"] == "Это не почта: «@vuz.ru»"
+    assert listed.status_code == 200
+    assert listed.json()["counts"] == {"students": 3, "teachers": 1}
+
+
+async def test_long_identifier_spoils_only_its_own_row(client: AsyncClient) -> None:
+    itmo = await classes(client)
+    content = (
+        "ФИО;Email;Идентификатор в LMS\r\n"
+        f"Длинный Идентификатор Петрович;d.long@example.com;{'x' * 400}\r\n"
+        "Короткий Иван Иванович;i.short@example.com;lms-42\r\n"
+    ).encode()
+
+    result = await load(client, itmo["id"], content, dry_run=False)
+    listed = await client.get(
+        f"/api/v1/interactions/{itmo['id']}/participants", headers=as_user(ANNA_KAM)
+    )
+
+    # Длинный идентификатор обрезается, а не валит весь файл ошибкой базы.
+    assert [row["action"] for row in result["rows"]] == ["created", "created"]
+    assert listed.json()["counts"]["students"] == 5
+
+
+async def test_address_is_added_to_the_person_already_in_the_list(client: AsyncClient) -> None:
+    itmo = await classes(client)
+    without = "ФИО;Роль\r\nНовиков Пётр Ильич;обучающийся\r\n".encode()
+    with_email = (
+        "ФИО;Email;Роль\r\nНовиков Пётр Ильич;p.novikov@example.com;обучающийся\r\n".encode()
+    )
+
+    first = await load(client, itmo["id"], without, dry_run=False)
+    second = await load(client, itmo["id"], with_email, dry_run=False)
+    listed = await client.get(
+        f"/api/v1/interactions/{itmo['id']}/participants", headers=as_user(ANNA_KAM)
+    )
+
+    assert (first["created"], second["created"], second["updated"]) == (1, 0, 1)
+    assert second["rows"][0]["detail"] == "обновлено: почта"
+    # Списка без адресов и списка из LMS с адресами достаточно, чтобы завести двойника.
+    novikov = [item for item in listed.json()["items"] if item["full_name"] == "Новиков Пётр Ильич"]
+    assert len(novikov) == 1
+    assert novikov[0]["has_email"] is True
+
+
+async def test_namesake_without_an_address_is_added_once(client: AsyncClient) -> None:
+    itmo = await classes(client)
+    payload = {"full_name": "Безпочтовый Иван Иванович", "role": "student"}
+
+    added = await client.post(
+        f"/api/v1/interactions/{itmo['id']}/participants", json=payload, headers=as_user(ANNA_KAM)
+    )
+    again = await client.post(
+        f"/api/v1/interactions/{itmo['id']}/participants", json=payload, headers=as_user(ANNA_KAM)
+    )
+    as_teacher = await client.post(
+        f"/api/v1/interactions/{itmo['id']}/participants",
+        json={**payload, "role": "teacher"},
+        headers=as_user(ANNA_KAM),
+    )
+
+    assert added.status_code == 201
+    assert again.status_code == 422
+    assert again.json()["errors"][0]["field"] == "full_name"
+    # Тот же человек в другой роли — это другая строка списка.
+    assert as_teacher.status_code == 201

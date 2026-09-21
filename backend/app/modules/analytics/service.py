@@ -181,12 +181,13 @@ async def rating(
         await _entries(session, entity, previous_start, previous_end, direction_ids), weights
     )
     places = {row.key: row.place for row in previous}
-    priorities = {
-        program_id: priority
-        for program_id, priority in (
-            await session.execute(select(Program.id, Program.priority))
-        ).tuples()
-    }
+    keys = [row.key for row in current]
+    priorities: dict[uuid.UUID, int] = {}
+    if entity == "program" and keys:
+        marked = await session.execute(
+            select(Program.id, Program.priority).where(Program.id.in_(keys), Program.priority > 0)
+        )
+        priorities = {program_id: priority for program_id, priority in marked.tuples()}
 
     rows = [_row_out(row, places.get(row.key), priorities.get(row.key, 0)) for row in current]
     if order == "priority":

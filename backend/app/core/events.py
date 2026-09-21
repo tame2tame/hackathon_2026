@@ -28,6 +28,7 @@ SIGNAL_RESOLVED = "signal.resolved"
 IMPORT_APPLIED = "import.applied"
 REPORT_UPDATED = "report.updated"
 NOTIFICATION_CREATED = "notification.created"
+MESSAGE_CREATED = "message.created"
 
 EVENT_KINDS = (
     INTERACTION_CREATED,
@@ -38,6 +39,7 @@ EVENT_KINDS = (
     IMPORT_APPLIED,
     REPORT_UPDATED,
     NOTIFICATION_CREATED,
+    MESSAGE_CREATED,
 )
 
 

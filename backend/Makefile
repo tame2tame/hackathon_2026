@@ -3,7 +3,7 @@ VENV := .venv
 BIN := $(VENV)/bin
 COMPOSE := docker compose -f ../infra/docker-compose.yml
 
-.PHONY: install db-up db-down migrate migration seed seed-full run lint format typecheck test check openapi
+.PHONY: install db-up db-down migrate migration seed seed-full run lint format typecheck test check openapi help
 
 install:
 	$(PY) -m venv $(VENV)
@@ -49,3 +49,6 @@ check: lint typecheck test
 
 openapi:
 	$(BIN)/python -m scripts.export_openapi
+
+help:
+	$(BIN)/python -m scripts.export_help

@@ -15,10 +15,14 @@
 Уточнения жюри от 17.09 и решения по ним — [`docs/JURY_QA.md`](docs/JURY_QA.md); при расхождении
 с ТЗ они уточняют, а не отменяют его.
 
+Сценарий показа жюри — [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md).
+
 Диаграммы связей, программно-аппаратной архитектуры и базы данных —
 [`docs/architecture/DIAGRAMS.md`](docs/architecture/DIAGRAMS.md).
 
-Справочные документы: [`docs/DATA_PROCESSING.md`](docs/DATA_PROCESSING.md) — как считаются радар,
+Справочные документы: [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — руководство пользователя
+(собирается из встроенной справки `backend/app/help/` командой `make help`, править нужно её);
+[`docs/DATA_PROCESSING.md`](docs/DATA_PROCESSING.md) — как считаются радар,
 нормы, рейтинг и импорт; [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md) — эксплуатация;
 [`docs/DEPLOY.md`](docs/DEPLOY.md) — стенд; [`docs/SECURITY.md`](docs/SECURITY.md) — меры защиты;
 [`docs/LOAD_TEST.md`](docs/LOAD_TEST.md) — нагрузка.

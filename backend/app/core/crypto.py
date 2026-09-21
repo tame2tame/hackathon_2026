@@ -70,8 +70,14 @@ def fingerprint(value: str | None) -> str | None:
 
 
 def mask_email(value: str | None) -> str | None:
-    """Почта для списка: видно, чья она, но адрес целиком нужно запрашивать отдельно."""
-    if not value or "@" not in value:
+    """Почта для списка: видно, чья она, но адрес целиком нужно запрашивать отдельно.
+
+    Список карточки не должен падать из-за одной странной строки, поэтому непохожее на адрес
+    просто скрывается целиком.
+    """
+    if not value:
         return None
-    name, _, domain = value.partition("@")
+    name, separator, domain = value.partition("@")
+    if not separator or not name or not domain:
+        return None
     return f"{name[0]}***@{domain}"

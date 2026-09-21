@@ -48,6 +48,10 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["app*", "scripts*"]
 
+# Встроенная справка — часть приложения: разделы должны попасть в собранный пакет.
+[tool.setuptools.package-data]
+app = ["help/*.md"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

@@ -375,6 +375,9 @@ async def import_catalog(
     )
     await session.commit()
     await cache.invalidate(cache.CATALOGS)
+    if kind == "programs":
+        # В файле программ есть приоритет, а он виден в рейтинге.
+        await cache.invalidate(cache.RATING)
     return outcome
 
 
