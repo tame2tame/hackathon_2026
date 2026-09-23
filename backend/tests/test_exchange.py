@@ -198,7 +198,7 @@ async def test_manager_pushes_by_hand_and_reads_the_queue(
     site = (await sources(session))["site"]
     await move_kfu(client)
 
-    # На машине тестов сайта нет: запуск честно падает и остаётся в журнале.
+    # Адрес сайта в тестах мёртвый: запуск честно падает и остаётся в журнале.
     pushed = await client.post(
         f"/api/v1/integrations/{site.id}/push", headers=as_user(ROMAN_MANAGER)
     )

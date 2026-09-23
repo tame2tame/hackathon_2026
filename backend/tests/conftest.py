@@ -18,12 +18,19 @@ TEST_UPLOAD_DIR = tempfile.mkdtemp(prefix="radar-uploads-")
 # Настройки читаются при первом обращении, поэтому окружение задаётся до импорта приложения.
 # Ключ шифрования контактов: фиксированный, чтобы тесты не зависели от окружения машины.
 TEST_PD_KEY = base64.urlsafe_b64encode(b"radar-test-key-32-bytes-exactly!").decode()
+# Адреса внешних систем в тестах заведомо мёртвые: иначе поднятые на машине заглушки
+# (а их поднимают по docs/DEPLOY.md) меняли бы результат тестов отказа. Порт 9 отказывает сразу.
+DEAD_URL = "http://127.0.0.1:9"
 os.environ.update(
     APP_ENV="test",
     AUTH_MODE="dev",
     DATABASE_URL=TEST_DATABASE_URL,
     UPLOAD_DIR=TEST_UPLOAD_DIR,
     PD_ENCRYPTION_KEY=TEST_PD_KEY,
+    LMS_BASE_URL=DEAD_URL,
+    SITE_BASE_URL=DEAD_URL,
+    TELEGRAM_API_URL=DEAD_URL,
+    MAX_API_URL=DEAD_URL,
 )
 
 from alembic import command  # noqa: E402

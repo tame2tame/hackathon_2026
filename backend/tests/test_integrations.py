@@ -165,7 +165,7 @@ async def test_broken_source_is_logged_and_others_keep_working(session: AsyncSes
 
 
 async def test_sync_all_visits_every_source(session: AsyncSession) -> None:
-    """Обход идёт по всем источникам. Моки здесь не подняты, поэтому оба ответа — отказ."""
+    """Обход идёт по всем источникам. Адреса в тестах мёртвые, поэтому оба ответа — отказ."""
     sources = await ensure_sources(session)
 
     runs = await sync_all(session, datetime.now(UTC))
