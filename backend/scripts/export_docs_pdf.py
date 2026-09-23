@@ -35,8 +35,11 @@ DOCUMENTS: tuple[tuple[str, str], ...] = (
     ("docs/DEPLOY.md", "Сборка, установка и стенд"),
     ("docs/SECURITY.md", "Меры защиты"),
     ("docs/LOAD_TEST.md", "Нагрузочный тест и масштабирование"),
+    ("docs/architecture/DIAGRAMS.md", "Диаграммы"),
     ("docs/COMPLIANCE.md", "Соответствие техническому заданию"),
 )
+# Mermaid в PDF не нарисуешь, поэтому диаграммы заранее отрисованы в картинки.
+DIAGRAM_IMAGES = ROOT / "docs" / "architecture" / "images"
 
 LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 BOLD = re.compile(r"\*\*([^*]+)\*\*")
@@ -163,6 +166,15 @@ class Builder:
         share = total / sum(weights)
         return tuple(weight * share for weight in weights)
 
+    def diagram(self, number: int) -> None:
+        """Диаграмма — отдельная страница на боку: на портретной её подписи не прочесть."""
+        path = DIAGRAM_IMAGES / f"diagram-{number}.png"
+        if not path.is_file():
+            return
+        self.pdf.add_page(orientation="L")
+        self.pdf.image(str(path), w=self.pdf.w - 2 * MARGIN_MM)
+        self.pdf.add_page(orientation="P")
+
     def picture(self, source: str, caption: str) -> None:
         """Скриншот из справки: в документе он файлом, а не ссылкой на API."""
         name = source.rsplit("/", 1)[-1]
@@ -187,12 +199,18 @@ class Builder:
         block: list[str] = []
         table: list[list[str]] = []
         in_code = False
+        mermaid = False
+        diagrams = 0
         for raw in document.lines:
             line = raw.rstrip()
             if line.startswith("```"):
-                if in_code:
+                if in_code and mermaid:
+                    diagrams += 1
+                    self.diagram(diagrams)
+                elif in_code:
                     self.code(block)
-                    block = []
+                mermaid = line.startswith("```mermaid")
+                block = []
                 in_code = not in_code
                 continue
             if in_code:
