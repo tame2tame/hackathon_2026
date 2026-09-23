@@ -16,6 +16,7 @@
 с ТЗ они уточняют, а не отменяют его.
 
 Соответствие ТЗ по каждому требованию — [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md);
+постановка по неподключённым экранам — [`docs/FRONTEND_SCREENS_SPEC.md`](docs/FRONTEND_SCREENS_SPEC.md);
 сценарий показа жюри — [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md).
 
 Диаграммы связей, программно-аппаратной архитектуры и базы данных —
