@@ -57,3 +57,27 @@ def test_guide_matches_the_built_in_help() -> None:
     assert GUIDE_PATH.read_text(encoding="utf-8") == render(), (
         "Справка изменилась: выполните make help и закоммитьте руководство"
     )
+
+
+async def test_screenshots_are_served_from_the_help(client: AsyncClient) -> None:
+    picture = await client.get(f"{HELP}/images/radar.png", headers=as_user(ANNA_KAM))
+    unknown = await client.get(f"{HELP}/images/нет.png", headers=as_user(ANNA_KAM))
+    traversal = await client.get(f"{HELP}/images/..%2F..%2Fmain.py", headers=as_user(ANNA_KAM))
+    without_login = await client.get(f"{HELP}/images/radar.png")
+
+    assert picture.status_code == 200, picture.text
+    assert picture.headers["content-type"] == "image/png"
+    assert picture.content.startswith(b"\x89PNG")
+    assert unknown.status_code == 404
+    assert traversal.status_code == 404
+    assert without_login.status_code == 401
+
+
+def test_guide_shows_the_same_screenshots() -> None:
+    guide = GUIDE_PATH.read_text(encoding="utf-8")
+    images = {topic.slug for topic in topics() if "/api/v1/help/images/" in topic.body}
+
+    assert images, "в справке нет ни одного скриншота"
+    # В продукте картинка приходит по адресу API, в документе — файлом из репозитория.
+    assert "../backend/app/help/images/radar.png" in guide
+    assert "/api/v1/help/images/" not in guide

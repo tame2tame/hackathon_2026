@@ -40,8 +40,11 @@ DOCUMENTS: tuple[tuple[str, str], ...] = (
 
 LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 BOLD = re.compile(r"\*\*([^*]+)\*\*")
+ITALIC = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
+TAG = re.compile(r"<[^>]+>")
 CODE = re.compile(r"`([^`]+)`")
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
+IMAGE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
 BULLET = re.compile(r"^(\s*)[-*]\s+(.*)$")
 NUMBER = re.compile(r"^(\s*)(\d+)\.\s+(.*)$")
 
@@ -50,6 +53,9 @@ def plain(text: str) -> str:
     """Markdown без разметки: ссылки остаются текстом, выделение снимается."""
     text = LINK.sub(r"\1", text)
     text = BOLD.sub(r"\1", text)
+    text = ITALIC.sub(r"\1", text)
+    # Якоря оглавления нужны на GitHub, в листе бумаги от них только мусор.
+    text = TAG.sub("", text)
     return CODE.sub(r"\1", text).replace("&nbsp;", " ")
 
 
@@ -157,6 +163,23 @@ class Builder:
         share = total / sum(weights)
         return tuple(weight * share for weight in weights)
 
+    def picture(self, source: str, caption: str) -> None:
+        """Скриншот из справки: в документе он файлом, а не ссылкой на API."""
+        name = source.rsplit("/", 1)[-1]
+        path = ROOT / "backend" / "app" / "help" / "images" / name
+        if not path.is_file():
+            return
+        width = self.pdf.w - 2 * MARGIN_MM
+        # Картинка не должна разрываться: не помещается на странице — уходит на следующую.
+        if self.pdf.get_y() + width * 0.6 > self.pdf.h - MARGIN_MM:
+            self.pdf.add_page()
+        self.pdf.image(str(path), w=width)
+        if caption:
+            self.pdf.set_font("doc", size=BODY_SIZE - 1.5)
+            self.pdf.multi_cell(0, 4, caption, new_x="LMARGIN", new_y="NEXT", align="C")
+            self.pdf.set_font("doc", size=BODY_SIZE)
+        self.pdf.ln(2)
+
     def document(self, document: Document) -> None:
         self.pdf.add_page()
         self.heading(1, document.title)
@@ -182,6 +205,10 @@ class Builder:
             if table:
                 self.table(table)
                 table = []
+            picture = IMAGE.match(line)
+            if picture:
+                self.picture(picture.group(2), picture.group(1))
+                continue
             heading = HEADING.match(line)
             bullet = BULLET.match(line)
             number = NUMBER.match(line)
@@ -197,7 +224,7 @@ class Builder:
                 self.paragraph(
                     f"{number.group(2)}. {number.group(3)}", indent=3 + len(number.group(1))
                 )
-            elif line.strip():
+            elif plain(line).strip():
                 self.paragraph(line)
             else:
                 self.pdf.ln(1.5)

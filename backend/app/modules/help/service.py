@@ -15,6 +15,7 @@
     ---
 """
 
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -24,6 +25,9 @@ from app.core.roles import Role
 from app.modules.help.schemas import HelpTopicOut, HelpTopicRef
 
 HELP_DIR = Path(__file__).resolve().parents[2] / "help"
+IMAGES_DIR = HELP_DIR / "images"
+# Имя картинки приходит из адреса, поэтому принимаем только своё: ни путей, ни точек.
+IMAGE_NAME = re.compile(r"^[a-z0-9-]{1,40}\.png$")
 SEPARATOR = "---"
 REQUIRED = ("slug", "title", "summary", "roles")
 
@@ -91,3 +95,13 @@ def get_topic(role: Role, slug: str) -> HelpTopicOut:
         if topic.slug == slug and role.value in topic.roles:
             return topic.out()
     raise AppError(ErrorCode.NOT_FOUND, "Раздел справки не найден.")
+
+
+def image_path(name: str) -> Path:
+    """Файл скриншота из справки. Любое другое имя — «не найдено», а не чтение чужого файла."""
+    if not IMAGE_NAME.match(name):
+        raise AppError(ErrorCode.NOT_FOUND, "Картинка справки не найдена.")
+    path = IMAGES_DIR / name
+    if not path.is_file():
+        raise AppError(ErrorCode.NOT_FOUND, "Картинка справки не найдена.")
+    return path

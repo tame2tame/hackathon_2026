@@ -1,9 +1,10 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from app.core.errors import ErrorCode, error_responses
+from app.core.http_cache import IMMUTABLE
 from app.core.security import CurrentUserDep
 from app.modules.help.schemas import HelpTopicOut, HelpTopicRef
-from app.modules.help.service import get_topic, list_topics
+from app.modules.help.service import get_topic, image_path, list_topics
 
 router = APIRouter(prefix="/api/v1/help", tags=["help"])
 
@@ -19,6 +20,25 @@ router = APIRouter(prefix="/api/v1/help", tags=["help"])
 )
 async def read_topics(user: CurrentUserDep) -> list[HelpTopicRef]:
     return list_topics(user.role)
+
+
+@router.get(
+    "/images/{name}",
+    summary="Картинка из справки",
+    description="Скриншоты экранов, на которые ссылаются разделы руководства.",
+    response_class=Response,
+    responses={
+        200: {"content": {"image/png": {}}, "description": "Изображение"},
+        **error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
+    },
+)
+async def read_image(name: str, _user: CurrentUserDep) -> Response:
+    # Картинка справки не меняется без нового имени файла: её можно держать в кэше сутки.
+    return Response(
+        image_path(name).read_bytes(),
+        media_type="image/png",
+        headers={"Cache-Control": IMMUTABLE},
+    )
 
 
 @router.get(

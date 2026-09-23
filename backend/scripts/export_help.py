@@ -10,6 +10,10 @@ from pathlib import Path
 
 from app.modules.help.service import topics
 
+# В продукте картинка приходит по адресу API, в документе — лежит файлом рядом с кодом.
+API_IMAGES = "/api/v1/help/images/"
+REPO_IMAGES = "../backend/app/help/images/"
+
 GUIDE_PATH = Path(__file__).resolve().parents[2] / "docs" / "USER_GUIDE.md"
 HEADER = """# Руководство пользователя
 
@@ -30,7 +34,7 @@ def render() -> str:
         roles = ", ".join(sorted(topic.roles))
         parts.append(f'\n<a id="{topic.slug}"></a>\n\n## {topic.title}\n\n')
         parts.append(f"*Кому показывается: {roles}.*\n\n")
-        parts.append(f"{topic.body}\n")
+        parts.append(f"{topic.body.replace(API_IMAGES, REPO_IMAGES)}\n")
     return "".join(parts)
 
 
