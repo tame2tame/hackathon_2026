@@ -52,3 +52,6 @@ openapi:
 
 help:
 	$(BIN)/python -m scripts.export_help
+
+docs-pdf:
+	$(BIN)/python -m scripts.export_docs_pdf
