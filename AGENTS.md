@@ -17,7 +17,8 @@
 
 Соответствие ТЗ по каждому требованию — [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md);
 постановка по неподключённым экранам — [`docs/FRONTEND_SCREENS_SPEC.md`](docs/FRONTEND_SCREENS_SPEC.md);
-сценарий показа жюри — [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md).
+сценарий показа жюри — [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md); презентация и её
+исходник — [`docs/presentation/`](docs/presentation).
 
 Диаграммы связей, программно-аппаратной архитектуры и базы данных —
 [`docs/architecture/DIAGRAMS.md`](docs/architecture/DIAGRAMS.md).
