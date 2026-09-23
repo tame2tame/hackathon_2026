@@ -9,8 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.analytics.rating import DEFAULT_WEIGHTS, Entry, normalize_weights, rate
-from app.modules.catalogs.models import Program, University
+from app.modules.catalogs.models import CounterpartyGroup, Program, University
 from app.modules.metrics.models import ProgramMetric
+from app.modules.workflow.defaults import INDIVIDUALS_GROUP
 from tests.users import ALINA_ADMIN, ANNA_KAM, ROMAN_MANAGER, as_user
 
 RATING = "/api/v1/analytics/rating"
@@ -191,3 +192,36 @@ async def test_kam_sees_the_funnel_of_own_records(client: AsyncClient) -> None:
     response = await client.get("/api/v1/analytics/stats/funnel", headers=as_user(ANNA_KAM))
 
     assert sum(response.json()["values"]) == 4
+
+
+async def test_statistics_come_as_a_printable_file(client: AsyncClient) -> None:
+    report = await client.get("/api/v1/analytics/stats/report", headers=as_user(ROMAN_MANAGER))
+    by_kam = await client.get("/api/v1/analytics/stats/report", headers=as_user(ANNA_KAM))
+
+    assert report.status_code == 200, report.text
+    assert report.headers["content-type"] == "application/pdf"
+    assert report.content.startswith(b"%PDF")
+    # Диаграммы рисует сервер, поэтому файл заметно больше пустого PDF.
+    assert len(report.content) > 3000
+    assert (
+        "Статистика" in report.headers["content-disposition"]
+        or "%D0" in report.headers["content-disposition"]
+    )
+    # КАМ видит свою область: файл строится, но по его записям.
+    assert by_kam.status_code == 200
+
+
+async def test_chart_page_survives_empty_data(client: AsyncClient, session: AsyncSession) -> None:
+    group = await session.scalar(
+        select(CounterpartyGroup).where(CounterpartyGroup.code == INDIVIDUALS_GROUP)
+    )
+    assert group is not None
+
+    report = await client.get(
+        "/api/v1/analytics/stats/report",
+        params={"group_id": str(group.id)},
+        headers=as_user(ALINA_ADMIN),
+    )
+
+    assert report.status_code == 200, report.text
+    assert report.content.startswith(b"%PDF")

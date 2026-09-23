@@ -1,6 +1,7 @@
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import TypeAdapter
@@ -12,6 +13,7 @@ from app.core.http_cache import NOT_MODIFIED_RESPONSE, cached_json
 from app.core.roles import Role
 from app.core.security import CurrentUser, CurrentUserDep, require_roles
 from app.modules.analytics import stats
+from app.modules.analytics.charts import render_charts
 from app.modules.analytics.rating import normalize_weights
 from app.modules.analytics.schemas import (
     ChartOut,
@@ -143,6 +145,38 @@ async def read_stage_durations(
     session: SessionDep, user: CurrentUserDep, group_id: GroupQuery = None
 ) -> ChartOut:
     return await stats.stage_durations(session, user, group_id)
+
+
+@router.get(
+    "/stats/report",
+    summary="Статистика диаграммами в PDF",
+    description=(
+        "Воронка, длительности этапов и распределение по направлениям одним файлом: те же числа, "
+        "что отдают методы статистики, нарисованы столбиками. Нужно там, где браузера нет — "
+        "письмо вузу, распечатка на совещание."
+    ),
+    response_class=Response,
+    responses={
+        200: {"content": {"application/pdf": {}}, "description": "Файл со статистикой"},
+        **error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
+    },
+)
+async def read_stats_report(
+    session: SessionDep, user: CurrentUserDep, group_id: GroupQuery = None
+) -> Response:
+    charts = [
+        await stats.funnel(session, user, group_id),
+        await stats.stage_durations(session, user, group_id),
+        await stats.distribution(session, user, group_id),
+    ]
+    scope = "по всем группам" if group_id is None else "по выбранной группе контрагентов"
+    content = render_charts("Статистика «Радара вузов»", f"Область: {scope}", charts)
+    file_name = f"Статистика-{datetime.now(UTC):%Y-%m-%d}.pdf"
+    return Response(
+        content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(file_name)}"},
+    )
 
 
 @router.get(

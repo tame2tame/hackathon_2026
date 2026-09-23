@@ -3396,6 +3396,52 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /api/v1/analytics/stats/report:
+    get:
+      tags:
+      - analytics
+      summary: Статистика диаграммами в PDF
+      description: 'Воронка, длительности этапов и распределение по направлениям одним файлом: те же числа,
+        что отдают методы статистики, нарисованы столбиками. Нужно там, где браузера нет — письмо вузу,
+        распечатка на совещание.'
+      operationId: read_stats_report_api_v1_analytics_stats_report_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: group_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Группа контрагентов; по умолчанию — вузы
+          title: Group Id
+        description: Группа контрагентов; по умолчанию — вузы
+      responses:
+        '200':
+          description: Файл со статистикой
+          content:
+            application/pdf: {}
+        '401':
+          description: AUTH_REQUIRED
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: NOT_FOUND
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Validation Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/analytics/stats/distribution:
     get:
       tags:
