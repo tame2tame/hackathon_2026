@@ -6,6 +6,8 @@ from httpx import AsyncClient
 
 from app.core.events import (
     INTERACTION_TRANSITIONED,
+    MESSAGE_CREATED,
+    REPORT_UPDATED,
     SIGNAL_RESOLVED,
     Event,
     MemoryEventBus,
@@ -95,3 +97,37 @@ async def test_transition_publishes_an_event(client: AsyncClient) -> None:
     transitioned = next(event for event in events if event.kind == INTERACTION_TRANSITIONED)
     assert transitioned.payload["to_stage_code"] == "materials_transfer"
     assert transitioned.owner_user_id is not None
+
+
+def test_correspondence_is_personal_even_for_the_manager_and_admin() -> None:
+    manager = user(Role.MANAGER, uuid.uuid4(), TEAM)
+    admin = user(Role.ADMIN, uuid.uuid4())
+    recipient = user(Role.KAM, MIKHAIL, TEAM)
+    message = Event("1", MESSAGE_CREATED, {"message_id": "m"}, owner_user_id=MIKHAIL)
+
+    # Руководитель команды адресата раньше видел, кто и кому пишет, — теперь нет.
+    assert visible(message, recipient, set()) is True
+    assert visible(message, manager, {MIKHAIL}) is False
+    assert visible(message, admin, set()) is False
+
+
+def test_access_rules_decide_for_events_about_a_record() -> None:
+    record = uuid.uuid4()
+    admin = user(Role.ADMIN, uuid.uuid4())
+    kam = user(Role.KAM, ANNA)
+    about_record = Event(
+        "1", INTERACTION_TRANSITIONED, {"interaction_id": str(record)}, owner_user_id=ANNA
+    )
+
+    # Запрет администратора убрал запись из области видимости: событие о ней тоже не приходит.
+    assert visible(about_record, kam, set(), allowed=set()) is False
+    assert visible(about_record, kam, set(), allowed={record}) is True
+    assert visible(about_record, admin, set(), allowed=set()) is False
+
+
+def test_report_progress_goes_to_its_author() -> None:
+    manager = user(Role.MANAGER, uuid.uuid4(), TEAM)
+    report = Event("1", REPORT_UPDATED, {"report_id": "r"}, owner_user_id=ANNA)
+
+    assert visible(report, user(Role.KAM, ANNA), set()) is True
+    assert visible(report, manager, {ANNA}) is False

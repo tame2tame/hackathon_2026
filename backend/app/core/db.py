@@ -1,7 +1,7 @@
 """Подключение к PostgreSQL: асинхронный движок, сессии и базовый класс моделей."""
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from datetime import datetime
 from functools import lru_cache
 from typing import Annotated
@@ -45,7 +45,21 @@ class Timestamps:
 
 @lru_cache
 def get_engine() -> AsyncEngine:
-    return create_async_engine(get_settings().database_url, pool_pre_ping=True)
+    settings = get_settings()
+    return create_async_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=settings.db_pool_timeout,
+        # Параметры запроса не попадают в текст ошибки: там бывают почта и ФИО сотрудника.
+        hide_parameters=True,
+        connect_args={
+            "server_settings": {
+                "idle_in_transaction_session_timeout": str(settings.db_idle_in_transaction_ms)
+            }
+        },
+    )
 
 
 @lru_cache
@@ -59,3 +73,13 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+SessionFactory = Callable[[], AsyncSession]
+
+
+def get_session_factory() -> SessionFactory:
+    """Короткие сессии для долгих ответов: поток событий берёт соединение на миг, а не на час."""
+    return get_sessionmaker()
+
+
+SessionFactoryDep = Annotated[SessionFactory, Depends(get_session_factory)]

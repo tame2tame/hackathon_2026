@@ -90,8 +90,11 @@ async def read_attachment_file(
         return Response(status_code=NOT_MODIFIED, headers=headers)
     # filename* — чтобы кириллические имена доходили без искажений.
     headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(attachment.file_name)}"
+    stream = await open_file(attachment)
+    # Медленный клиент качает файл долго: база ему для этого не нужна, соединение — в пул.
+    await session.close()
     return StreamingResponse(
-        read_chunks(await open_file(attachment)),
+        read_chunks(stream),
         media_type=attachment.mime_type,
         headers=headers,
     )

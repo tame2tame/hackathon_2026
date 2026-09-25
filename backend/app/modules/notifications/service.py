@@ -58,6 +58,14 @@ DELIVERY_LEASE = timedelta(minutes=5)
 DELIVERY_BUDGET_SECONDS = 120.0
 # Во внешние каналы уходит только заголовок и ссылка: подробности — за входом в систему.
 EXTERNAL_BODY = "Подробности — в «Радаре вузов»."
+# Во внешний канал уходит заголовок по виду события, а не заголовок уведомления: в нём бывает
+# подпись записи, а у клиента-человека подпись — это его ФИО.
+EXTERNAL_TITLES = {
+    "stalled_interaction": "Запись давно без движения",
+    "stage_changed": "Изменение по вашей записи",
+    "workflow_changed": "Процесс изменён, ваши записи перенесены",
+}
+EXTERNAL_TITLE = "Событие в «Радаре вузов»"
 NOTIFICATION_NOT_FOUND = "Уведомление не найдено."
 
 ADDRESS_PATTERNS = {
@@ -440,12 +448,16 @@ async def _send(
     now: datetime,
 ) -> None:
     delivery.attempts += 1
-    # Персональные данные во внешний канал не уходят: только заголовок события и ссылка.
-    body = notification.body if notification.kind == "channel_test" else EXTERNAL_BODY
+    # Персональные данные во внешний канал не уходят: только вид события и ссылка.
+    if notification.kind == "channel_test":
+        title, body = notification.title, notification.body
+    else:
+        title = EXTERNAL_TITLES.get(notification.kind, EXTERNAL_TITLE)
+        body = EXTERNAL_BODY
     failure: str | None = None
     try:
         await channels.sender_for(channel).send(
-            channels.OutgoingMessage(address, notification.title, body, _link(notification))
+            channels.OutgoingMessage(address, title, body, _link(notification))
         )
     except channels.DeliveryError as error:
         failure = str(error)

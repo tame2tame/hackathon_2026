@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     auth_mode: Literal["keycloak", "dev"] = "keycloak"
     # Порт из docker compose: 5432 на машине разработчика обычно занят локальным PostgreSQL.
     database_url: str = "postgresql+asyncpg://radar:radar@127.0.0.1:55432/radar"
+    # Пул соединений задан явно: поток событий и отдача файлов не должны его исчерпать.
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    db_pool_timeout: int = 10
+    # Транзакция, забытая открытой, закрывается базой, а не держит соединение вечно.
+    db_idle_in_transaction_ms: int = 60_000
     cors_origins: str = ""
     keycloak_issuer: str = "http://127.0.0.1:8080/realms/radar-vuzov"
     # Внутри docker compose ключи берутся по внутреннему адресу, а издатель в токене — внешний.

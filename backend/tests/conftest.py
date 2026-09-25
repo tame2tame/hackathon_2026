@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, create_async_e
 from sqlalchemy.pool import NullPool  # noqa: E402
 
 from app.core.cache import get_cache  # noqa: E402
-from app.core.db import get_session  # noqa: E402
+from app.core.db import get_session, get_session_factory  # noqa: E402
 from app.demo import seed_demo  # noqa: E402
 from app.main import create_app  # noqa: E402
 
@@ -103,5 +103,6 @@ async def client(connection: AsyncConnection) -> AsyncIterator[AsyncClient]:
             yield db_session
 
     app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_session_factory] = lambda: lambda: _session(connection)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
         yield http

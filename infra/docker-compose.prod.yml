@@ -135,7 +135,8 @@ services:
       KC_DB_USERNAME: radar
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?пароль базы}
       KC_HOSTNAME: ${PUBLIC_URL:?адрес стенда}/auth
-      KC_HTTP_RELATIVE_PATH: /auth
+      # Адрес интерфейса подставляется в разрешённые адреса возврата клиента radar-web.
+      RADAR_WEB_URL: ${PUBLIC_URL:?адрес стенда}
       # За nginx: Keycloak должен верить заголовкам X-Forwarded-*.
       KC_PROXY_HEADERS: xforwarded
     volumes:

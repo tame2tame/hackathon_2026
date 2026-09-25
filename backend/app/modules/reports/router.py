@@ -93,6 +93,7 @@ async def read_report_file(
     if job.format == "csv":
         media_type = f"{media_type}; charset={job.params.get('encoding', 'utf-8')}"
     headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(file_name)}"
-    return StreamingResponse(
-        read_chunks(await open_report_file(job)), media_type=media_type, headers=headers
-    )
+    stream = await open_report_file(job)
+    # Медленный клиент качает файл долго: база ему для этого не нужна, соединение — в пул.
+    await session.close()
+    return StreamingResponse(read_chunks(stream), media_type=media_type, headers=headers)

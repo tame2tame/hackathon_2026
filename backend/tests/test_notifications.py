@@ -16,8 +16,12 @@ from app.core.events import NOTIFICATION_CREATED, Event
 from app.core.roles import Role
 from app.core.security import CurrentUser
 from app.modules.events.router import visible
-from app.modules.notifications import channels
-from app.modules.notifications.models import NotificationDelivery
+from app.modules.notifications import channels, service
+from app.modules.notifications.models import (
+    Notification,
+    NotificationChannel,
+    NotificationDelivery,
+)
 from app.modules.notifications.service import MAX_ATTEMPTS, deliver_pending
 from mocks import messengers
 from tests.api import find, stage_id, user_id
@@ -177,9 +181,10 @@ async def test_escalation_is_delivered_to_telegram_through_the_mock(
         transport=httpx.ASGITransport(app=messengers.app), base_url="http://mock"
     ) as mock:
         received = (await mock.get("/sent", params={"channel": "telegram"})).json()
-    # Адрес руководителя в Telegram заведён демо-данными.
+    # Адрес руководителя в Telegram заведён демо-данными. Наружу уходит вид события,
+    # а не заголовок уведомления с подписью записи.
     assert any(
-        message["address"] == "100200300" and "Запись без изменений" in message["text"]
+        message["address"] == "100200300" and "Запись давно без движения" in message["text"]
         for message in received
     )
     journal = await client.get(
@@ -325,7 +330,7 @@ async def test_external_channels_do_not_carry_personal_data(
     ) as mock:
         received = (await mock.get("/sent", params={"channel": "telegram"})).json()
     [text] = [item["text"] for item in received if item["address"] == "100200300"][-1:]
-    assert "Запись без изменений" in text
+    assert "Запись давно без движения" in text
     # Ни контрагента, ни ответственного наружу: подробности — за входом в систему.
     assert "КФУ" not in text
     assert "Анна" not in text
@@ -454,3 +459,33 @@ async def test_bulk_transition_sends_one_summary_to_the_owner(client: AsyncClien
     [item] = (await feed(client, ANNA_KAM))["items"]
     assert item["title"] == "Записи переведены на этап «Обмен документами»"
     assert item["body"] == "Роман Ковалёв перевёл(а) групповым переходом ваших записей: 1."
+
+
+async def test_person_name_from_a_title_stays_inside_the_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[channels.OutgoingMessage] = []
+
+    class Capture:
+        async def send(self, message: channels.OutgoingMessage) -> None:
+            sent.append(message)
+
+    monkeypatch.setattr(channels, "sender_for", lambda channel: Capture())
+    # У клиента-человека подпись записи — это его ФИО: так выглядит заголовок в ленте.
+    notification = Notification(
+        user_id=uuid.uuid4(),
+        kind="stage_changed",
+        title="Запись приостановлена: «Иванов Иван Иванович — Анализ данных»",
+        body="Причина: клиент уехал в отпуск",
+        interaction_id=uuid.uuid4(),
+    )
+    delivery = NotificationDelivery(channel_kind="telegram", status="pending", attempts=0)
+    channel = NotificationChannel(kind="telegram", name="Telegram")
+
+    await service._send(delivery, notification, channel, "100200300", datetime.now(UTC))
+
+    [message] = sent
+    outside = message.text()
+    assert "Иванов" not in outside
+    assert "отпуск" not in outside
+    assert message.title == "Изменение по вашей записи"
