@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, ErrorCode, FieldError
 from app.core.events import IMPORT_APPLIED, get_event_bus
+from app.core.scope import apply_interaction_scope
 from app.core.security import CurrentUser
 from app.modules.attachments import files
 from app.modules.audit.models import AuditLog
@@ -28,6 +29,7 @@ from app.modules.imports.models import ImportBatch, ImportProfile, ImportRow
 from app.modules.imports.schemas import ApplyResult
 from app.modules.integrations.outbox import mark_changed
 from app.modules.interactions.models import Contract, Interaction, InteractionNote, Transition
+from app.modules.interactions.service import assign_owner, assignable_user
 from app.modules.radar.service import recompute_signals
 from app.modules.workflow.defaults import universities_group
 from app.modules.workflow.service import GroupProcess, group_process
@@ -79,9 +81,11 @@ class Catalog:
     users: dict[str, AppUser]
     interactions: dict[tuple[uuid.UUID, uuid.UUID, uuid.UUID], Interaction]
     group_id: uuid.UUID
+    # Записи, которые импортирующий вправе менять. Чужая запись в файле — конфликт, а не правка.
+    visible: frozenset[uuid.UUID] = frozenset()
 
 
-async def load_catalog(session: AsyncSession) -> Catalog:
+async def load_catalog(session: AsyncSession, user: CurrentUser) -> Catalog:
     universities = {}
     for university in await session.scalars(select(University)):
         universities[mapping.normalize(university.name)] = university
@@ -121,7 +125,14 @@ async def load_catalog(session: AsyncSession) -> Catalog:
         if i.university_id is not None and i.product_id is not None
     }
     group = await universities_group(session)
-    return Catalog(universities, products, default_programs, users, interactions, group.id)
+    visible = frozenset(
+        await session.scalars(
+            apply_interaction_scope(
+                select(Interaction.id).where(Interaction.status != "cancelled"), user
+            )
+        )
+    )
+    return Catalog(universities, products, default_programs, users, interactions, group.id, visible)
 
 
 def resolve_row(values: RowValues, catalog: Catalog) -> tuple[str, str | None]:
@@ -143,9 +154,13 @@ def resolve_row(values: RowValues, catalog: Catalog) -> tuple[str, str | None]:
     university = catalog.universities.get(mapping.normalize(values.university))
     if university is None:
         return "new", None
-    if (university.id, program_id, product.id) in catalog.interactions:
-        return "update", None
-    return "new", None
+    existing = catalog.interactions.get((university.id, program_id, product.id))
+    if existing is None:
+        return "new", None
+    if existing.id not in catalog.visible:
+        # Запись ведёт другая команда: молча переписать её загрузкой файла нельзя.
+        return "conflict", "Эту связку ведёт другая команда: обновить её может её руководитель."
+    return "update", None
 
 
 async def _batch(session: AsyncSession, batch_id: uuid.UUID) -> ImportBatch:
@@ -246,7 +261,7 @@ async def set_mapping(
             f"В файле нет колонок: {', '.join(unknown)}.",
         )
 
-    catalog = await load_catalog(session)
+    catalog = await load_catalog(session, user)
     counter: Counter[str] = Counter()
     for row in await batch_rows(session, batch_id):
         row.resolution, row.detail = resolve_row(row_values(row.raw, column_map), catalog)
@@ -327,7 +342,7 @@ async def apply_batch(
         )
 
     process = await group_process(session, await universities_group(session))
-    catalog = await load_catalog(session)
+    catalog = await load_catalog(session, user)
     counter: Counter[str] = Counter()
     touched: list[uuid.UUID] = []
 
@@ -336,7 +351,15 @@ async def apply_batch(
             counter[row.resolution] += 1
             continue
         values = row_values(row.raw, batch.column_map)
-        interaction, created = await _apply_row(session, user, catalog, process, values, now)
+        # Предпросмотр мог устареть или его делал другой человек: права проверяются заново.
+        resolution, detail = resolve_row(values, catalog)
+        if resolution not in {"new", "update"}:
+            row.resolution, row.detail = resolution, detail
+            counter[resolution] += 1
+            continue
+        interaction, created = await _apply_row(
+            session, user, catalog, process, values, now, trace_id
+        )
         counter["created" if created else "updated"] += 1
         touched.append(interaction.id)
 
@@ -375,6 +398,7 @@ async def _apply_row(
     process: GroupProcess,
     values: RowValues,
     now: datetime,
+    trace_id: str | None = None,
 ) -> tuple[Interaction, bool]:
     university = await _university(session, catalog, values.university)
     product = catalog.products[
@@ -383,17 +407,47 @@ async def _apply_row(
     program_id = catalog.default_programs[product.id]
     contract = await _contract(session, university.id, values)
     owner = catalog.users.get(mapping.normalize(values.manager)) if values.manager else None
-    owner_id = owner.id if owner else user.id
 
     key = (university.id, program_id, product.id)
-    interaction = catalog.interactions.get(key)
-    if interaction is not None:
+    known = catalog.interactions.get(key)
+    if known is not None:
+        # Строку берём под блокировку: параллельный переход не должен потерять приращение версии.
+        interaction = await session.scalar(
+            select(Interaction)
+            .where(Interaction.id == known.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if interaction is None:
+            raise AppError(ErrorCode.NOT_FOUND, "Взаимодействие не найдено.")
+        before = {"contract_id": str(interaction.contract_id) if interaction.contract_id else None}
         # Этап не откатываем: файл описывает договор, а процесс ведёт КАМ в карточке.
         interaction.contract_id = contract.id if contract else interaction.contract_id
-        interaction.owner_user_id = owner_id
         interaction.last_activity_at = now
         interaction.version += 1
+        session.add(
+            AuditLog(
+                actor_user_id=user.id,
+                action="interaction.imported",
+                entity_kind="interaction",
+                entity_id=interaction.id,
+                before=before,
+                after={
+                    "contract_id": str(interaction.contract_id) if interaction.contract_id else None
+                },
+                trace_id=trace_id,
+            )
+        )
+        # Ответственный меняется только явным значением в файле и по тем же правилам,
+        # что в карточке: пустая колонка менеджера — не повод забрать запись себе.
+        if owner is not None and owner.id != interaction.owner_user_id:
+            target = await assignable_user(session, user, owner.id)
+            await assign_owner(
+                session, user, interaction, target, "Загрузка выгрузки", trace_id, now
+            )
         return interaction, False
+
+    owner_id = owner.id if owner else user.id
 
     # Статус из файла ведёт на этап базового процесса; если его в схеме нет — на первый этап.
     stage = process.stages.get(

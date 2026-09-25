@@ -122,6 +122,17 @@ async def list_universities(
     )
 
 
+async def ensure_university_visible(
+    session: AsyncSession, user: CurrentUser, university_id: uuid.UUID
+) -> None:
+    """Вуз в области видимости или 404: то же правило, что у карточки вуза (ADR-007)."""
+    found = await session.scalar(
+        select(_universities_query(user).where(University.id == university_id).subquery().c.id)
+    )
+    if found is None:
+        raise AppError(ErrorCode.NOT_FOUND, "Вуз не найден или недоступен.")
+
+
 async def get_university(
     session: AsyncSession, user: CurrentUser, university_id: uuid.UUID
 ) -> UniversityOut:

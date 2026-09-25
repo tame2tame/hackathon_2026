@@ -1,5 +1,6 @@
 """Администрирование: правила доступа, шифрование контактов, аудит и каталоги."""
 
+import uuid
 from typing import Any
 
 from httpx import AsyncClient
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.catalogs.models import ContactPerson, University
 from tests.api import find, user_id
-from tests.users import ALINA_ADMIN, ANNA_KAM, ROMAN_MANAGER, as_user
+from tests.users import ALINA_ADMIN, ANNA_KAM, MIKHAIL_KAM, ROMAN_MANAGER, as_user
 
 ADMIN = "/api/v1/admin"
 
@@ -256,3 +257,59 @@ async def test_team_can_be_created(client: AsyncClient) -> None:
 
     assert response.status_code == 201
     assert "Сибирь и Дальний Восток" in {team["name"] for team in teams.json()}
+
+
+async def test_contacts_of_a_foreign_university_are_not_found(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    # УрФУ ведёт Михаил: Анне этот вуз не виден, значит и его контакты тоже.
+    urfu = await university_by(session, "УрФУ")
+    created = await client.post(
+        f"/api/v1/universities/{urfu.id}/contacts",
+        json={"full_name": "Сергей Орлов", "email": "orlov@example.com"},
+        headers=as_user(MIKHAIL_KAM),
+    )
+
+    card = await client.get(f"/api/v1/universities/{urfu.id}", headers=as_user(ANNA_KAM))
+    listed = await client.get(f"/api/v1/universities/{urfu.id}/contacts", headers=as_user(ANNA_KAM))
+    added = await client.post(
+        f"/api/v1/universities/{urfu.id}/contacts",
+        json={"full_name": "Чужой человек"},
+        headers=as_user(ANNA_KAM),
+    )
+    archived = await client.post(
+        f"/api/v1/contacts/{created.json()['id']}/archive", headers=as_user(ANNA_KAM)
+    )
+    missing = await client.get(
+        f"/api/v1/universities/{uuid.uuid4()}/contacts", headers=as_user(ALINA_ADMIN)
+    )
+
+    assert created.status_code == 201, created.text
+    # Карточка вуза и его контакты подчиняются одному правилу видимости.
+    assert (card.status_code, listed.status_code) == (404, 404)
+    assert added.status_code == 404
+    assert archived.status_code == 404
+    assert missing.status_code == 404
+
+
+async def test_archived_contact_leaves_the_list_without_its_data(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    mgtu = await university_by(session, "МГТУ")
+    created = await client.post(
+        f"/api/v1/universities/{mgtu.id}/contacts",
+        json={"full_name": "Ольга Смирнова", "email": "olga@example.com", "phone": "+7 900"},
+        headers=as_user(ANNA_KAM),
+    )
+
+    archived = await client.post(
+        f"/api/v1/contacts/{created.json()['id']}/archive", headers=as_user(ANNA_KAM)
+    )
+    listed = await client.get(f"/api/v1/universities/{mgtu.id}/contacts", headers=as_user(ANNA_KAM))
+    stored = await session.get(ContactPerson, uuid.UUID(created.json()["id"]))
+
+    assert archived.status_code == 200
+    assert (archived.json()["email"], archived.json()["phone"]) == (None, None)
+    assert "Ольга Смирнова" not in [item["full_name"] for item in listed.json()]
+    assert stored is not None
+    assert (stored.email_enc, stored.phone_enc) == (None, None)

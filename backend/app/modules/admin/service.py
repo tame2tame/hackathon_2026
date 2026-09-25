@@ -35,6 +35,7 @@ from app.modules.catalogs.models import (
     University,
     Vendor,
 )
+from app.modules.catalogs.service import ensure_university_visible
 from app.modules.interactions.models import Interaction
 from app.modules.notifications.settings import STALLED_ESCALATION_KEY, EscalationSetting
 from app.modules.radar.service import recompute_signals
@@ -331,11 +332,18 @@ def _contact_out(contact: ContactPerson) -> ContactOut:
 async def list_contacts(
     session: AsyncSession, user: CurrentUser, university_id: uuid.UUID, trace_id: str | None = None
 ) -> list[ContactOut]:
-    """Просмотр контактов — обращение к персональным данным, поэтому пишется в аудит."""
+    """Просмотр контактов — обращение к персональным данным, поэтому пишется в аудит.
+
+    Контакты видит тот, кому виден сам вуз: иначе карточка вуза отвечала бы «не найдено»,
+    а его контакты с почтой и телефоном — отдавались бы любому сотруднику.
+    """
+    await ensure_university_visible(session, user, university_id)
     contacts = list(
         await session.scalars(
             select(ContactPerson)
-            .where(ContactPerson.university_id == university_id)
+            .where(
+                ContactPerson.university_id == university_id, ContactPerson.archived_at.is_(None)
+            )
             .order_by(ContactPerson.full_name)
         )
     )
@@ -360,8 +368,7 @@ async def create_contact(
     payload: ContactCreate,
     trace_id: str | None = None,
 ) -> ContactOut:
-    if await session.get(University, university_id) is None:
-        raise AppError(ErrorCode.NOT_FOUND, "Вуз не найден.")
+    await ensure_university_visible(session, user, university_id)
     if (payload.email or payload.phone) and not crypto.is_configured():
         raise AppError(
             ErrorCode.VALIDATION_ERROR,
@@ -396,9 +403,13 @@ async def archive_contact(
     session: AsyncSession, user: CurrentUser, contact_id: uuid.UUID, trace_id: str | None = None
 ) -> ContactOut:
     contact = await session.get(ContactPerson, contact_id)
-    if contact is None:
+    if contact is None or contact.archived_at is not None:
         raise AppError(ErrorCode.NOT_FOUND, "Контакт не найден.")
+    await ensure_university_visible(session, user, contact.university_id)
     contact.archived_at = datetime.now(UTC)
+    # Контакт больше не нужен для работы: хранить его почту и телефон незачем.
+    contact.email_enc = None
+    contact.phone_enc = None
     session.add(_audit(user, "contact.archived", "contact_person", contact.id, trace_id=trace_id))
     await session.commit()
     return _contact_out(contact)

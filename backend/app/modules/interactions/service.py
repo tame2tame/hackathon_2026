@@ -395,7 +395,7 @@ async def create_interaction(
     owner_id = payload.owner_id or user.id
     if owner_id != user.id:
         _ensure_can_assign(user)
-        await _assignable_user(session, user, owner_id)
+        await assignable_user(session, user, owner_id)
 
     same_counterparty = (
         Interaction.university_id == university_id
@@ -1015,9 +1015,7 @@ def _ensure_can_assign(user: CurrentUser) -> None:
         )
 
 
-async def _assignable_user(
-    session: AsyncSession, user: CurrentUser, owner_id: uuid.UUID
-) -> AppUser:
+async def assignable_user(session: AsyncSession, user: CurrentUser, owner_id: uuid.UUID) -> AppUser:
     target = await session.scalar(select(AppUser).where(AppUser.id == owner_id))
     if target is None or not target.is_active:
         raise AppError(
@@ -1030,7 +1028,7 @@ async def _assignable_user(
     return target
 
 
-async def _assign_owner(
+async def assign_owner(
     session: AsyncSession,
     user: CurrentUser,
     interaction: Interaction,
@@ -1085,10 +1083,10 @@ async def change_owner(
             ErrorCode.INTERACTION_VERSION_CONFLICT,
             "Взаимодействие уже изменил другой пользователь. Обновите карточку и повторите.",
         )
-    target = await _assignable_user(session, user, payload.owner_id)
+    target = await assignable_user(session, user, payload.owner_id)
     if interaction.owner_user_id != target.id:
         reason = payload.reason.strip()
-        await _assign_owner(session, user, interaction, target, reason, trace_id, now)
+        await assign_owner(session, user, interaction, target, reason, trace_id, now)
     await session.commit()
     return await get_interaction_detail(session, user, interaction_id, now)
 
@@ -1102,13 +1100,13 @@ async def bulk_change_owner(
 ) -> BulkResult:
     moment = now or datetime.now(UTC)
     _ensure_can_assign(user)
-    target = await _assignable_user(session, user, payload.owner_id)
+    target = await assignable_user(session, user, payload.owner_id)
     reason = payload.reason.strip()
 
     async def assign(interaction_id: uuid.UUID) -> int:
         interaction = await _locked_interaction(session, user, interaction_id)
         if interaction.owner_user_id != target.id:
-            await _assign_owner(session, user, interaction, target, reason, trace_id, moment)
+            await assign_owner(session, user, interaction, target, reason, trace_id, moment)
         return interaction.version
 
     return await _bulk(session, payload.interaction_ids, assign)
