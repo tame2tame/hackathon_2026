@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     String,
     UniqueConstraint,
     text,
@@ -32,6 +33,20 @@ class WorkflowVersion(UUIDPrimaryKey, Timestamps, Base):
     __table_args__ = (
         UniqueConstraint("template_id", "version_no"),
         CheckConstraint("status IN ('draft', 'published', 'retired')", name="status"),
+        # У процесса одна действующая схема и один черновик: иначе две публикации подряд
+        # оставляли две «действующие» версии, и записи второй никуда не переносились.
+        Index(
+            "uq_workflow_version_published",
+            "template_id",
+            unique=True,
+            postgresql_where=text("status = 'published'"),
+        ),
+        Index(
+            "uq_workflow_version_draft",
+            "template_id",
+            unique=True,
+            postgresql_where=text("status = 'draft'"),
+        ),
     )
 
     template_id: Mapped[uuid.UUID] = mapped_column(

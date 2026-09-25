@@ -3,8 +3,10 @@
 from itertools import pairwise
 from typing import Any
 
+import pytest
 from httpx import AsyncClient, Response
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.interactions.models import Interaction, Transition
@@ -396,3 +398,37 @@ async def test_stage_name_cannot_hide_a_line_break(
     # Название этапа попадает в тему письма-уведомления: перенос строки туда пускать нельзя.
     assert response.status_code == 422
     assert response.json()["code"] == "VALIDATION_ERROR"
+
+
+async def test_process_has_one_draft_at_a_time(client: AsyncClient, session: AsyncSession) -> None:
+    template = await default_template(session)
+
+    first = await make_draft(client, str(template.id))
+    second = await make_draft(client, str(template.id))
+    drafts = await session.scalar(
+        select(func.count())
+        .select_from(WorkflowVersion)
+        .where(WorkflowVersion.template_id == template.id, WorkflowVersion.status == "draft")
+    )
+
+    # Второе «начать изменения» открывает тот же черновик, а не параллельный.
+    assert second["id"] == first["id"]
+    assert drafts == 1
+
+
+async def test_database_refuses_a_second_published_scheme(session: AsyncSession) -> None:
+    template = await default_template(session)
+    latest = await session.scalar(
+        select(func.max(WorkflowVersion.version_no)).where(
+            WorkflowVersion.template_id == template.id
+        )
+    )
+    assert latest is not None
+
+    # Даже если код ошибётся, база не даст процессу две действующие схемы.
+    extra = WorkflowVersion(template_id=template.id, version_no=latest + 1, status="published")
+    savepoint = await session.begin_nested()
+    session.add(extra)
+    with pytest.raises(IntegrityError):
+        await session.flush()
+    await savepoint.rollback()

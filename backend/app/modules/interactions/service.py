@@ -75,6 +75,7 @@ from app.modules.radar.models import RadarSignal
 from app.modules.radar.rules import Severity, SignalKind
 from app.modules.radar.schemas import SignalOut
 from app.modules.radar.service import like_pattern, open_signals_by_interaction, recompute_signals
+from app.modules.workflow.editor import move_to_current_scheme
 from app.modules.workflow.models import Stage, StageNorm, WorkflowVersion
 from app.modules.workflow.schemas import StageRef
 from app.modules.workflow.service import allowed_transitions, get_transition_rule, group_process
@@ -548,12 +549,33 @@ async def create_transition(
             errors=[FieldError(field="comment", message="Обязательное поле")],
         )
     attachments = await _own_attachments(session, interaction_id, payload.attachment_ids)
-    if rule.requires_attachment and not attachments:
+    used = [attachment for attachment in attachments if attachment.transition_id is not None]
+    if used:
+        # Документ уже подтвердил другой переход: второй раз им не расплатиться,
+        # иначе теряется след, каким файлом подтверждён прошлый этап.
         raise AppError(
-            ErrorCode.WF_ATTACHMENT_REQUIRED,
-            f"Приложите документ: без него переход на этап «{to_stage.name}» недоступен.",
-            errors=[FieldError(field="attachment_ids", message="Нужен хотя бы один документ")],
+            ErrorCode.VALIDATION_ERROR,
+            "Этот документ уже подтвердил другой переход: приложите новый.",
+            errors=[FieldError(field="attachment_ids", message="Документ уже использован")],
         )
+    if rule.requires_attachment:
+        from_stage = await session.get(Stage, interaction.current_stage_id)
+        required = set(from_stage.required_document_types) if from_stage else set()
+        # Засчитывается документ, загруженный на текущем этапе и нужного типа, — как в радаре.
+        suitable = [
+            attachment
+            for attachment in attachments
+            if attachment.stage_id == interaction.current_stage_id
+            and (not required or attachment.document_type in required)
+        ]
+        if not suitable:
+            wanted = ", ".join(sorted(required)) if required else "любой"
+            raise AppError(
+                ErrorCode.WF_ATTACHMENT_REQUIRED,
+                f"Приложите документ этого этапа (тип: {wanted}): без него переход "
+                f"на этап «{to_stage.name}» недоступен.",
+                errors=[FieldError(field="attachment_ids", message="Нужен документ этапа")],
+            )
 
     transition = await _apply_transition(
         session,
@@ -937,6 +959,9 @@ async def change_status(
     interaction.status = payload.status
     interaction.last_activity_at = now
     interaction.version += 1
+    if payload.status in ("active", "paused"):
+        # Пока запись была завершена или отменена, процесс могли изменить.
+        await move_to_current_scheme(session, user, interaction, now)
     session.add(
         AuditLog(
             actor_user_id=user.id,

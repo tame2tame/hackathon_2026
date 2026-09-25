@@ -1,10 +1,15 @@
 """Состояние записи: пауза, завершение, отмена и возврат в работу."""
 
+import uuid
 from typing import Any
 
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.interactions.models import Interaction
+from app.modules.workflow.models import WorkflowVersion
 from tests.api import find, stage_id
+from tests.test_workflow_editor import draft_without, publish
 from tests.users import ANNA_KAM, MIKHAIL_KAM, ROMAN_MANAGER, as_user
 
 INTERACTIONS = "/api/v1/interactions"
@@ -133,3 +138,25 @@ async def test_foreign_record_status_is_not_found(client: AsyncClient) -> None:
     response = await set_status(client, foreign, "paused", ANNA_KAM, reason="Хочу")
 
     assert response.status_code == 404
+
+
+async def test_restored_record_follows_the_current_process(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    kfu = await find(client, ANNA_KAM, search="КФУ")
+    cancelled = await set_status(client, kfu, "cancelled", reason="Заведено по ошибке")
+    # Пока запись отменена, процесс меняют: её этап «Встреча» из схемы убирают.
+    draft = await draft_without(client, session, {"meeting"})
+    published = await publish(client, draft)
+
+    restored = await set_status(client, cancelled.json(), "active")
+    record = await session.get(Interaction, uuid.UUID(kfu["id"]))
+    await session.refresh(record)
+    scheme = await session.get(WorkflowVersion, record.workflow_version_id)
+
+    assert published.status_code == 200, published.text
+    assert restored.status_code == 200, restored.text
+    # Запись не осталась на выведенной схеме: она на действующей и на соседнем этапе.
+    assert scheme is not None
+    assert scheme.status == "published"
+    assert restored.json()["stage"]["code"] == "communication"

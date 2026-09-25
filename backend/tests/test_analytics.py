@@ -12,6 +12,7 @@ from app.modules.analytics.rating import DEFAULT_WEIGHTS, Entry, normalize_weigh
 from app.modules.catalogs.models import CounterpartyGroup, Program, University
 from app.modules.metrics.models import ProgramMetric
 from app.modules.workflow.defaults import INDIVIDUALS_GROUP
+from tests.test_workflow_editor import default_template, make_draft, publish
 from tests.users import ALINA_ADMIN, ANNA_KAM, ROMAN_MANAGER, as_user
 
 RATING = "/api/v1/analytics/rating"
@@ -225,3 +226,44 @@ async def test_chart_page_survives_empty_data(client: AsyncClient, session: Asyn
 
     assert report.status_code == 200, report.text
     assert report.content.startswith(b"%PDF")
+
+
+async def test_funnel_keeps_every_stage_and_skips_cancelled(client: AsyncClient) -> None:
+    before = await client.get("/api/v1/analytics/stats/funnel", headers=as_user(ANNA_KAM))
+    kfu = next(
+        item
+        for item in (
+            await client.get(
+                "/api/v1/interactions", params={"search": "КФУ"}, headers=as_user(ANNA_KAM)
+            )
+        ).json()["items"]
+    )
+    await client.put(
+        f"/api/v1/interactions/{kfu['id']}/status",
+        json={"status": "cancelled", "reason": "Ошибка", "expected_version": kfu["version"]},
+        headers=as_user(ANNA_KAM),
+    )
+    after = await client.get("/api/v1/analytics/stats/funnel", headers=as_user(ANNA_KAM))
+
+    # У КАМа раньше пропадали этапы без его записей: теперь все 14 этапов процесса на месте.
+    assert len(before.json()["labels"]) == 14
+    # Отменённая запись из воронки уходит.
+    assert sum(after.json()["values"]) == sum(before.json()["values"]) - 1
+
+
+async def test_stage_durations_survive_a_publication(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    before = await client.get(
+        "/api/v1/analytics/stats/stage-durations", headers=as_user(ALINA_ADMIN)
+    )
+    # Публикуем копию процесса без изменений: история переходов от этого не должна пропасть.
+    draft = await make_draft(client, str((await default_template(session)).id))
+    published = await publish(client, draft)
+    after = await client.get(
+        "/api/v1/analytics/stats/stage-durations", headers=as_user(ALINA_ADMIN)
+    )
+
+    assert published.status_code == 200, published.text
+    assert before.json()["labels"]
+    assert after.json() == before.json()

@@ -53,6 +53,15 @@ async def _version(session: AsyncSession, version_id: uuid.UUID) -> WorkflowVers
     return version
 
 
+async def _locked_template(session: AsyncSession, template_id: uuid.UUID) -> WorkflowTemplate:
+    template = await session.scalar(
+        select(WorkflowTemplate).where(WorkflowTemplate.id == template_id).with_for_update()
+    )
+    if template is None:
+        raise AppError(ErrorCode.NOT_FOUND, "Шаблон процесса не найден.")
+    return template
+
+
 async def _draft(
     session: AsyncSession, version_id: uuid.UUID, lock: bool = False
 ) -> WorkflowVersion:
@@ -156,10 +165,18 @@ async def create_template(
 async def create_draft(
     session: AsyncSession, user: CurrentUser, template_id: uuid.UUID, trace_id: str | None = None
 ) -> WorkflowVersion:
-    """Черновик — копия последней версии шаблона: править легче, чем собирать заново."""
-    template = await session.get(WorkflowTemplate, template_id)
-    if template is None:
-        raise AppError(ErrorCode.NOT_FOUND, "Шаблон процесса не найден.")
+    """Черновик — копия действующей схемы: править легче, чем собирать заново.
+
+    Черновик у процесса один: если его уже начали, возвращается он, а не второй параллельный.
+    """
+    template = await _locked_template(session, template_id)
+    existing = await session.scalar(
+        select(WorkflowVersion).where(
+            WorkflowVersion.template_id == template.id, WorkflowVersion.status == "draft"
+        )
+    )
+    if existing is not None:
+        return existing
 
     latest = await session.scalar(
         select(WorkflowVersion)
@@ -532,6 +549,9 @@ async def publish_version(
 ) -> WorkflowVersion:
     """Публикует черновик и переводит на него открытые взаимодействия прежней схемы."""
     now = now or datetime.now(UTC)
+    # Сначала процесс целиком: публикации одного процесса идут по очереди, и вторая видит
+    # схему, которую опубликовала первая, — записи переносятся с неё, а не теряются.
+    await _locked_template(session, (await _version(session, version_id)).template_id)
     draft = await _draft(session, version_id, lock=True)
     plan = await _publish_plan(session, draft, payload, lock=True)
     renamed = plan.renamed
@@ -546,6 +566,9 @@ async def publish_version(
     if plan.previous is not None:
         moved = await _move_interactions(session, user, plan, plan.previous, draft, now)
         plan.previous.status = "retired"
+        # Прежняя схема уходит в архив отдельной записью до того, как черновик станет
+        # действующим: уникальный индекс не допускает двух действующих схем ни на миг.
+        await session.flush()
 
     draft.status = "published"
     draft.published_at = now
@@ -571,6 +594,60 @@ async def publish_version(
     await mark_changed(session, moved, "workflow")
     await session.commit()
     return draft
+
+
+async def move_to_current_scheme(
+    session: AsyncSession, user: CurrentUser, interaction: Interaction, now: datetime
+) -> None:
+    """Запись вернулась в работу, а её схема за это время выведена: переводим на действующую.
+
+    Правило то же, что при публикации: тот же этап, если он остался, иначе — ближайший
+    предыдущий, а если такого нет — следующий. Иначе запись жила бы по правилам выведенной
+    схемы и выпадала бы из статистики.
+    """
+    version = await session.get(WorkflowVersion, interaction.workflow_version_id)
+    if version is None or version.status == "published":
+        return
+    current = await session.scalar(
+        select(WorkflowVersion).where(
+            WorkflowVersion.template_id == version.template_id,
+            WorkflowVersion.status == "published",
+        )
+    )
+    if current is None:
+        return
+    old_stages = list(
+        await session.scalars(
+            select(Stage).where(Stage.version_id == version.id).order_by(Stage.position)
+        )
+    )
+    new_stages = {
+        stage.code: stage
+        for stage in await session.scalars(select(Stage).where(Stage.version_id == current.id))
+    }
+    index, old = next(
+        (position, stage)
+        for position, stage in enumerate(old_stages)
+        if stage.id == interaction.current_stage_id
+    )
+    target = new_stages[
+        old.code if old.code in new_stages else _neighbour(old_stages, index, new_stages)
+    ]
+    session.add(
+        Transition(
+            interaction_id=interaction.id,
+            from_stage_id=interaction.current_stage_id,
+            to_stage_id=target.id,
+            occurred_at=now,
+            actor_user_id=user.id,
+            comment="Запись вернулась в работу: она переведена на действующую схему процесса",
+            source="migration",
+        )
+    )
+    if target.code != old.code:
+        interaction.stage_entered_at = now
+    interaction.current_stage_id = target.id
+    interaction.workflow_version_id = current.id
 
 
 async def _move_interactions(

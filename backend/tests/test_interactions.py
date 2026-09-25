@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -233,3 +234,44 @@ async def test_kam_returns_to_the_previous_stage_without_a_document(client: Asyn
     assert silent.json()["code"] == "WF_COMMENT_REQUIRED"
     assert returned.status_code == 201, returned.text
     assert returned.json()["interaction"]["stage"]["code"] == "documents_revision"
+
+
+async def transit(
+    client: AsyncClient, record: dict[str, Any], target: str, attachments: list[str]
+) -> Any:
+    return await client.post(
+        f"/api/v1/interactions/{record['id']}/transitions",
+        json={
+            "to_stage_id": await stage_id(client, target),
+            "comment": "Документы на месте",
+            "expected_version": record["version"],
+            "attachment_ids": attachments,
+        },
+        headers=as_user(ANNA_KAM),
+    )
+
+
+async def test_signing_needs_a_signed_contract_not_any_file(client: AsyncClient) -> None:
+    mgtu = await find(client, ANNA_KAM, stage_code="signing")
+    untyped = await upload_pdf(client, ANNA_KAM, mgtu["id"])
+
+    refused = await transit(client, mgtu, "materials_transfer", [untyped["id"]])
+
+    # Раньше проходил любой файл записи: теперь нужен документ того типа, что требует этап.
+    assert refused.status_code == 422
+    assert refused.json()["code"] == "WF_ATTACHMENT_REQUIRED"
+    assert "signed_contract" in refused.json()["detail"]
+
+
+async def test_one_document_confirms_one_transition(client: AsyncClient) -> None:
+    mgtu = await find(client, ANNA_KAM, stage_code="signing")
+    contract = await upload_pdf(client, ANNA_KAM, mgtu["id"], "signed_contract")
+
+    first = await transit(client, mgtu, "materials_transfer", [contract["id"]])
+    moved = first.json()["interaction"]
+    reused = await transit(client, moved, "implementation_support", [contract["id"]])
+
+    assert first.status_code == 201, first.text
+    # Тот же файл не подтвердит второй этап и не перепишет след первого перехода.
+    assert reused.status_code == 422, reused.text
+    assert reused.json()["code"] == "VALIDATION_ERROR"
