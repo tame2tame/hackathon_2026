@@ -39,3 +39,5 @@ bootstrap().catch(() => {
     root.textContent =
       "Не удалось запустить приложение. Проверьте конфигурацию режима и доступность Service Worker, затем обновите страницу.";
 });
+
+import "./service.css";

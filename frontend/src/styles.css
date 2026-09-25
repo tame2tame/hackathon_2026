@@ -324,7 +324,7 @@ main {
   color: #fff;
   box-shadow: 0 3px 7px #855ccd18;
 }
-.button-primary:hover {
+.button-primary:hover:not(:disabled) {
   background: #7148b8;
 }
 .button-outline {
@@ -332,7 +332,7 @@ main {
   background: #fff9;
   color: #62576e;
 }
-.button-outline:hover {
+.button-outline:hover:not(:disabled) {
   background: #f3eef9;
 }
 .button-ghost {
@@ -1803,7 +1803,7 @@ h1 {
 .button-primary {
   background: #8308e9;
 }
-.button-primary:hover {
+.button-primary:hover:not(:disabled) {
   background: #6e00c8;
 }
 .nav-link.active {

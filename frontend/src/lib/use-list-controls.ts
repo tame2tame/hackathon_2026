@@ -33,6 +33,7 @@ export function useListControls() {
     setKind: (kind: string) => update({ kind }),
     setSeverity: (severity: string) => update({ severity }),
     setStage: (stage: string) => update({ stage }),
+    setDirection: (direction: string) => update({ direction }),
     setOwner: (owner: string) => update({ owner }),
     setPage: (page: number) => update({ page }),
     reset: () => {
@@ -48,7 +49,8 @@ export function useListControls() {
       state.kind ||
       state.severity ||
       state.stage ||
-      state.owner,
+      state.owner ||
+      state.direction,
     ),
   };
 }

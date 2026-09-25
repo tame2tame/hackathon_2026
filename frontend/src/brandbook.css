@@ -1426,7 +1426,7 @@ main:focus {
   }
   .section-heading .button {
     padding: 8px;
-    font-size: 0;
+    font-size: 11px;
   }
   .section-heading .button svg {
     width: 18px;

@@ -79,14 +79,12 @@ export const mockWorkflow: Workflow = {
 };
 // Возвраты разрешены с комментарием и без документа.
 mockWorkflow.transitions = [
-  ...codes
-    .slice(1)
-    .map((_, i) => ({
-      from_stage_id: uid(101 + i),
-      to_stage_id: uid(100 + i),
-      requires_comment: true,
-      requires_attachment: false,
-    })),
+  ...codes.slice(1).map((_, i) => ({
+    from_stage_id: uid(101 + i),
+    to_stage_id: uid(100 + i),
+    requires_comment: true,
+    requires_attachment: false,
+  })),
   ...codes.slice(0, -1).map((_, i) => ({
     from_stage_id: uid(100 + i),
     to_stage_id: uid(101 + i),
@@ -218,9 +216,13 @@ export function createFixtures(): Interaction[] {
         name: i.program,
         priority: 0,
         direction: {
-          id: uid(450 + n),
+          id: uid(
+            450 + initialData.findIndex((item) => item.program === i.program),
+          ),
           name: i.program,
-          code: "direction-" + n,
+          code:
+            "direction-" +
+            initialData.findIndex((item) => item.program === i.program),
         },
       },
       product: {
@@ -239,17 +241,24 @@ export function createFixtures(): Interaction[] {
       open_signals: signals.map(({ kind, severity }) => ({ kind, severity })),
       workflow_version_id: mockWorkflow.id,
       contract: null,
-      history: [
-        {
-          id: uid(700 + n),
-          from_stage: null,
-          to_stage: stage,
-          occurred_at: time,
+      history: mockWorkflow.stages
+        .slice(0, mockWorkflow.stages.findIndex((s) => s.id === stage.id) + 1)
+        .map((s, j, all) => ({
+          id: uid(10000 + n * 100 + j),
+          from_stage: j ? all[j - 1] : null,
+          to_stage: s,
+          occurred_at: new Date(
+            Date.parse(time) -
+              all
+                .slice(j + 1)
+                .reduce((sum, _, k) => sum + (3 + ((n + k + j) % 9)), 0) *
+                86400000,
+          ).toISOString(),
           actor: { id: owner.id, full_name: owner.full_name },
-          comment: "Начальное состояние демонстрации",
+          comment: "Синтетическая история демонстрации",
           source: "demo",
-        },
-      ],
+        }))
+        .reverse(),
       allowed_transitions: allowedFor(stage.id),
       signals,
     };

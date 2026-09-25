@@ -1,4 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+import { BulkActions, Kanban } from "./pages/BulkActions";
+import { ClientsPage, Contacts } from "./pages/Clients";
+import { SavedViews } from "./pages/SavedViews";
+import { useResource } from "./pages/shared";
+import {
+  LiveUpdates,
+  MessagesPage,
+  NotificationsPage,
+  HelpPage,
+} from "./pages/Communication";
+import { CreateRecord } from "./pages/CreateRecord";
+import { Documents, RecordTools } from "./pages/RecordTools";
+import { Select } from "./components/ui/select";
+
+import { RadarCharts } from "./pages/RadarCharts";
+import { Menu } from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Link,
   NavLink,
@@ -34,13 +50,9 @@ import {
   CirclePause,
   UserRound,
   CheckCircle2,
-  SlidersHorizontal,
-  ChevronDown,
   ArrowLeft,
-  FileText,
-  History,
 } from "lucide-react";
-import { navigation, planned, Heading, Planned, Empty } from "./App";
+import { navigation, planned, Heading, Empty } from "./App";
 import { Button } from "./components/ui/button";
 import { roleNames, kinds } from "./lib/data";
 import { api } from "./api/runtime";
@@ -64,6 +76,11 @@ import {
   login,
   logout,
 } from "./auth/session";
+const ServicePage = lazy(() =>
+  import("./pages/ServicePage").then((module) => ({
+    default: module.ServicePage,
+  })),
+);
 const icons = {
   stage_overdue: Clock3,
   license_expiring: CalendarClock,
@@ -82,10 +99,12 @@ export default function ConnectedApp() {
     "loading",
   );
   const [identity, setIdentity] = useState(currentDevUser);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [changing, setChanging] = useState(false);
   const client = useQueryClient();
   const location = useLocation();
   useEffect(() => {
+    setMenuOpen(false);
     const name =
       navigation.find((n) => n.path === location.pathname)?.title || "Карточка";
     document.title = `${name} · Радар вузов`;
@@ -185,44 +204,18 @@ export default function ConnectedApp() {
         </div>
         <nav aria-label="Главная навигация">
           <div className="nav-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
-          {allowed
-            .filter((n) => !planned[n.path])
-            .map((n) => (
-              <NavLink
-                key={n.path}
-                to={n.path}
-                className={({ isActive }) =>
-                  isActive ? "nav-link active" : "nav-link"
-                }
-              >
-                <n.icon size={18} />
-                <span>{n.title}</span>
-              </NavLink>
-            ))}
-          <details
-            className="planned-nav"
-            open={Object.keys(planned).includes(location.pathname) || undefined}
-          >
-            <summary>
-              Будущие разделы <ChevronDown size={15} />
-            </summary>
-            <p>В разработке</p>
-            {allowed
-              .filter((n) => planned[n.path])
-              .map((n) => (
-                <NavLink
-                  key={n.path}
-                  to={n.path}
-                  className={({ isActive }) =>
-                    isActive ? "nav-link active" : "nav-link"
-                  }
-                >
-                  <n.icon size={17} />
-                  <span>{n.title}</span>
-                  <small>Скоро</small>
-                </NavLink>
-              ))}
-          </details>
+          {allowed.map((n) => (
+            <NavLink
+              key={n.path}
+              to={n.path}
+              className={({ isActive }) =>
+                isActive ? "nav-link active" : "nav-link"
+              }
+            >
+              <n.icon size={18} />
+              <span>{n.title}</span>
+            </NavLink>
+          ))}
         </nav>
         <div className="sidebar-bottom">
           <ShieldCheck size={15} />{" "}
@@ -234,6 +227,44 @@ export default function ConnectedApp() {
       </aside>
       <div className="app-body">
         <header className="topbar">
+          <Dialog.Root open={menuOpen} onOpenChange={setMenuOpen}>
+            <Dialog.Trigger
+              className="mobile-menu-trigger"
+              aria-label="Открыть меню"
+            >
+              <Menu size={22} />
+            </Dialog.Trigger>
+            <Dialog.Portal>
+              <Dialog.Overlay className="dialog-overlay" />
+              <Dialog.Content
+                className="mobile-drawer"
+                aria-describedby={undefined}
+              >
+                <Dialog.Title>Рабочее пространство</Dialog.Title>
+                <Dialog.Close
+                  className="dialog-close"
+                  aria-label="Закрыть меню"
+                >
+                  <X />
+                </Dialog.Close>
+                <nav aria-label="Все разделы">
+                  {allowed.map((n) => (
+                    <NavLink
+                      key={n.path}
+                      to={n.path}
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      <n.icon size={20} />
+                      {n.title}
+                    </NavLink>
+                  ))}
+                </nav>
+                <p>
+                  {profile.full_name} · {roleNames[profile.role]}
+                </p>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
           <div className="breadcrumb">
             Рабочее пространство <ChevronRight size={13} />
             <strong>
@@ -252,7 +283,7 @@ export default function ConnectedApp() {
             {mode !== "keycloak" ? (
               <label>
                 <span className="sr-only">Пользователь разработки</span>
-                <select
+                <Select
                   aria-label="Пользователь разработки"
                   className="user-select"
                   value={identity}
@@ -263,7 +294,7 @@ export default function ConnectedApp() {
                       {u.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             ) : (
               <Button
@@ -289,6 +320,7 @@ export default function ConnectedApp() {
           </div>
         </header>
         <main id="main" tabIndex={-1}>
+          <LiveUpdates identity={profile.id} />
           <Routes>
             <Route path="/" element={<Navigate to="/radar" replace />} />
             <Route
@@ -317,7 +349,9 @@ export default function ConnectedApp() {
                 path={path}
                 element={
                   allowed.some((n) => n.path === path) ? (
-                    <Planned path={path} />
+                    <Suspense fallback={<Loading />}>
+                      <ServicePage path={path} me={profile} />
+                    </Suspense>
                   ) : (
                     <Empty
                       title="Раздел недоступен"
@@ -327,7 +361,10 @@ export default function ConnectedApp() {
                 }
               />
             ))}
-            <Route path="/help/*" element={<Help />} />
+            <Route path="/help/*" element={<HelpPage />} />
+            <Route path="/clients" element={<ClientsPage />} />
+            <Route path="/messages" element={<MessagesPage me={profile} />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
             <Route
               path="*"
               element={
@@ -595,8 +632,9 @@ function GroupSelect({
   return (
     <div className="group-filter">
       <label htmlFor="counterparty-group">Группа контрагентов</label>
-      <select
+      <Select
         id="counterparty-group"
+        aria-label="Группа контрагентов"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={!groups.data}
@@ -607,7 +645,7 @@ function GroupSelect({
             {g.name}
           </option>
         ))}
-      </select>
+      </Select>
       {groups.isError && (
         <span role="alert">
           Не удалось загрузить группы.{" "}
@@ -733,6 +771,8 @@ function RadarPage({ me }: { me: Me }) {
           })}
         </section>
       )}
+      <RadarCharts group={group} />
+      <SavedViews page="radar" />
       <section className="panel">
         <div className="section-heading">
           <div>
@@ -758,7 +798,7 @@ function RadarPage({ me }: { me: Me }) {
         </div>
         <div className="filters">
           <SearchField value={search} onChange={setSearch} />
-          <select
+          <Select
             aria-label="Важность"
             value={severity}
             onChange={(e) => setSeverity(e.target.value as typeof severity)}
@@ -769,7 +809,7 @@ function RadarPage({ me }: { me: Me }) {
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
           {kind && (
             <button className="filter-chip" onClick={() => setKind("")}>
               {kinds[kind]} <X size={14} />
@@ -863,6 +903,7 @@ export function InteractionRows({
 }
 function InteractionsPage({ universityId }: { universityId?: string }) {
   const controls = useListControls();
+  const [view, setView] = useState("list");
   const {
     group,
     setGroup,
@@ -871,6 +912,8 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
     value,
     stage,
     setStage,
+    direction,
+    setDirection,
     owner,
     setOwner,
     page,
@@ -892,7 +935,9 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
     queryKey: ["users"],
     queryFn: ({ signal }) => api.users(signal),
   });
+  const directions = useResource<Schema["DirectionRef"][]>("/directions");
   const filters: InteractionFilters = {
+    direction_id: direction ? [direction] : undefined,
     group_id: group ? [group] : undefined,
     search: value || undefined,
     stage_code: stage ? [stage] : undefined,
@@ -912,22 +957,50 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
           eyebrow="РАБОЧЕЕ ПРОСТРАНСТВО"
           title="Взаимодействия"
           text="Вузы и клиенты, программы и этапы совместной работы."
-        />
+        >
+          <CreateRecord />
+        </Heading>
       )}
       {!universityId && (
         <GroupSelect value={group} onChange={setGroup} groups={groups} />
       )}
+      <SavedViews page="interactions" />
       <section className="panel">
         <div className="section-heading">
           <div>
             <h2>Все взаимодействия</h2>
             <p>Контрагенты, ответственные и текущие этапы</p>
           </div>
-          <SlidersHorizontal size={20} aria-hidden="true" />
+          <div className="service-tabs">
+            <button
+              className={view === "list" ? "active" : ""}
+              onClick={() => setView("list")}
+            >
+              Список
+            </button>
+            <button
+              className={view === "board" ? "active" : ""}
+              onClick={() => setView("board")}
+            >
+              Доска
+            </button>
+          </div>
         </div>
         <div className="filters">
           <SearchField value={search} onChange={setSearch} />
-          <select
+          <Select
+            aria-label="Направление"
+            value={direction}
+            onChange={(e) => setDirection(e.target.value)}
+          >
+            <option value="">Все направления</option>
+            {directions.data?.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </Select>
+          <Select
             aria-label="Этап"
             value={stage}
             onChange={(e) => setStage(e.target.value)}
@@ -941,8 +1014,8 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
                 {s.name}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             aria-label="Ответственный"
             value={owner}
             onChange={(e) => setOwner(e.target.value)}
@@ -954,7 +1027,7 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
                 {u.full_name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <FilterSummary
           filtered={controls.filtered}
@@ -980,7 +1053,18 @@ function InteractionsPage({ universityId }: { universityId?: string }) {
           />
         ) : (
           <>
-            <InteractionRows items={results.data.items} />
+            <BulkActions items={results.data.items} workflow={workflow.data} />
+            {view === "board" ? (
+              <>
+                <p className="board-note">
+                  Доска показывает записи текущей страницы. Откройте карточку
+                  для смены этапа.
+                </p>
+                <Kanban items={results.data.items} />
+              </>
+            ) : (
+              <InteractionRows items={results.data.items} />
+            )}
             {!results.data.items.length && (
               <ListEmpty
                 filtered={controls.filtered}
@@ -1016,6 +1100,7 @@ function Detail({ card }: { card: Card }) {
   const [open, setOpen] = useState(false);
   const [comment, setComment] = useState("");
   const [targetId, setTargetId] = useState("");
+  const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [tab, setTab] = useState("История");
   const [success, setSuccess] = useState("");
   const target = card.allowed_transitions.find(
@@ -1027,7 +1112,7 @@ function Detail({ card }: { card: Card }) {
         to_stage_id: targetId,
         comment,
         expected_version: card.version,
-        attachment_ids: [],
+        attachment_ids: attachmentIds,
       }),
     retry: false,
     onSuccess: (result) => {
@@ -1067,6 +1152,7 @@ function Detail({ card }: { card: Card }) {
           }
           onClick={() => {
             setTargetId("");
+            setAttachmentIds([]);
             mutation.reset();
             setOpen(true);
           }}
@@ -1259,15 +1345,13 @@ function Detail({ card }: { card: Card }) {
           ) : (
             <>
               <h3>Документы</h3>
-              <p>
-                Загрузка документов ещё в разработке. Переходы, требующие файл,
-                пока недоступны.
-              </p>
+              <Documents id={card.id} />
             </>
           )}
         </div>
       </section>
 
+      <RecordTools card={card} />
       <Dialog.Root
         open={open}
         onOpenChange={(value) => {
@@ -1287,7 +1371,7 @@ function Detail({ card }: { card: Card }) {
                 e.preventDefault();
                 if (
                   target &&
-                  !target.requires_attachment &&
+                  (!target.requires_attachment || attachmentIds.length > 0) &&
                   (!target.requires_comment || !!comment.trim()) &&
                   !conflict &&
                   !mutation.isPending
@@ -1301,7 +1385,7 @@ function Detail({ card }: { card: Card }) {
               <label className="form-label" htmlFor="target">
                 Новый этап
               </label>
-              <select
+              <Select
                 id="target"
                 value={targetId}
                 onChange={(e) => setTargetId(e.target.value)}
@@ -1315,7 +1399,7 @@ function Detail({ card }: { card: Card }) {
                     {t.to_stage.name}
                   </option>
                 ))}
-              </select>
+              </Select>
               <label className="form-label" htmlFor="comment">
                 Комментарий{target?.requires_comment ? " (обязательно)" : ""}
               </label>
@@ -1330,10 +1414,17 @@ function Detail({ card }: { card: Card }) {
               />
               <small>{comment.length} / 4000</small>
               {target?.requires_attachment && (
-                <p role="alert" className="form-note">
-                  Для этого перехода нужен файл. Загрузка пока не подключена к
-                  интерфейсу.
-                </p>
+                <div className="transition-files">
+                  <p>Прикрепите документ. Выбрано: {attachmentIds.length}</p>
+                  <Documents
+                    id={card.id}
+                    onUploaded={(a) =>
+                      setAttachmentIds((ids) =>
+                        ids.includes(a.id) ? ids : [...ids, a.id],
+                      )
+                    }
+                  />
+                </div>
               )}
               {mutation.isError && (
                 <div className="transition-error" role="alert">
@@ -1379,7 +1470,7 @@ function Detail({ card }: { card: Card }) {
                   disabled={
                     conflict ||
                     !target ||
-                    target.requires_attachment ||
+                    (target.requires_attachment && !attachmentIds.length) ||
                     mutation.isPending ||
                     (target.requires_comment && !comment.trim())
                   }
@@ -1490,101 +1581,8 @@ function UniversityPage() {
         title={result.data.name}
         text={`Взаимодействий: ${result.data.interactions_count} · Сигналов: ${result.data.open_signals_count}`}
       />
+      <Contacts id={id} />
       <InteractionsPage universityId={id} />
-    </>
-  );
-}
-function Help() {
-  return (
-    <>
-      <Heading
-        eyebrow="ПОМОЩЬ В РАБОТЕ"
-        title="Начните с самого важного"
-        text="Короткий маршрут от сигнала до следующего шага."
-      />
-      <div className="help-cards">
-        {[
-          {
-            icon: Radar,
-            title: "1. Проверьте радар",
-            text: "Красная метка указывает на высокий приоритет. Цвет иконки помогает отличить тип проблемы.",
-            to: "/radar",
-            action: "Открыть радар",
-          },
-          {
-            icon: Search,
-            title: "2. Найдите запись",
-            text: "Ищите по контрагенту, программе или продукту. Фильтры сохраняются при возврате из карточки.",
-            to: "/interactions",
-            action: "К взаимодействиям",
-          },
-          {
-            icon: History,
-            title: "3. Продолжите работу",
-            text: "Откройте карточку, изучите историю и выберите доступный этап. Объясните изменение в комментарии.",
-            to: "/interactions",
-            action: "Выбрать запись",
-          },
-        ].map(({ icon: Icon, ...item }) => (
-          <section className="panel help-card" key={item.title}>
-            <span className="help-card-icon">
-              <Icon size={24} />
-            </span>
-            <h2>{item.title}</h2>
-            <p>{item.text}</p>
-            <Link to={item.to}>
-              {item.action}
-              <ArrowRight size={16} />
-            </Link>
-          </section>
-        ))}
-      </div>
-      <section className="panel help-section">
-        <h2>Полезно знать</h2>
-        <details open>
-          <summary>Быстрый поиск и клавиатура</summary>
-          <p>
-            ⌘K на Mac или Ctrl+K на Windows переводит фокус в поиск. Escape
-            очищает запрос. Tab перемещает по элементам, стрелки переключают
-            вкладки карточки.
-          </p>
-        </details>
-        <details>
-          <summary>Запись уже изменил коллега</summary>
-          <p>
-            Обновите карточку в диалоге перехода, проверьте актуальный этап и
-            подтвердите действие снова. Введённый комментарий сохранится,
-            повторная отправка не происходит автоматически.
-          </p>
-        </details>
-        <details>
-          <summary>Почему переход недоступен?</summary>
-          <p>
-            Запись должна быть в работе, а переход — разрешён процессом. Для
-            части переходов обязателен документ; загрузка файлов пока не
-            подключена. Отсутствие доступа к чужой записи также может выглядеть
-            как «Запись не найдена».
-          </p>
-        </details>
-        <details>
-          <summary>Какие разделы уже работают?</summary>
-          <p>
-            Доступны радар, поиск и фильтрация взаимодействий, карточки,
-            переходы и каталог вузов. Разделы с отметкой «Скоро» ещё в
-            разработке.
-          </p>
-        </details>
-      </section>
-      {mode === "mock" && (
-        <div className="demo-explanation">
-          <FileText size={20} />
-          <p>
-            <strong>Вы в демо.</strong> Данные синтетические, изменения
-            сбрасываются после перезагрузки. Переключатель пользователя помогает
-            посмотреть разные области доступа.
-          </p>
-        </div>
-      )}
     </>
   );
 }
