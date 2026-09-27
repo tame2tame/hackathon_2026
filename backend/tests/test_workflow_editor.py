@@ -154,6 +154,48 @@ async def test_unknown_stage_in_transitions_is_refused(
     assert response.json()["code"] == "VALIDATION_ERROR"
 
 
+@pytest.mark.parametrize(
+    ("patch", "message"),
+    [
+        (
+            {
+                "stages": [
+                    {"code": "a", "name": "А", "position": 1, "kind": "start"},
+                    {"code": "b", "name": "Б", "position": 1, "kind": "final"},
+                ]
+            },
+            "Номер этапа должен быть уникален",
+        ),
+        (
+            {
+                "transitions": [
+                    {"from_code": "contact_search", "to_code": "signing"},
+                    {"from_code": "contact_search", "to_code": "signing"},
+                ]
+            },
+            "Переход повторяется",
+        ),
+        (
+            {"transitions": [{"from_code": "signing", "to_code": "signing"}]},
+            "Этап перехода совпадает",
+        ),
+    ],
+)
+async def test_broken_draft_is_explained_not_crashed(
+    client: AsyncClient, session: AsyncSession, patch: dict[str, Any], message: str
+) -> None:
+    template = await default_template(session)
+    draft = await make_draft(client, str(template.id))
+
+    response = await client.patch(
+        f"{VERSIONS}/{draft['id']}", json=patch, headers=as_user(ROMAN_MANAGER)
+    )
+
+    # Раньше повтор доходил до уникального индекса и возвращал 500.
+    assert response.status_code == 422
+    assert response.json()["errors"][0]["message"] == message
+
+
 async def test_manager_cannot_rename_a_stage(client: AsyncClient) -> None:
     workflow = (await client.get(f"{WORKFLOWS}/default", headers=as_user(ANNA_KAM))).json()
     stage = next(item for item in workflow["stages"] if item["code"] == "signing")

@@ -57,6 +57,12 @@ async def _group(
     return group, await group_process(session, group)
 
 
+async def chart_group(session: AsyncSession, group_id: uuid.UUID | None) -> CounterpartyGroup:
+    """Группа, по которой строятся воронка и длительности: её имя пишется в отчёт."""
+    group, _ = await _group(session, group_id)
+    return group
+
+
 # Воронка показывает, где идёт работа: завершённые и отменённые записи в ней не стоят.
 OPEN_STATUSES = ("active", "paused")
 

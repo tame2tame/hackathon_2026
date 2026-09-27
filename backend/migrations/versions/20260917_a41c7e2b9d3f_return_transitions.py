@@ -43,18 +43,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # До этой миграции в базовом процессе не было ни одного перехода назад.
-    op.execute(
-        """
-        DELETE FROM stage_transition_rule AS rule
-        USING workflow_version AS version, workflow_template AS template,
-              stage AS source, stage AS target
-        WHERE version.id = rule.version_id
-          AND template.id = version.template_id
-          AND source.id = rule.from_stage_id
-          AND target.id = rule.to_stage_id
-          AND template.is_default
-          AND version.status = 'published'
-          AND source.position > target.position
-        """
-    )
+    # Миграция меняет только данные, схема таблиц та же. Удалять обратные переходы при откате
+    # нельзя: по ним уже могли пройти записи, а администратор мог добавить такие же руками —
+    # отличить «наши» правила от его нельзя. Старый код с лишними правилами работает.
+    pass

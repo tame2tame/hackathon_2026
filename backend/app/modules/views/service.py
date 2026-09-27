@@ -117,6 +117,16 @@ async def update_view(
         view.filters = payload.filters
     if payload.columns is not None:
         view.columns = list(payload.columns)
+    try:
+        # Два переименования в одно название одновременно: проверку выше проходят оба.
+        async with session.begin_nested():
+            await session.flush()
+    except IntegrityError as error:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Вид с таким названием уже сохранён: выберите другое название.",
+            errors=[FieldError(field="name", message="Название занято")],
+        ) from error
     await session.commit()
     # `updated_at` проставляет база: без обновления объекта его ещё нет.
     await session.refresh(view)

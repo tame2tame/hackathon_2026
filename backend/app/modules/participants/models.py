@@ -8,10 +8,11 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, LargeBinary, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, LargeBinary, String, text
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.core.db import Base, Timestamps, UUIDPrimaryKey
+from app.modules.imports.mapping import normalize
 
 ROLES = ("student", "teacher")
 SOURCES = ("manual", "import", "lms")
@@ -30,6 +31,15 @@ class Participant(UUIDPrimaryKey, Timestamps, Base):
             unique=True,
             postgresql_where="email_fp IS NOT NULL",
         ),
+        # Без почты — по ФИО без регистра и знаков: двойной клик не заведёт человека дважды.
+        Index(
+            "uq_participant_name",
+            "interaction_id",
+            "role",
+            "name_key",
+            unique=True,
+            postgresql_where=text("email_fp IS NULL AND archived_at IS NULL"),
+        ),
         Index("ix_participant_interaction_role", "interaction_id", "role"),
     )
 
@@ -38,6 +48,8 @@ class Participant(UUIDPrimaryKey, Timestamps, Base):
     )
     role: Mapped[str] = mapped_column(String(16))
     full_name: Mapped[str] = mapped_column(String(300))
+    # Ключ ФИО для уникального индекса; заполняется сам при каждой записи full_name.
+    name_key: Mapped[str] = mapped_column(String(300))
     email_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
     email_fp: Mapped[str | None] = mapped_column(String(64))
     external_ref: Mapped[str | None] = mapped_column(String(120))
@@ -46,3 +58,8 @@ class Participant(UUIDPrimaryKey, Timestamps, Base):
         ForeignKey("app_user.id", ondelete="SET NULL")
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    @validates("full_name")
+    def _keep_name_key(self, _key: str, value: str) -> str:
+        self.name_key = normalize(value)
+        return value

@@ -5,12 +5,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.audit.models import AuditLog
 from app.modules.catalogs.models import University
+from app.modules.clients import service as clients_service
 from app.modules.clients.models import Client
 from app.modules.interactions.models import Interaction
 from app.modules.radar.service import recompute_signals
@@ -130,6 +132,26 @@ async def test_people_are_private_but_organizations_are_shared(client: AsyncClie
     assert foreign_person.status_code == 404
     assert shared_company.status_code == 200
     assert [item["name"] for item in listed.json()["items"]] == ["ООО «Проверочная»"]
+
+
+async def test_inn_race_ends_with_validation_error(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await new_client(client, kind="organization", name="ООО «Первая»", inn="0022222222", email=None)
+
+    # Вторая форма с тем же ИНН пришла одновременно: проверка перед вставкой её не ловит.
+    async def not_taken(*args: object, **kwargs: object) -> bool:
+        return False
+
+    monkeypatch.setattr(clients_service, "_inn_taken", not_taken)
+    same_inn = await client.post(
+        CLIENTS,
+        json={"kind": "organization", "name": "ООО «Вторая»", "inn": "0022222222"},
+        headers=as_user(ANNA_KAM),
+    )
+
+    assert same_inn.status_code == 422
+    assert same_inn.json()["errors"] == [{"field": "inn", "message": "ИНН уже занят"}]
 
 
 async def test_client_details_are_validated(client: AsyncClient) -> None:

@@ -90,6 +90,16 @@ def _period(period_from: date | None, period_to: date | None) -> tuple[date, dat
     return start, end
 
 
+def _shift_month(month: date, delta: int) -> date:
+    index = month.year * 12 + month.month - 1 + delta
+    return date(index // 12, index % 12 + 1, 1)
+
+
+def _months_between(start: date, end: date) -> int:
+    """Сколько календарных месяцев задевает период, включая оба крайних."""
+    return (end.year - start.year) * 12 + end.month - start.month + 1
+
+
 async def _entries(
     session: AsyncSession,
     entity: RatingEntity,
@@ -106,7 +116,7 @@ async def _entries(
             func.sum(ProgramMetric.value),
         )
         .where(ProgramMetric.period_month >= start.replace(day=1))
-        .where(ProgramMetric.period_month <= end)
+        .where(ProgramMetric.period_month <= end.replace(day=1))
         .group_by(ProgramMetric.program_id, ProgramMetric.university_id, ProgramMetric.metric)
     )
     rows = (await session.execute(stmt)).tuples().all()
@@ -174,9 +184,11 @@ async def rating(
         weights = weights_of(await ensure_default_weights(session))
 
     current = rate(await _entries(session, entity, start, end, direction_ids), weights)
-    span = max(1, (end - start).days)
-    previous_end = start - timedelta(days=1)
-    previous_start = previous_end - timedelta(days=span)
+    # Метрики помесячные, поэтому и предыдущий период — столько же целых месяцев до первого
+    # месяца текущего. Раньше месяц на стыке попадал в оба периода и сдвиг мест врал.
+    months = _months_between(start, end)
+    previous_end = _shift_month(start.replace(day=1), -1)
+    previous_start = _shift_month(previous_end, -(months - 1))
     previous = rate(
         await _entries(session, entity, previous_start, previous_end, direction_ids), weights
     )

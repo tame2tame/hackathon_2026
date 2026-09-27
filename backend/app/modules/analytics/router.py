@@ -5,6 +5,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import TypeAdapter
+from starlette.concurrency import run_in_threadpool
 
 from app.core.cache import RATING, RATING_TTL, invalidate
 from app.core.db import SessionDep
@@ -169,8 +170,16 @@ async def read_stats_report(
         await stats.stage_durations(session, user, group_id),
         await stats.distribution(session, user, group_id),
     ]
-    scope = "по всем группам" if group_id is None else "по выбранной группе контрагентов"
-    content = render_charts("Статистика «Радара вузов»", f"Область: {scope}", charts)
+    group = await stats.chart_group(session, group_id)
+    # Без группы воронка и длительности считаются по вузам, а направления — по всем группам:
+    # подпись говорит об этом прямо, чтобы цифры не читали как общие.
+    scope = (
+        f"Воронка и длительности — группа «{group.name}», направления — все группы"
+        if group_id is None
+        else f"Группа «{group.name}»"
+    )
+    # Рисование PDF — работа процессора: в пуле потоков оно не держит остальные запросы.
+    content = await run_in_threadpool(render_charts, "Статистика «Радара вузов»", scope, charts)
     file_name = f"Статистика-{datetime.now(UTC):%Y-%m-%d}.pdf"
     return Response(
         content,

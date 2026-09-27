@@ -8,6 +8,7 @@ import uuid
 from typing import cast
 
 from sqlalchemy import ColumnElement, Select, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import crypto
@@ -135,6 +136,18 @@ async def get_client(
     return _client_out(client, with_contacts)
 
 
+async def _inn_taken(session: AsyncSession, inn: str) -> bool:
+    return await session.scalar(select(Client.id).where(Client.inn == inn)) is not None
+
+
+def _inn_error() -> AppError:
+    return AppError(
+        ErrorCode.VALIDATION_ERROR,
+        "Организация с таким ИНН уже есть: найдите её в списке клиентов.",
+        errors=[FieldError(field="inn", message="ИНН уже занят")],
+    )
+
+
 async def create_client(
     session: AsyncSession, user: CurrentUser, payload: ClientCreate, trace_id: str | None = None
 ) -> ClientOut:
@@ -144,12 +157,8 @@ async def create_client(
             "Не настроен ключ шифрования: клиента с персональными данными сохранить нельзя.",
             errors=[FieldError(field="email", message="Шифрование не настроено")],
         )
-    if payload.inn and await session.scalar(select(Client.id).where(Client.inn == payload.inn)):
-        raise AppError(
-            ErrorCode.VALIDATION_ERROR,
-            "Организация с таким ИНН уже есть: найдите её в списке клиентов.",
-            errors=[FieldError(field="inn", message="ИНН уже занят")],
-        )
+    if payload.inn and await _inn_taken(session, payload.inn):
+        raise _inn_error()
     client = Client(
         kind=payload.kind,
         name=payload.name.strip(),
@@ -160,7 +169,12 @@ async def create_client(
         created_by=user.id,
     )
     session.add(client)
-    await session.flush()
+    try:
+        # Две формы с одним ИНН одновременно проходят проверку выше: решает уникальный индекс.
+        async with session.begin_nested():
+            await session.flush()
+    except IntegrityError as error:
+        raise _inn_error() from error
     # В журнал идёт факт появления клиента, но не его персональные данные.
     session.add(
         AuditLog(

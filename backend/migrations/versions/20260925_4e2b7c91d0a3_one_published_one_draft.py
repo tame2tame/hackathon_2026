@@ -23,24 +23,26 @@ depends_on: str | Sequence[str] | None = None
 
 
 def _refuse_duplicates(status: str) -> None:
-    rows = (
-        op.get_bind()
-        .execute(
-            sa.text(
-                "SELECT t.name, count(*) FROM workflow_version v "
-                "JOIN workflow_template t ON t.id = v.template_id "
-                "WHERE v.status = :status GROUP BY t.name HAVING count(*) > 1"
-            ),
-            {"status": status},
-        )
-        .all()
+    # Проверка в SQL, а не в Python: так она попадает и в скрипт `alembic upgrade --sql`.
+    # `status` — константа из этого файла, а не ввод пользователя.
+    op.execute(
+        f"""
+        DO $$
+        DECLARE names text;
+        BEGIN
+            SELECT string_agg(format('«%s» (%s)', name, hits), ', ') INTO names
+            FROM (
+                SELECT t.name, count(*) AS hits FROM workflow_version v
+                JOIN workflow_template t ON t.id = v.template_id
+                WHERE v.status = '{status}' GROUP BY t.name HAVING count(*) > 1
+            ) AS duplicates;
+            IF names IS NOT NULL THEN
+                RAISE EXCEPTION 'У процессов несколько версий в состоянии {status}: %. '
+                    'Оставьте одну (остальные переведите в retired) и повторите миграцию.', names;
+            END IF;
+        END $$
+        """  # noqa: S608
     )
-    if rows:
-        names = ", ".join(f"«{name}» ({count})" for name, count in rows)
-        raise RuntimeError(
-            f"У процессов несколько версий в состоянии {status}: {names}. "
-            "Оставьте одну (остальные переведите в retired) и повторите миграцию."
-        )
 
 
 def upgrade() -> None:

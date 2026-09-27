@@ -4,12 +4,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.audit.models import AuditLog
 from app.modules.interactions.models import Interaction
+from app.modules.participants import service as participants_service
 from app.modules.participants.models import Participant
 from app.modules.participants.service import erase_expired
 from tests.api import find
@@ -316,6 +318,28 @@ async def test_namesake_without_an_address_is_added_once(client: AsyncClient) ->
     assert again.json()["errors"][0]["field"] == "full_name"
     # Тот же человек в другой роли — это другая строка списка.
     assert as_teacher.status_code == 201
+
+
+async def test_double_click_without_an_address_adds_one_person(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    itmo = await classes(client)
+    url = f"/api/v1/interactions/{itmo['id']}/participants"
+    await client.post(
+        url, json={"full_name": "Двойной Клик", "role": "student"}, headers=as_user(ANNA_KAM)
+    )
+
+    # Второй запрос пришёл, пока первый не зафиксирован: проверка в коде его не видит.
+    async def free(*args: object, **kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(participants_service, "_check_free", free)
+    again = await client.post(
+        url, json={"full_name": "  двойной  клик ", "role": "student"}, headers=as_user(ANNA_KAM)
+    )
+
+    assert again.status_code == 422
+    assert again.json()["errors"] == [{"field": "full_name", "message": "Уже в списке"}]
 
 
 async def test_participants_of_a_long_closed_record_are_erased(

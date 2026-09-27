@@ -20,6 +20,17 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _refuse_if(count_sql: str, message: str) -> None:
+    """Проверка средствами SQL: работает и на живой базе, и в скрипте `alembic ... --sql`.
+
+    `message` содержит `%` — туда подставится найденное число.
+    """
+    op.execute(
+        f"DO $$ DECLARE hits bigint; BEGIN SELECT ({count_sql}) INTO hits; "
+        f"IF hits > 0 THEN RAISE EXCEPTION '{message}', hits; END IF; END $$"
+    )
+
+
 def upgrade() -> None:
     op.create_table(
         "counterparty_group",
@@ -172,25 +183,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    blocking = bind.execute(
-        sa.text(
-            "SELECT count(*) FROM interaction WHERE client_id IS NOT NULL OR product_id IS NULL"
-        )
-    ).scalar_one()
-    if blocking:
-        # История переходов только дописывается, поэтому такие записи не удалить молча.
-        raise RuntimeError(
-            f"Откат невозможен: {blocking} взаимодействий с клиентом вне вузов или без продукта. "
-            "Прежняя схема не умеет их хранить."
-        )
-    group_rules = bind.execute(
-        sa.text("SELECT count(*) FROM data_access_rule WHERE scope_kind = 'group'")
-    ).scalar_one()
-    if group_rules:
-        raise RuntimeError(
-            f"Откат невозможен: {group_rules} правил доступа по группе. Удалите их в админке."
-        )
+    # История переходов только дописывается, поэтому такие записи не удалить молча.
+    _refuse_if(
+        "SELECT count(*) FROM interaction WHERE client_id IS NOT NULL OR product_id IS NULL",
+        "Откат невозможен: % взаимодействий с клиентом вне вузов или без продукта. "
+        "Прежняя схема не умеет их хранить.",
+    )
+    _refuse_if(
+        "SELECT count(*) FROM data_access_rule WHERE scope_kind = 'group'",
+        "Откат невозможен: % правил доступа по группе. Удалите их в админке.",
+    )
 
     op.drop_constraint(op.f("ck_data_access_rule_scope_kind"), "data_access_rule", type_="check")
     op.create_check_constraint(

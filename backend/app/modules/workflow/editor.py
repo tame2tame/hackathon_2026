@@ -289,6 +289,14 @@ async def _replace_stages(
             "Коды этапов повторяются.",
             errors=[FieldError(field="stages", message="Код этапа должен быть уникален")],
         )
+    positions = [stage.position for stage in stages]
+    if len(set(positions)) != len(positions):
+        # Иначе повтор ловил уникальный индекс, и администратор видел 500 вместо подсказки.
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Порядковые номера этапов повторяются.",
+            errors=[FieldError(field="stages", message="Номер этапа должен быть уникален")],
+        )
     await _drop_transitions(session, draft.id)
     for stage in await session.scalars(select(Stage).where(Stage.version_id == draft.id)):
         await session.delete(stage)
@@ -331,6 +339,19 @@ async def _replace_transitions(
             ErrorCode.VALIDATION_ERROR,
             f"В версии нет этапов: {', '.join(unknown)}.",
             errors=[FieldError(field="transitions", message="Неизвестный код этапа")],
+        )
+    pairs = [(rule.from_code, rule.to_code) for rule in transitions]
+    if len(set(pairs)) != len(pairs):
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Один и тот же переход задан дважды.",
+            errors=[FieldError(field="transitions", message="Переход повторяется")],
+        )
+    if any(source == target for source, target in pairs):
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Переход из этапа в него же не имеет смысла.",
+            errors=[FieldError(field="transitions", message="Этап перехода совпадает")],
         )
     await _drop_transitions(session, draft.id)
     for rule_draft in transitions:

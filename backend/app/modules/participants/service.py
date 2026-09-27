@@ -144,6 +144,12 @@ async def add_participant(
         async with session.begin_nested():
             await session.flush()
     except IntegrityError as error:
+        if fingerprint is None:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                "Человек с таким ФИО уже есть в списке записи.",
+                errors=[FieldError(field="full_name", message="Уже в списке")],
+            ) from error
         raise AppError(
             ErrorCode.VALIDATION_ERROR,
             "Человек с этой почтой уже есть в списке записи.",

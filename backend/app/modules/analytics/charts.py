@@ -36,7 +36,7 @@ def _bars(pdf: FPDF, chart: ChartOut) -> None:
     if not chart.values:
         pdf.set_font("report", size=LABEL_SIZE)
         pdf.set_xy(MARGIN_MM, bottom + 2)
-        pdf.cell(0, 5, "Нет данных за период", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 5, "Нет данных", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(4)
         return
 
@@ -45,6 +45,7 @@ def _bars(pdf: FPDF, chart: ChartOut) -> None:
     bar_width = max(step - BAR_GAP_MM, 1.5)
     pdf.set_fill_color(*BAR_COLOR)
     pdf.set_font("report", size=LABEL_SIZE)
+    labels_bottom = bottom + 1
     for index, value in enumerate(chart.values):
         height = (PLOT_HEIGHT_MM - VALUE_ROOM_MM) * value / largest
         left = MARGIN_MM + index * step + (step - bar_width) / 2
@@ -55,7 +56,9 @@ def _bars(pdf: FPDF, chart: ChartOut) -> None:
         pdf.cell(bar_width + 4, 4, str(value), align="C")
         pdf.set_xy(left - 2, bottom + 1)
         pdf.multi_cell(bar_width + 4, 3, chart.labels[index], align="C", max_line_height=3)
-    pdf.set_y(bottom + 12)
+        labels_bottom = max(labels_bottom, pdf.get_y())
+    # Длинная подпись занимает несколько строк: следующий заголовок ставим под самой низкой.
+    pdf.set_y(max(bottom + 12, labels_bottom + 4))
 
 
 def render_charts(title: str, subtitle: str, charts: list[ChartOut]) -> bytes:

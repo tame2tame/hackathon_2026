@@ -8,7 +8,10 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.analytics import router as analytics_router
+from app.modules.analytics.charts import render_charts
 from app.modules.analytics.rating import DEFAULT_WEIGHTS, Entry, normalize_weights, rate
+from app.modules.analytics.schemas import ChartOut
 from app.modules.catalogs.models import CounterpartyGroup, Program, University
 from app.modules.metrics.models import ProgramMetric
 from app.modules.workflow.defaults import INDIVIDUALS_GROUP
@@ -135,6 +138,25 @@ async def test_weights_change_the_order(client: AsyncClient, session: AsyncSessi
     assert by_students.json()["rows"][0]["name"] == by_students_name
 
 
+async def test_month_on_the_border_is_not_counted_twice(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    await seed_metrics(session)
+    month = datetime.now(UTC).date().replace(day=1)
+    # Период начинается в середине месяца метрик: раньше предыдущий период заканчивался в том
+    # же месяце, забирал те же метрики, и у каждой строки был «сдвиг 0» вместо «новая».
+    params = {
+        "period_from": str(month + timedelta(days=20)),
+        "period_to": str(month + timedelta(days=40)),
+    }
+
+    response = await client.get(RATING, params=params, headers=as_user(ROMAN_MANAGER))
+
+    assert response.status_code == 200
+    assert response.json()["rows"]
+    assert {row["place_change"] for row in response.json()["rows"]} == {None}
+
+
 async def test_rating_returns_contributions_and_completeness(
     client: AsyncClient, session: AsyncSession
 ) -> None:
@@ -210,6 +232,45 @@ async def test_statistics_come_as_a_printable_file(client: AsyncClient) -> None:
     )
     # КАМ видит свою область: файл строится, но по его записям.
     assert by_kam.status_code == 200
+
+
+async def test_printed_statistics_match_the_charts(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    printed: dict[str, object] = {}
+
+    def spy(title: str, subtitle: str, charts: list[ChartOut]) -> bytes:
+        printed.update(subtitle=subtitle, charts=charts)
+        return render_charts(title, subtitle, charts)
+
+    monkeypatch.setattr(analytics_router, "render_charts", spy)
+    headers = as_user(ROMAN_MANAGER)
+    await client.get("/api/v1/analytics/stats/report", headers=headers)
+    on_screen = [
+        (await client.get(f"/api/v1/analytics/stats/{name}", headers=headers)).json()
+        for name in ("funnel", "stage-durations", "distribution")
+    ]
+
+    charts = printed["charts"]
+    assert isinstance(charts, list)
+    assert [(c.labels, c.values) for c in charts] == [
+        (chart["labels"], chart["values"]) for chart in on_screen
+    ]
+    # Без группы воронка считается по вузам, а направления — по всем: подпись это говорит.
+    assert printed["subtitle"] == (
+        "Воронка и длительности — группа «Вузы (B2B)», направления — все группы"
+    )
+
+
+def test_long_labels_do_not_run_into_the_next_chart() -> None:
+    long = ChartOut(
+        title="Длинные подписи",
+        labels=["Очень длинное название этапа процесса взаимодействия с вузом"] * 3,
+        values=[1, 2, 3],
+        option={},
+    )
+
+    assert render_charts("Т", "П", [long, long, long]).startswith(b"%PDF")
 
 
 async def test_chart_page_survives_empty_data(client: AsyncClient, session: AsyncSession) -> None:

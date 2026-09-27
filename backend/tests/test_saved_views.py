@@ -1,7 +1,9 @@
 """Сохранённые виды: свои фильтры под своим названием."""
 
+import pytest
 from httpx import AsyncClient
 
+from app.modules.views import service as views_service
 from tests.users import ANNA_KAM, MIKHAIL_KAM, as_user
 
 VIEWS = "/api/v1/saved-views"
@@ -107,3 +109,24 @@ async def test_columns_are_names_not_a_place_to_store_things(client: AsyncClient
     assert fat_column.status_code == 422
     assert many.status_code == 422
     assert fat_patch.status_code == 422
+
+
+async def test_rename_race_ends_with_validation_error(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await client.post(VIEWS, json=OVERDUE, headers=as_user(ANNA_KAM))
+    other = await client.post(VIEWS, json={**OVERDUE, "name": "Другой"}, headers=as_user(ANNA_KAM))
+
+    # Второе переименование пришло, пока первое не зафиксировано: проверка его не видит.
+    async def not_taken(*args: object, **kwargs: object) -> bool:
+        return False
+
+    monkeypatch.setattr(views_service, "_taken", not_taken)
+    renamed = await client.patch(
+        f"{VIEWS}/{other.json()['id']}",
+        json={"name": OVERDUE["name"]},
+        headers=as_user(ANNA_KAM),
+    )
+
+    assert renamed.status_code == 422
+    assert renamed.json()["errors"] == [{"field": "name", "message": "Название занято"}]

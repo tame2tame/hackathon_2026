@@ -6,7 +6,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
-from sqlalchemy import ColumnElement, and_, case, func, or_, select
+from sqlalchemy import ColumnElement, and_, case, func, or_, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -140,15 +141,25 @@ async def recompute_signals(
         for kind, draft in drafts.items():
             signal = current.pop((interaction_id, kind), None)
             if signal is None:
-                session.add(
-                    RadarSignal(
+                # Ночной пересчёт и переход по той же записи могут открыть один сигнал
+                # одновременно: второй не падает на уникальном индексе, а молча уступает.
+                opened = await session.scalar(
+                    insert(RadarSignal)
+                    .values(
                         interaction_id=interaction_id,
                         kind=kind,
                         severity=draft.severity.value,
                         evidence=draft.evidence,
                         detected_at=now,
                     )
+                    .on_conflict_do_nothing(
+                        index_elements=["interaction_id", "kind"],
+                        index_where=text("resolved_at IS NULL"),
+                    )
+                    .returning(RadarSignal.id)
                 )
+                if opened is None:
+                    continue
                 await bus.publish(
                     SIGNAL_OPENED,
                     {
