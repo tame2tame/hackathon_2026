@@ -44,3 +44,32 @@ async def test_unknown_route_is_not_found(client: AsyncClient) -> None:
 def test_dev_auth_is_forbidden_in_production() -> None:
     with pytest.raises(ValidationError, match="AUTH_MODE=dev"):
         Settings(app_env="production", auth_mode="dev")
+
+
+PRODUCTION = {
+    "app_env": "production",
+    "auth_mode": "keycloak",
+    "database_url": "postgresql+asyncpg://radar_app:s3cret@postgres:5432/radar",
+    "pd_encryption_key": "q5l2Hk3m0y8o3c1uYw7cX9m3f8d2k1r6Q0e9V4b7N2s=",
+}
+
+
+def test_production_settings_accept_real_secrets() -> None:
+    Settings(**PRODUCTION)
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ({"pd_encryption_key": ""}, "требует PD_ENCRYPTION_KEY"),
+        ({"pd_encryption_key": "короткий"}, "не является ключом Fernet"),
+        (
+            {"database_url": "postgresql+asyncpg://radar:radar@postgres:5432/radar"},
+            "пароль из локального профиля",
+        ),
+        ({"cors_origins": "*"}, "CORS_ORIGINS"),
+    ],
+)
+def test_production_refuses_unsafe_settings(override: dict[str, str], message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        Settings(**{**PRODUCTION, **override})

@@ -71,6 +71,17 @@ services:
       postgres:
         condition: service_healthy
 
+  # Миграции до старта API и воркера: образ приложения их больше не запускает сам.
+  migrate:
+    build: ../backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      APP_ENV: local
+      DATABASE_URL: postgresql+asyncpg://radar:radar@postgres:5432/radar
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build: ../backend
     environment:
@@ -95,8 +106,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       minio:
@@ -122,8 +133,8 @@ services:
       S3_ACCESS_KEY: radar
       S3_SECRET_KEY: radar-minio
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       minio:
@@ -165,7 +176,7 @@ services:
       PGHOST: postgres
       PGUSER: radar
       PGPASSWORD: radar
-      PGDATABASE: radar
+      BACKUP_DATABASES: radar keycloak
       BACKUP_DIR: /backups
       KEEP_DAYS: "7"
     volumes:

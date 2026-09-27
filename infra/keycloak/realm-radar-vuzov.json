@@ -65,7 +65,7 @@
       "lastName": "Смирнова",
       "enabled": true,
       "realmRoles": ["kam"],
-      "credentials": [{ "type": "password", "value": "Local-Kam-2026", "temporary": false }]
+      "credentials": [{ "type": "password", "value": "${DEMO_KAM_PASSWORD:Local-Kam-2026}", "temporary": false }]
     },
     {
       "username": "manager.demo",
@@ -75,7 +75,7 @@
       "lastName": "Ковалёв",
       "enabled": true,
       "realmRoles": ["manager"],
-      "credentials": [{ "type": "password", "value": "Local-Manager-2026", "temporary": false }]
+      "credentials": [{ "type": "password", "value": "${DEMO_MANAGER_PASSWORD:Local-Manager-2026}", "temporary": false }]
     },
     {
       "username": "admin.demo",
@@ -85,7 +85,7 @@
       "lastName": "Денисова",
       "enabled": true,
       "realmRoles": ["admin"],
-      "credentials": [{ "type": "password", "value": "Local-Admin-2026", "temporary": false }]
+      "credentials": [{ "type": "password", "value": "${DEMO_ADMIN_PASSWORD:Local-Admin-2026}", "temporary": false }]
     }
   ]
 }

@@ -3,6 +3,7 @@
 from functools import lru_cache
 from typing import Literal, Self
 
+from cryptography.fernet import Fernet
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -65,6 +66,24 @@ class Settings(BaseSettings):
         # Режим X-Dev-User обходит Keycloak, поэтому в продакшене он запрещён (ADR-011).
         if self.app_env == "production" and self.auth_mode == "dev":
             raise ValueError("AUTH_MODE=dev запрещён при APP_ENV=production")
+        return self
+
+    @model_validator(mode="after")
+    def require_production_secrets(self) -> Self:
+        # Стенд с забытым ключом молча хранил бы контакты открытым текстом, а с паролем
+        # из локального профиля — был бы открыт любому, кто читал репозиторий.
+        if self.app_env != "production":
+            return self
+        if not self.pd_encryption_key:
+            raise ValueError("APP_ENV=production требует PD_ENCRYPTION_KEY")
+        try:
+            Fernet(self.pd_encryption_key.encode())
+        except ValueError as error:
+            raise ValueError("PD_ENCRYPTION_KEY не является ключом Fernet") from error
+        if ":radar@" in self.database_url:
+            raise ValueError("APP_ENV=production: в DATABASE_URL пароль из локального профиля")
+        if "*" in self.cors_origin_list:
+            raise ValueError("APP_ENV=production: CORS_ORIGINS не может быть «*»")
         return self
 
     @model_validator(mode="after")

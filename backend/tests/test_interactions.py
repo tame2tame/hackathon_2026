@@ -275,3 +275,19 @@ async def test_one_document_confirms_one_transition(client: AsyncClient) -> None
     # Тот же файл не подтвердит второй этап и не перепишет след первого перехода.
     assert reused.status_code == 422, reused.text
     assert reused.json()["code"] == "VALIDATION_ERROR"
+
+
+async def test_history_survives_truncate_and_replica_mode(connection: AsyncConnection) -> None:
+    # TRUNCATE ... CASCADE обходил построчные триггеры и заодно сносил связанные таблицы.
+    for statement in ("TRUNCATE transition CASCADE", "TRUNCATE audit_log CASCADE"):
+        savepoint = await connection.begin_nested()
+        with pytest.raises(DBAPIError, match="только дописывается"):
+            await connection.execute(text(statement))
+        await savepoint.rollback()
+
+    # Режим репликации раньше отключал триггеры целиком, и историю можно было переписать.
+    savepoint = await connection.begin_nested()
+    await connection.execute(text("SET LOCAL session_replication_role = replica"))
+    with pytest.raises(DBAPIError, match="только дописывается"):
+        await connection.execute(text("UPDATE transition SET comment = 'подмена'"))
+    await savepoint.rollback()

@@ -16,21 +16,43 @@ compose не запустится, пока переменная не задан
 
 ```bash
 cd /srv/radar/hackathon_2026/infra
-cp env.prod.example .env       # заполнить: пароль базы, ключ шифрования, админ Keycloak, адреса
+cp env.prod.example .env       # заполнить: три пароля базы, ключ шифрования, Keycloak, адреса
+docker compose -f docker-compose.prod.yml --env-file .env up -d postgres redis minio
+docker compose -f docker-compose.prod.yml --env-file .env run --rm migrate
 docker compose -f docker-compose.prod.yml --env-file .env up -d --build
-docker compose -f docker-compose.prod.yml --env-file .env exec api alembic upgrade head
-docker compose -f docker-compose.prod.yml --env-file .env exec api python -m scripts.seed --full
+docker compose -f docker-compose.prod.yml --env-file .env run --rm api python -m scripts.seed --full
 sh ../infra/smoke.sh "$PUBLIC_URL"
 ```
 
-Пароли демо-входов на стенде задаются в самом Keycloak и **отличаются** от локальных из
-`realm-radar-vuzov.json`: тот файл лежит в репозитории и годится только для своей машины.
+Пароли демо-входов стенда — переменные `DEMO_KAM_PASSWORD`, `DEMO_MANAGER_PASSWORD`,
+`DEMO_ADMIN_PASSWORD`: без них compose не запустится. Keycloak подставляет их в realm при первом
+импорте; локальные пароли из `realm-radar-vuzov.json` на стенде не действуют.
+
+## Роли базы
+
+При создании пустого тома PostgreSQL выполняет [`infra/postgres/roles.sql`](../infra/postgres/roles.sql):
+
+| Роль | Кто под ней работает | Что может |
+|---|---|---|
+| `radar` | сервис `migrate`, резервные копии | владелец схемы: миграции, DDL |
+| `radar_app` | `api`, `worker`, загрузка демо-данных | только данные; история переходов и аудит — чтение и добавление |
+| `keycloak` | Keycloak | только своя база `keycloak` |
+
+Приложение не владеет таблицами, поэтому даже с его паролем нельзя отключить триггеры, очистить
+историю или удалить таблицу. Миграции идут отдельным одноразовым сервисом `migrate` до старта API
+и воркера; образ приложения сам их больше не запускает.
+
+Если том создан до появления `roles.sql`, роли заводятся один раз вручную теми же командами из
+файла (`psql -v app_password=... -v keycloak_password=...`), после чего повторно применяется
+миграция `5c0d9e3a7b21`: `alembic downgrade 8a1aab17784f && alembic upgrade head` под `radar`.
 
 ## Обновление
 
 Через GitHub Actions: рабочий процесс **Deploy**, запуск вручную (`workflow_dispatch`), с флажком
 «загрузить демо-данные», если стенд поднимается заново. Он подключается по SSH, обновляет код,
-пересобирает образы, прогоняет миграции и завершает проверкой [`infra/smoke.sh`](../infra/smoke.sh).
+собирает образы, **снимает дамп обеих баз**, прогоняет миграции сервисом `migrate`, поднимает
+остальное и завершается проверкой [`infra/smoke.sh`](../infra/smoke.sh). У рабочего процесса только
+право чтения репозитория.
 
 Секреты репозитория, которые для этого нужны:
 
@@ -63,11 +85,19 @@ MinIO не публикуется. Чтобы перейти на облачно
 
 - Рабочий процесс **Health** раз в час прогоняет тот же smoke-скрипт. Пока секрет `PUBLIC_URL`
   не задан, он завершается успешно с пояснением: проверять нечего.
-- Бэкап базы делается ежедневно, хранится 14 дней; проверка восстановления —
-  [`infra/backup/restore-check.sh`](../infra/backup/restore-check.sh).
+- Бэкап делается ежедневно и хранится 14 дней: дампы **обеих** баз — `radar` и `keycloak`. Без
+  второй восстановленный стенд не пустит ни одного пользователя. Проверка восстановления —
+  [`infra/backup/restore-check.sh`](../infra/backup/restore-check.sh): разворачивает оба дампа во
+  временные базы, сверяет число таблиц с рабочей базой, ищет realm и его пользователей.
 - Файлы из MinIO копирует сервис `backup-files` — тоже ежедневно, в том же томе `backups`
   ([`infra/backup/files.sh`](../infra/backup/files.sh)). Без этой копии дамп базы бесполезен:
   вложения и готовые отчёты лежат отдельно.
+- **Внешние копии.** Копия на том же сервере не спасает от потери сервера. Если задан
+  `BACKUP_GPG_PUBLIC_KEY`, `backup.sh` шифрует дампы и архив файлов открытым ключом в
+  `backups/offsite`, а `files.sh` отвозит их в S3-хранилище из `OFFSITE_*`. Ключ создаётся на своей
+  машине (`gpg --quick-generate-key radar-backup`), на сервер кладётся только открытый
+  (`infra/backup-keys/backup.asc`); закрытый хранится отдельно, иначе утечка сервера раскрывает и
+  копии. Расшифровка: `gpg --decrypt radar-<дата>.dump.gpg > radar.dump`.
 
 ## Состояние
 

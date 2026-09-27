@@ -22,4 +22,5 @@ RUN pip install . && useradd --system --uid 10001 radar
 USER radar
 
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# Миграции идут отдельным сервисом migrate под владельцем схемы: у приложения прав на DDL нет.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -53,7 +53,7 @@
 | Мера | Как сделано | Где |
 |---|---|---|
 | Журнал изменений со значениями до и после | `audit_log` с полями `before` и `after` | [`backend/app/modules/audit/models.py`](../backend/app/modules/audit/models.py) |
-| История и аудит только дописываются | Триггеры БД запрещают `UPDATE` и `DELETE`; на это есть тесты | [`backend/migrations/versions`](../backend/migrations/versions) |
+| История и аудит только дописываются | Триггеры БД запрещают `UPDATE`, `DELETE` и `TRUNCATE` и работают в режиме `ALWAYS` — их не отключает и `session_replication_role`; у роли приложения на эти таблицы нет прав `UPDATE`, `DELETE`, `TRUNCATE`; на всё есть тесты | [`backend/migrations/versions`](../backend/migrations/versions) |
 | Каталоги не удаляются | Архивирование `archived_at` вместо удаления | [`backend/app/modules/admin/service.py`](../backend/app/modules/admin/service.py) |
 | Параллельные изменения не затирают друг друга | `expected_version` и блокировка строки при переходах | [`backend/app/modules/interactions/service.py`](../backend/app/modules/interactions/service.py) |
 
@@ -81,12 +81,24 @@
 
 | Мера | Как сделано | Где |
 |---|---|---|
-| Ежедневный дамп | Сервис `backup` в профиле `ops`, формат custom, хранение 7 дней | [`infra/backup/backup.sh`](../infra/backup/backup.sh) |
-| Проверка восстановления | Дамп разворачивается во временную базу, считаются таблицы и записи | [`infra/backup/restore-check.sh`](../infra/backup/restore-check.sh) |
+| Ежедневный дамп | Сервис `backup`: базы `radar` и `keycloak`, формат custom, хранение 14 дней на стенде | [`infra/backup/backup.sh`](../infra/backup/backup.sh) |
+| Проверка восстановления | Оба дампа разворачиваются во временные базы и сверяются с рабочими | [`infra/backup/restore-check.sh`](../infra/backup/restore-check.sh) |
+| Внешние копии | Шифрование открытым ключом gpg, отправка в стороннее S3; закрытый ключ вне сервера | [`infra/backup/files.sh`](../infra/backup/files.sh) |
+| Ключи хранилища не видны в процессах | Конфиг `mc` во временном файле вместо аргументов | там же |
+| Приложение не владеет схемой | Роль `radar_app` без DDL, история и аудит — только добавление; миграции под `radar` | [`infra/postgres/roles.sql`](../infra/postgres/roles.sql) |
+| Отдельная база Keycloak | Роль `keycloak` со своим паролем, `radar_app` к ней не подключается | там же |
+| Демо-пароли не уезжают на стенд | Подстановки `${DEMO_*_PASSWORD}` в realm, на стенде обязательны | [`infra/keycloak/realm-radar-vuzov.json`](../infra/keycloak/realm-radar-vuzov.json) |
 
 Проверено 17.09 на локальном стенде: дамп 95 КБ, восстановление дало 36 таблиц, 6 взаимодействий
 и 36 переходов. Заодно нашёлся дефект: у сервиса `backup` был свой `entrypoint`, из-за которого
 `docker compose run backup sh /scripts/backup.sh` молча завершался нулём, ничего не сделав.
+
+Проверено 27.09 на профиле стенда с чистого тома: `roles.sql` → `migrate` → демо-данные под
+`radar_app` → API и все задания воркера под ней же. Роль приложения получает отказ на `UPDATE` и
+`TRUNCATE` истории и аудита, на `ALTER TABLE ... DISABLE TRIGGER`, `DROP TABLE`,
+`session_replication_role` и подключение к базе Keycloak. Дампы обеих баз восстановлены
+(46 таблиц из 46, 351 взаимодействие, realm с тремя пользователями), внешние копии расшифрованы
+закрытым ключом байт в байт, отправка во внешний бакет прошла.
 
 ## Что не сделано
 

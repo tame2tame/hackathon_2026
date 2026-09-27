@@ -19,12 +19,25 @@ services:
       - keycloak
     restart: unless-stopped
 
+  # Миграции: одноразовый запуск под владельцем схемы до старта API и воркера.
+  migrate:
+    build: ../backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+asyncpg://radar:${POSTGRES_PASSWORD:?пароль базы}@postgres:5432/radar
+      PD_ENCRYPTION_KEY: ${PD_ENCRYPTION_KEY:?ключ шифрования контактов}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build: ../backend
     environment:
       APP_ENV: production
       AUTH_MODE: keycloak
-      DATABASE_URL: postgresql+asyncpg://radar:${POSTGRES_PASSWORD:?пароль базы}@postgres:5432/radar
+      DATABASE_URL: postgresql+asyncpg://radar_app:${APP_DB_PASSWORD:?пароль роли приложения}@postgres:5432/radar
       REDIS_URL: redis://redis:6379/0
       # Издатель токена — внешний адрес, ключи забираются по внутреннему.
       KEYCLOAK_ISSUER: ${PUBLIC_URL:?адрес стенда}/auth/realms/radar-vuzov
@@ -47,8 +60,8 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       minio:
@@ -61,7 +74,7 @@ services:
     environment:
       APP_ENV: production
       AUTH_MODE: keycloak
-      DATABASE_URL: postgresql+asyncpg://radar:${POSTGRES_PASSWORD:?пароль базы}@postgres:5432/radar
+      DATABASE_URL: postgresql+asyncpg://radar_app:${APP_DB_PASSWORD:?пароль роли приложения}@postgres:5432/radar
       REDIS_URL: redis://redis:6379/0
       PD_ENCRYPTION_KEY: ${PD_ENCRYPTION_KEY:?ключ шифрования контактов}
       STORAGE_BACKEND: s3
@@ -77,8 +90,8 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       minio:
@@ -132,11 +145,15 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?пароль администратора Keycloak}
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
-      KC_DB_USERNAME: radar
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?пароль базы}
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?пароль базы Keycloak}
       KC_HOSTNAME: ${PUBLIC_URL:?адрес стенда}/auth
       # Адрес интерфейса подставляется в разрешённые адреса возврата клиента radar-web.
       RADAR_WEB_URL: ${PUBLIC_URL:?адрес стенда}
+      # Пароли демо-входов стенда: локальные значения из realm на стенд не попадают.
+      DEMO_KAM_PASSWORD: ${DEMO_KAM_PASSWORD:?пароль демо-КАМа}
+      DEMO_MANAGER_PASSWORD: ${DEMO_MANAGER_PASSWORD:?пароль демо-руководителя}
+      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:?пароль демо-администратора}
       # За nginx: Keycloak должен верить заголовкам X-Forwarded-*.
       KC_PROXY_HEADERS: xforwarded
     volumes:
@@ -152,9 +169,12 @@ services:
       POSTGRES_DB: radar
       POSTGRES_USER: radar
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?пароль базы}
+      # Читает скрипт ролей при создании тома: роль приложения и отдельная база Keycloak.
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?пароль роли приложения}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?пароль базы Keycloak}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./postgres/roles.sql:/docker-entrypoint-initdb.d/roles.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U radar -d radar"]
       interval: 10s
@@ -178,9 +198,14 @@ services:
     environment:
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: radar-vuzov
-      BACKUP_DIR: /backups/files
+      BACKUP_ROOT: /backups
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?логин MinIO}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?пароль MinIO}
+      # Внешнее хранилище для зашифрованных копий; пусто — копии остаются только на сервере.
+      OFFSITE_URL: ${OFFSITE_URL:-}
+      OFFSITE_BUCKET: ${OFFSITE_BUCKET:-}
+      OFFSITE_ACCESS_KEY: ${OFFSITE_ACCESS_KEY:-}
+      OFFSITE_SECRET_KEY: ${OFFSITE_SECRET_KEY:-}
     volumes:
       - ./backup:/scripts:ro
       - backups:/backups
@@ -195,11 +220,14 @@ services:
       PGHOST: postgres
       PGUSER: radar
       PGPASSWORD: ${POSTGRES_PASSWORD:?пароль базы}
-      PGDATABASE: radar
+      BACKUP_DATABASES: radar keycloak
       BACKUP_DIR: /backups
       KEEP_DAYS: "14"
+      # Открытый ключ для шифрования внешних копий; закрытый хранится вне сервера.
+      BACKUP_GPG_PUBLIC_KEY: ${BACKUP_GPG_PUBLIC_KEY:-}
     volumes:
       - ./backup:/scripts:ro
+      - ./backup-keys:/keys:ro
       - backups:/backups
     command: ["sh", "-c", "while true; do sh /scripts/backup.sh; sleep 86400; done"]
     depends_on:

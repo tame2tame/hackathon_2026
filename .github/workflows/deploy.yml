@@ -8,6 +8,10 @@ on:
         type: boolean
         default: false
 
+# Workflow только читает репозиторий: на сервер он ходит по SSH-ключу из секретов.
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-stand
   cancel-in-progress: false
@@ -24,7 +28,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Обновление и запуск
+      - name: Обновление кода и сборка
         run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<'REMOTE'
             cd /srv/radar/hackathon_2026
@@ -32,14 +36,29 @@ jobs:
             git checkout "${{ github.ref_name }}"
             git pull --ff-only
             cd infra
-            docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+            docker compose -f docker-compose.prod.yml --env-file .env build
           REMOTE
 
-      - name: Миграции
+      # Дамп до миграций: если новая миграция испортит данные, есть к чему вернуться.
+      - name: Копия базы перед миграциями
         run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<'REMOTE'
             cd /srv/radar/hackathon_2026/infra
-            docker compose -f docker-compose.prod.yml --env-file .env exec -T api alembic upgrade head
+            if docker compose -f docker-compose.prod.yml --env-file .env ps --status running -q postgres | grep -q .; then
+              docker compose -f docker-compose.prod.yml --env-file .env run --rm backup sh /scripts/backup.sh
+            else
+              echo "База ещё не запущена — первый запуск, копировать нечего"
+            fi
+          REMOTE
+
+      # Миграции под владельцем схемы; API и воркер работают ролью radar_app без прав на DDL.
+      - name: Миграции и запуск
+        run: |
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<'REMOTE'
+            cd /srv/radar/hackathon_2026/infra
+            docker compose -f docker-compose.prod.yml --env-file .env up -d postgres redis minio
+            docker compose -f docker-compose.prod.yml --env-file .env run --rm migrate
+            docker compose -f docker-compose.prod.yml --env-file .env up -d
           REMOTE
 
       - name: Демо-данные
@@ -47,7 +66,7 @@ jobs:
         run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" bash -euo pipefail <<'REMOTE'
             cd /srv/radar/hackathon_2026/infra
-            docker compose -f docker-compose.prod.yml --env-file .env exec -T api python -m scripts.seed --full
+            docker compose -f docker-compose.prod.yml --env-file .env run --rm api python -m scripts.seed --full
           REMOTE
 
       - name: Проверка стенда
