@@ -88,9 +88,19 @@ def create_app() -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.cors_origin_list,
-            allow_methods=["GET", "POST", "PATCH", "DELETE"],
-            allow_headers=["Authorization", "Content-Type", DEV_USER_HEADER],
-            expose_headers=["X-Trace-Id"],
+            # PUT — смена статуса и настроек; Last-Event-ID — продолжение потока событий после
+            # обрыва; If-None-Match — условные запросы. Без них фронтенд на другом адресе
+            # получал бы отказ preflight.
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "If-None-Match",
+                "Last-Event-ID",
+                DEV_USER_HEADER,
+            ],
+            # Имя файла и ETag фронтенд читает из ответа сам.
+            expose_headers=["X-Trace-Id", "ETag", "Content-Disposition"],
         )
     # Добавлен последним, поэтому внешний: trace_id есть и у ответов CORS.
     app.add_middleware(TraceIdMiddleware)

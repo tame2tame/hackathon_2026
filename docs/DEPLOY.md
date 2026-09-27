@@ -21,8 +21,13 @@ docker compose -f docker-compose.prod.yml --env-file .env up -d postgres redis m
 docker compose -f docker-compose.prod.yml --env-file .env run --rm migrate
 docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 docker compose -f docker-compose.prod.yml --env-file .env run --rm api python -m scripts.seed --full
-sh ../infra/smoke.sh "$PUBLIC_URL"
+set -a && . ./.env && set +a   # PUBLIC_URL и прочее — в окружение этой оболочки
+sh smoke.sh "$PUBLIC_URL"      # без адреса скрипт проверял бы 127.0.0.1:8000, а не стенд
 ```
+
+Образы в профиле стенда закреплены по digest (`образ:тег@sha256:…`): тег можно перезаписать,
+а стенд должен подниматься тем же, что проверяли. Зависимости Python — по
+`backend/requirements.lock`, обновляются командой `make lock`.
 
 Пароли демо-входов стенда — переменные `DEMO_KAM_PASSWORD`, `DEMO_MANAGER_PASSWORD`,
 `DEMO_ADMIN_PASSWORD`: без них compose не запустится. Keycloak подставляет их в realm при первом

@@ -63,6 +63,9 @@ class SiteApplication(UUIDPrimaryKey, Timestamps, Base):
     __tablename__ = "site_application"
     __table_args__ = (
         CheckConstraint("match_status IN ('matched', 'unmatched')", name="match_status"),
+        # Документ обмена ищет заявки записи, очередь разбора — несопоставленные.
+        Index("ix_site_application_interaction_id", "interaction_id"),
+        Index("ix_site_application_match_status", "match_status"),
     )
 
     external_id: Mapped[str] = mapped_column(String(120), unique=True)

@@ -38,6 +38,9 @@ class AddressOut(BaseModel):
 
 
 class AddressUpdate(BaseModel):
+    # Строка из одних пробелов не проходит min_length: сначала обрезаем.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     address: str = Field(min_length=1, max_length=254)
     is_enabled: bool = True
 

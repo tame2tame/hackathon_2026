@@ -8,16 +8,17 @@ import uuid
 from collections import Counter, defaultdict
 from datetime import UTC, date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core import cache
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, ErrorCode
 from app.core.roles import Role
-from app.core.scope import visible_interaction
+from app.core.scope import apply_interaction_scope, visible_interaction
 from app.core.security import CurrentUser
-from app.modules.catalogs.models import AppUser, Program, ProgramProduct, University
+from app.modules.catalogs.models import AppUser, Program, ProgramProduct, Team, University
 from app.modules.imports.mapping import normalize
 from app.modules.integrations.clients import (
     ApplicationRecord,
@@ -151,19 +152,37 @@ async def _save_metrics(
     return counter
 
 
-async def _owner_for(session: AsyncSession, university_id: uuid.UUID) -> AppUser | None:
-    """КАМ, который уже ведёт этот вуз; если такого нет — руководитель команды."""
+async def _owner_for(
+    session: AsyncSession, university_id: uuid.UUID, group_id: uuid.UUID
+) -> AppUser | None:
+    """КАМ, который последним работал с этим вузом; если такого нет — руководитель команды,
+    которая больше всех ведёт записи этой группы. Иначе заявку разберёт человек.
+
+    Раньше при отсутствии КАМа бралась первая попавшаяся строка — это мог оказаться
+    руководитель частных лиц, а порядок без ORDER BY менялся от запроса к запросу.
+    """
     owner: AppUser | None = await session.scalar(
         select(AppUser)
         .join(Interaction, Interaction.owner_user_id == AppUser.id)
         .where(Interaction.university_id == university_id, AppUser.is_active.is_(True))
+        .order_by(Interaction.updated_at.desc(), AppUser.id)
         .limit(1)
     )
     if owner is not None:
         return owner
+    member = aliased(AppUser)
     manager: AppUser | None = await session.scalar(
         select(AppUser)
-        .where(AppUser.role == Role.MANAGER.value, AppUser.is_active.is_(True))
+        .join(Team, Team.manager_user_id == AppUser.id)
+        .join(member, member.team_id == Team.id)
+        .join(Interaction, Interaction.owner_user_id == member.id)
+        .where(
+            Interaction.group_id == group_id,
+            AppUser.role == Role.MANAGER.value,
+            AppUser.is_active.is_(True),
+        )
+        .group_by(AppUser.id)
+        .order_by(func.count(Interaction.id).desc(), AppUser.id)
         .limit(1)
     )
     return manager
@@ -214,9 +233,12 @@ async def _match_application(
         .tuples()
         .all()
     )
+    # Продукт программы: основная пара, а если продукт у программы один — он.
     product_id = next((linked for linked, is_default in links if is_default), None)
+    if product_id is None and len(links) == 1:
+        product_id = links[0][0]
     if links and product_id is None:
-        # У программы есть продукты, но какой из них по умолчанию — неизвестно: решит человек.
+        # У программы несколько продуктов и основной не выбран: решит человек.
         return application, None
 
     interaction = await session.scalar(
@@ -252,7 +274,7 @@ async def _interaction_from_application(
     process: GroupProcess,
 ) -> Interaction | None:
     """Заводит взаимодействие по заявке. Даты берутся из заявки: она и есть начало работы."""
-    owner = await _owner_for(session, university_id)
+    owner = await _owner_for(session, university_id, group_id)
     if owner is None:
         return None
 
@@ -400,10 +422,23 @@ async def sync_all(session: AsyncSession, now: datetime | None = None) -> list[S
     return runs
 
 
+def _visible_applications(user: CurrentUser) -> Select[tuple[SiteApplication]]:
+    """Очередь несопоставленных видна всем руководителям — её кто-то должен разобрать.
+    Сопоставленная заявка с ФИО заявителя видна тем, кто видит её взаимодействие.
+    """
+    visible_interactions = apply_interaction_scope(select(Interaction.id), user)
+    return select(SiteApplication).where(
+        or_(
+            SiteApplication.match_status == "unmatched",
+            SiteApplication.interaction_id.in_(visible_interactions),
+        )
+    )
+
+
 async def list_applications(
-    session: AsyncSession, match_status: str | None = None
+    session: AsyncSession, user: CurrentUser, match_status: str | None = None
 ) -> list[SiteApplication]:
-    stmt = select(SiteApplication).order_by(SiteApplication.received_at.desc()).limit(200)
+    stmt = _visible_applications(user).order_by(SiteApplication.received_at.desc()).limit(200)
     if match_status:
         stmt = stmt.where(SiteApplication.match_status == match_status)
     return list(await session.scalars(stmt))
@@ -412,8 +447,13 @@ async def list_applications(
 async def match_application(
     session: AsyncSession, user: CurrentUser, application_id: uuid.UUID, interaction_id: uuid.UUID
 ) -> SiteApplication:
-    """Ручное сопоставление: взаимодействие должно быть доступно тому, кто сопоставляет."""
-    application = await session.get(SiteApplication, application_id)
+    """Ручное сопоставление: и заявка, и взаимодействие должны быть доступны тому, кто
+    сопоставляет. Уже сопоставленную заявку перепривязать может только тот, кто видит её
+    нынешнее взаимодействие, — иначе чужую заявку можно было бы увести к себе.
+    """
+    application = await session.scalar(
+        _visible_applications(user).where(SiteApplication.id == application_id)
+    )
     if application is None:
         raise AppError(ErrorCode.NOT_FOUND, "Заявка не найдена.")
     interaction = await visible_interaction(session, user, interaction_id)

@@ -136,7 +136,8 @@ async def test_message_needs_a_real_colleague(client: AsyncClient, session: Asyn
     assert to_self.status_code == 422
     assert to_self.json()["errors"][0]["field"] == "recipient_id"
     assert to_nobody.status_code == 404
-    assert empty.status_code == 201
+    # Раньше пробелы проходили min_length и сохранялись пустым сообщением.
+    assert empty.status_code == 422
 
 
 async def test_dialogs_take_one_query_per_page(client: AsyncClient, session: AsyncSession) -> None:

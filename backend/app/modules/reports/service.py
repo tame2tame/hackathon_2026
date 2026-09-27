@@ -132,7 +132,11 @@ async def enqueue_or_run(
     from arq.connections import RedisSettings
 
     pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
-    await pool.enqueue_job("build_report", str(job.id), str(user.id))
+    try:
+        await pool.enqueue_job("build_report", str(job.id), str(user.id))
+    finally:
+        # Пул на один заказ: не закрытый, он держал соединение с Redis до конца процесса.
+        await pool.aclose()
     return job
 
 

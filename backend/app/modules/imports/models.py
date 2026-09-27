@@ -62,9 +62,7 @@ class ImportRow(UUIDPrimaryKey, Base):
         ),
     )
 
-    batch_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("import_batch.id", ondelete="CASCADE"), index=True
-    )
+    batch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("import_batch.id", ondelete="CASCADE"))
     row_no: Mapped[int]
     raw: Mapped[dict[str, Any]] = mapped_column(JSONB)
     resolution: Mapped[str] = mapped_column(String(16), default="new")

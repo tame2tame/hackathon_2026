@@ -44,7 +44,7 @@ class Participant(UUIDPrimaryKey, Timestamps, Base):
     )
 
     interaction_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("interaction.id", ondelete="CASCADE"), index=True
+        ForeignKey("interaction.id", ondelete="CASCADE")
     )
     role: Mapped[str] = mapped_column(String(16))
     full_name: Mapped[str] = mapped_column(String(300))

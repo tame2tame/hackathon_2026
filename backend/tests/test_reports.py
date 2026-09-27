@@ -5,15 +5,18 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import arq
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import worker
+from app.core.config import Settings
 from app.core.security import current_user_for
 from app.modules.catalogs.models import AppUser, University
 from app.modules.reports import query
+from app.modules.reports import service as reports_service
 from app.modules.reports.models import ReportJob
 from app.modules.reports.schemas import ReportCreate
 from app.modules.reports.service import create_job
@@ -235,3 +238,35 @@ async def test_unfinished_report_is_not_a_cached_file(client: AsyncClient) -> No
     assert unfinished.status_code in (200, 404)
     if unfinished.status_code == 404:
         assert unfinished.json()["code"] == "NOT_FOUND"
+
+
+async def test_queue_connection_is_closed_after_the_order(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    closed: list[bool] = []
+
+    class Pool:
+        async def enqueue_job(self, *args: Any) -> None:
+            return None
+
+        async def aclose(self) -> None:
+            closed.append(True)
+
+    async def create_pool(*args: Any, **kwargs: Any) -> Pool:
+        return Pool()
+
+    # Очередь как на стенде: Redis задан, задание уходит воркеру.
+    monkeypatch.setattr(
+        reports_service,
+        "get_settings",
+        lambda: Settings(app_env="local", auth_mode="dev", redis_url="redis://queue:6379/0"),
+    )
+    monkeypatch.setattr(arq, "create_pool", create_pool)
+
+    response = await client.post(
+        "/api/v1/reports", json={"format": "json"}, headers=as_user(ANNA_KAM)
+    )
+
+    assert response.status_code == 202, response.text
+    # Раньше каждый заказ оставлял открытое соединение с Redis до конца процесса.
+    assert closed == [True]

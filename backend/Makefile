@@ -3,12 +3,20 @@ VENV := .venv
 BIN := $(VENV)/bin
 COMPOSE := docker compose -f ../infra/docker-compose.yml
 
-.PHONY: install db-up db-down migrate migration seed seed-full run lint format typecheck test check openapi help
+.PHONY: install lock db-up db-down migrate migration seed seed-full run lint format typecheck test check openapi help
 
 install:
 	$(PY) -m venv $(VENV)
 	$(BIN)/pip install --upgrade pip
-	$(BIN)/pip install -e ".[dev]"
+	$(BIN)/pip install -c requirements.lock -e ".[dev]"
+
+# Пересобрать lock-файл в том же образе, что и Dockerfile: версии под Linux, а не под эту машину.
+lock:
+	docker run --rm -v "$(CURDIR)":/src:ro python:3.12-slim sh -c \
+		'cp -r /src /tmp/b && cd /tmp/b && rm -rf .venv && pip install -q --root-user-action=ignore . \
+		&& pip freeze --exclude radar-vuzov-backend' | grep '==' > requirements.lock.new
+	{ head -2 requirements.lock; cat requirements.lock.new; } > requirements.lock.tmp
+	mv requirements.lock.tmp requirements.lock && rm requirements.lock.new
 
 db-up:
 	$(COMPOSE) up -d postgres redis

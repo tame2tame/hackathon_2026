@@ -97,6 +97,23 @@ async def test_program_links_are_checked_row_by_row(client: AsyncClient) -> None
     assert result["rows"][2]["detail"] == "Не понятно, да или нет: «может быть»"
 
 
+async def test_second_default_pair_is_refused(client: AsyncClient) -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["Код направления", "Программа", "Вендор", "Продукт", "По умолчанию"])
+    # У программы уже есть основной продукт из демо-данных: вторая основная пара сделала бы
+    # выбор при импорте и по заявкам с сайта случайным.
+    sheet.append(["devops", "DevOps-инженерия", "Loginom", "Loginom", "да"])
+    buffer = BytesIO()
+    workbook.save(buffer)
+
+    result = await load(client, "program-products", "связи.xlsx", buffer.getvalue(), dry_run=False)
+
+    [row] = result["rows"]
+    assert row["action"] == "error"
+    assert row["detail"].startswith("Основная пара уже задана")
+
+
 async def test_export_loads_back_unchanged_in_every_format(client: AsyncClient) -> None:
     for fmt, params in (("csv", {"encoding": "windows-1251"}), ("xlsx", {}), ("json", {})):
         exported = await client.get(

@@ -104,6 +104,9 @@ class TransitionResult(BaseModel):
 
 
 class NoteCreate(BaseModel):
+    # Строка из одних пробелов не проходит min_length: сначала обрезаем.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     text: str = Field(min_length=1, max_length=4000)
 
 

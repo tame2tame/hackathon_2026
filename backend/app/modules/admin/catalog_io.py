@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import UploadFile
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import cache
@@ -272,6 +272,35 @@ async def _product(index: _Index, values: dict[str, str]) -> tuple[str, Action, 
     return _outcome(key, changed)
 
 
+async def _refuse_second_default(session: AsyncSession, program: Program, product: Product) -> None:
+    """Основная пара одна у программы и одна у продукта: иначе выбор по ней случаен."""
+    other = (
+        await session.execute(
+            select(Program.name, Product.name)
+            .select_from(ProgramProduct)
+            .join(Program, Program.id == ProgramProduct.program_id)
+            .join(Product, Product.id == ProgramProduct.product_id)
+            .where(
+                ProgramProduct.is_default.is_(True),
+                or_(
+                    ProgramProduct.program_id == program.id,
+                    ProgramProduct.product_id == product.id,
+                ),
+                ~and_(
+                    ProgramProduct.program_id == program.id,
+                    ProgramProduct.product_id == product.id,
+                ),
+            )
+            .limit(1)
+        )
+    ).first()
+    if other is not None:
+        raise RowError(
+            f"Основная пара уже задана: «{other[0]}» ← «{other[1]}». Снимите с неё флаг, "
+            "у программы и у продукта основная пара одна"
+        )
+
+
 async def _program_product(index: _Index, values: dict[str, str]) -> tuple[str, Action, str | None]:
     key = f"{values['program']} ← {values['vendor']} / {values['product']}"
     direction = index.direction(values["direction_code"])
@@ -283,6 +312,8 @@ async def _program_product(index: _Index, values: dict[str, str]) -> tuple[str, 
     if product is None:
         raise RowError(f"Нет продукта «{values['vendor']} / {values['product']}»")
     is_default = _bool(values.get("is_default", ""))
+    if is_default:
+        await _refuse_second_default(index.session, program, product)
     link = await index.session.get(ProgramProduct, (program.id, product.id))
     if link is None:
         index.session.add(

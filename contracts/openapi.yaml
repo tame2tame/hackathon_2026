@@ -1915,9 +1915,10 @@ paths:
       tags:
       - exchange
       summary: Выгрузка записей в JSON
-      description: Документы `radar-vuzov/interaction@1` в области видимости пользователя. `updated_since`
+      description: 'Документы `radar-vuzov/interaction@1` в области видимости пользователя. `updated_since`
         отдаёт только изменённые с этого момента — так внешняя система забирает изменения по расписанию,
-        не перечитывая всё.
+        не перечитывая всё. Окно перекрывается на пять минут назад: запись, зафиксированная во время прошлого
+        опроса, придёт в следующем. Повтор документа обрабатывается по `record.id` и `record.updated_at`.'
       operationId: read_exchange_api_v1_exchange_interactions_get
       security:
       - HTTPBearer: []
@@ -2616,7 +2617,8 @@ paths:
       tags:
       - integrations
       summary: Заявки с сайта
-      description: Без фильтра — все заявки; `match_status=unmatched` — очередь на разбор.
+      description: Очередь несопоставленных (`match_status=unmatched`) видна всем руководителям. Сопоставленные
+        — только те, чьё взаимодействие входит в область видимости.
       operationId: read_applications_api_v1_site_applications_get
       security:
       - HTTPBearer: []

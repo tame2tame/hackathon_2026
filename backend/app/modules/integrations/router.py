@@ -154,19 +154,22 @@ async def read_runs(
 @router.get(
     "/site-applications",
     summary="Заявки с сайта",
-    description="Без фильтра — все заявки; `match_status=unmatched` — очередь на разбор.",
+    description=(
+        "Очередь несопоставленных (`match_status=unmatched`) видна всем руководителям. "
+        "Сопоставленные — только те, чьё взаимодействие входит в область видимости."
+    ),
     responses=error_responses(
         ErrorCode.AUTH_REQUIRED, ErrorCode.AUTH_FORBIDDEN, ErrorCode.VALIDATION_ERROR
     ),
 )
 async def read_applications(
     session: SessionDep,
-    _user: ManagerDep,
+    user: ManagerDep,
     match_status: Annotated[
         str | None, Query(pattern="^(matched|unmatched)$", description="Состояние сопоставления")
     ] = None,
 ) -> list[SiteApplicationOut]:
-    applications = await list_applications(session, match_status)
+    applications = await list_applications(session, user, match_status)
     return [SiteApplicationOut.model_validate(application) for application in applications]
 
 

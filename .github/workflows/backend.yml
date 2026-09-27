@@ -36,7 +36,8 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
       # Шрифт с кириллицей нужен отчётам в PDF.
       - run: sudo apt-get update && sudo apt-get install --no-install-recommends -y fonts-dejavu-core
-      - run: pip install -e ".[dev]"
+      # Те же версии, что в образе: lock-файл ограничивает всё, что в нём есть.
+      - run: pip install -c requirements.lock -e ".[dev]"
       - name: Ruff
         run: ruff check . && ruff format --check .
       - name: Mypy
@@ -89,12 +90,9 @@ jobs:
       - name: Известные уязвимости в зависимостях
         run: |
           pip install pip-audit
-          pip install -e backend
-          # Свой пакет не опубликован на PyPI, и --strict падал бы на нём самом:
-          # проверяем закреплённые версии всех остальных пакетов окружения.
-          pip freeze --exclude-editable > /tmp/requirements.txt
-          pip-audit --strict --desc -r /tmp/requirements.txt --disable-pip --no-deps
+          # Проверяем ровно те версии, что ставятся в образ.
+          pip-audit --strict --desc -r backend/requirements.lock --disable-pip --no-deps
       - name: Секреты в истории
         run: |
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
             detect --source=/repo --redact --verbose --exit-code 1

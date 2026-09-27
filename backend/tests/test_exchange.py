@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.integrations.clients import (
@@ -92,6 +92,11 @@ async def test_document_carries_status_owner_counterparty_and_links(client: Asyn
 async def test_exchange_returns_only_records_changed_since(
     client: AsyncClient, session: AsyncSession
 ) -> None:
+    # Демо-записи созданы только что: отодвигаем их за окно перекрытия, иначе придут все.
+    await session.execute(
+        update(Interaction).values(updated_at=Interaction.updated_at - timedelta(hours=1))
+    )
+    await session.commit()
     before = await session.scalar(select(func.max(Interaction.updated_at)))
     assert before is not None
     kfu = await move_kfu(client)
@@ -99,7 +104,8 @@ async def test_exchange_returns_only_records_changed_since(
     everything = await client.get("/api/v1/exchange/interactions", headers=as_user(ALINA_ADMIN))
     changed = await client.get(
         "/api/v1/exchange/interactions",
-        params={"updated_since": (before + timedelta(microseconds=1)).isoformat()},
+        # Прошлый опрос был через 10 минут после старых записей: они за окном перекрытия.
+        params={"updated_since": (before + timedelta(minutes=10)).isoformat()},
         headers=as_user(ALINA_ADMIN),
     )
     own = await client.get("/api/v1/exchange/interactions", headers=as_user(MIKHAIL_KAM))
@@ -108,6 +114,29 @@ async def test_exchange_returns_only_records_changed_since(
     assert [item["record"]["id"] for item in changed.json()["items"]] == [kfu["id"]]
     assert changed.json()["items"][0]["status"]["stage_code"] == "documents_exchange"
     assert own.json()["total"] == 2
+
+
+async def test_change_committed_during_the_poll_is_not_lost(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    polled_at = datetime.now(UTC)
+    # Транзакция началась до опроса, а зафиксировалась после: время у записи — раньше опроса.
+    late = await session.scalar(select(Interaction).limit(1))
+    assert late is not None
+    await session.execute(
+        update(Interaction)
+        .where(Interaction.id == late.id)
+        .values(updated_at=polled_at - timedelta(minutes=2))
+    )
+    await session.commit()
+
+    next_poll = await client.get(
+        "/api/v1/exchange/interactions",
+        params={"updated_since": polled_at.isoformat()},
+        headers=as_user(ALINA_ADMIN),
+    )
+
+    assert str(late.id) in {item["record"]["id"] for item in next_poll.json()["items"]}
 
 
 async def test_changes_are_queued_once_per_record_and_receiver(

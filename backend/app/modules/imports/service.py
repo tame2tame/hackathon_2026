@@ -98,16 +98,20 @@ async def load_catalog(session: AsyncSession, user: CurrentUser) -> Catalog:
     for product, vendor in rows.tuples():
         products[(mapping.normalize(vendor.name), mapping.normalize(product.name))] = product
 
-    default_programs = {
-        product_id: program_id
-        for program_id, product_id in (
-            await session.execute(
-                select(ProgramProduct.program_id, ProgramProduct.product_id).where(
-                    ProgramProduct.is_default.is_(True)
-                )
-            )
-        ).tuples()
-    }
+    # Программа продукта: основная пара, а если связь у продукта одна — она.
+    programs_of: dict[uuid.UUID, list[uuid.UUID]] = {}
+    default_programs: dict[uuid.UUID, uuid.UUID] = {}
+    for program_id, product_id, is_default in (
+        await session.execute(
+            select(ProgramProduct.program_id, ProgramProduct.product_id, ProgramProduct.is_default)
+        )
+    ).tuples():
+        programs_of.setdefault(product_id, []).append(program_id)
+        if is_default:
+            default_programs[product_id] = program_id
+    for product_id, linked in programs_of.items():
+        if len(linked) == 1:
+            default_programs.setdefault(product_id, linked[0])
     users = {
         mapping.normalize(user.full_name): user
         for user in await session.scalars(select(AppUser).where(AppUser.is_active.is_(True)))

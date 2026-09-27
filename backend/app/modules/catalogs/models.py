@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     LargeBinary,
     String,
     Table,
@@ -70,9 +71,7 @@ class Program(UUIDPrimaryKey, Timestamps, Base):
         CheckConstraint("priority BETWEEN 0 AND 100", name="priority_range"),
     )
 
-    direction_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("direction.id", ondelete="RESTRICT"), index=True
-    )
+    direction_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("direction.id", ondelete="RESTRICT"))
     name: Mapped[str] = mapped_column(String(300))
     lms_course_ref: Mapped[str | None] = mapped_column(String(120))
     # Ручной приоритет курса: рейтинг считается по данным, но руководитель может сказать,
@@ -104,9 +103,7 @@ class Product(UUIDPrimaryKey, Timestamps, Base):
     __tablename__ = "product"
     __table_args__ = (UniqueConstraint("vendor_id", "name"),)
 
-    vendor_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("vendor.id", ondelete="RESTRICT"), index=True
-    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("vendor.id", ondelete="RESTRICT"))
     name: Mapped[str] = mapped_column(String(200))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -114,9 +111,28 @@ class Product(UUIDPrimaryKey, Timestamps, Base):
 
 
 class ProgramProduct(Base):
-    """Продукты программы; is_default выбирает программу по продукту при импорте."""
+    """Продукты программы.
+
+    `is_default` — основная пара «программа ↔ продукт», одна у программы и одна у продукта.
+    По ней импорт выбирает программу для продукта из выгрузки, а заявка с сайта — продукт для
+    программы. Если связь у программы (продукта) единственная, она основная и без флага.
+    """
 
     __tablename__ = "program_product"
+    __table_args__ = (
+        Index(
+            "uq_program_product_default_program",
+            "program_id",
+            unique=True,
+            postgresql_where=text("is_default"),
+        ),
+        Index(
+            "uq_program_product_default_product",
+            "product_id",
+            unique=True,
+            postgresql_where=text("is_default"),
+        ),
+    )
 
     program_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("program.id", ondelete="CASCADE"), primary_key=True

@@ -25,6 +25,9 @@ class SavedViewOut(BaseModel):
 
 
 class SavedViewCreate(BaseModel):
+    # Строка из одних пробелов не проходит min_length: сначала обрезаем.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     page: ViewPage
     name: str = Field(min_length=1, max_length=100)
     filters: dict[str, Any] = Field(
@@ -36,6 +39,9 @@ class SavedViewCreate(BaseModel):
 
 
 class SavedViewUpdate(BaseModel):
+    # Строка из одних пробелов не проходит min_length: сначала обрезаем.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     filters: dict[str, Any] | None = None
     columns: list[Column] | None = Field(default=None, max_length=40)

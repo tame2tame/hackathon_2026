@@ -1,4 +1,5 @@
-FROM python:3.12-slim
+# Базовый образ закреплён по digest: тот же, в котором собран requirements.lock.
+FROM python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -12,13 +13,17 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml alembic.ini ./
+COPY pyproject.toml requirements.lock alembic.ini ./
 COPY app ./app
 COPY scripts ./scripts
 COPY migrations ./migrations
 COPY mocks ./mocks
 
-RUN pip install . && useradd --system --uid 10001 radar
+# Сначала точные версии из lock-файла, затем сам пакет без повторного разрешения зависимостей.
+RUN pip install -r requirements.lock \
+    && pip install --no-deps . \
+    && pip check \
+    && useradd --system --uid 10001 radar
 USER radar
 
 EXPOSE 8000

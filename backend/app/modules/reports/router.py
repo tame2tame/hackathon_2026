@@ -7,9 +7,9 @@ from fastapi.responses import StreamingResponse
 from app.core.db import SessionDep
 from app.core.errors import AppError, ErrorCode, error_responses
 from app.core.http_cache import (
-    IMMUTABLE,
     NOT_MODIFIED,
     NOT_MODIFIED_RESPONSE,
+    REVALIDATE,
     etag_of,
     fresh_for_client,
 )
@@ -85,7 +85,8 @@ async def read_report_file(
         raise AppError(ErrorCode.NOT_FOUND, "Файл ещё не готов.")
     # Готовый отчёт не перестраивается: тот же запуск — тот же файл.
     etag = etag_of(f"{job.id}:{job.finished_at}")
-    headers = {"ETag": etag, "Cache-Control": IMMUTABLE}
+    # Файл не меняется, но доступ к нему может пропасть: браузер спрашивает сервер каждый раз.
+    headers = {"ETag": etag, "Cache-Control": REVALIDATE}
     if fresh_for_client(request, etag):
         return Response(status_code=NOT_MODIFIED, headers=headers)
     file_name = f"Взаимодействия-{job.created_at:%Y-%m-%d}.{job.format}"

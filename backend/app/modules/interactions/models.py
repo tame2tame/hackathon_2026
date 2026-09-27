@@ -31,7 +31,7 @@ class Contract(UUIDPrimaryKey, Timestamps, Base):
     __table_args__ = (UniqueConstraint("university_id", "number"),)
 
     university_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("university.id", ondelete="RESTRICT"), index=True
+        ForeignKey("university.id", ondelete="RESTRICT")
     )
     number: Mapped[str] = mapped_column(String(60))
     signed_at: Mapped[date | None]
@@ -80,6 +80,11 @@ class Interaction(UUIDPrimaryKey, Timestamps, Base):
         ),
         Index("ix_interaction_owner_status", "owner_user_id", "status"),
         Index("ix_interaction_stage_entered", "current_stage_id", "stage_entered_at"),
+        # Выгрузка обмена идёт по курсору (updated_at, id), перенос на новую схему — по версии,
+        # эскалация и срок хранения — по последней активности.
+        Index("ix_interaction_updated_at", "updated_at", "id"),
+        Index("ix_interaction_workflow_version_id", "workflow_version_id"),
+        Index("ix_interaction_last_activity_at", "last_activity_at"),
         CheckConstraint("status IN ('active', 'paused', 'completed', 'cancelled')", name="status"),
         CheckConstraint("source IN ('manual', 'import', 'site', 'lms', 'demo')", name="source"),
         CheckConstraint(

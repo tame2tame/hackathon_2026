@@ -6,9 +6,10 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalogs.models import AppUser, Program, ProgramProduct, Team, University
 from app.modules.integrations.clients import (
     ApplicationRecord,
     CourseMetrics,
@@ -140,6 +141,36 @@ async def test_unknown_program_creates_an_interaction(session: AsyncSession) -> 
     )
     assert created is not None
     assert created.owner_user_id is not None
+
+
+async def test_only_product_of_a_program_is_its_default(session: AsyncSession) -> None:
+    source = await source_of(session, SITE_NAME)
+    program = await session.scalar(select(Program).where(Program.name == "Веб-разработка"))
+    assert program is not None
+    # Флаг не проставлен, но продукт у программы один: выбирать нечего.
+    await session.execute(
+        update(ProgramProduct)
+        .where(ProgramProduct.program_id == program.id)
+        .values(is_default=False)
+    )
+    linked = await session.scalar(
+        select(ProgramProduct.product_id).where(ProgramProduct.program_id == program.id)
+    )
+    record = ApplicationRecord(
+        "site-only", "НГУ", "Веб-разработка", "Декан", "Просят курс", datetime.now(UTC)
+    )
+
+    run = await sync_source(session, source, FakeSite([record]))
+
+    application = await session.scalar(
+        select(SiteApplication).where(SiteApplication.external_id == "site-only")
+    )
+    assert run.stats["interactions_created"] == 1
+    assert application is not None
+    assert application.match_status == "matched"
+    created = await session.get(Interaction, application.interaction_id)
+    assert created is not None
+    assert created.product_id == linked
 
 
 async def test_repeated_sync_keeps_one_application(session: AsyncSession) -> None:
@@ -307,3 +338,67 @@ async def test_source_token_travels_with_the_request(monkeypatch: pytest.MonkeyP
 
     # Секрет берётся из окружения по имени, в базе лежит только имя переменной.
     assert seen == ["Bearer secret-from-env"]
+
+
+async def test_foreign_matched_application_is_hidden_and_kept(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    source = await source_of(session, SITE_NAME)
+    await sync_source(session, source, FakeSite(site_records()))
+    matched = await session.scalar(
+        select(SiteApplication).where(SiteApplication.external_id == "site-1")
+    )
+    assert matched is not None
+    # Запись ИТМО уходит КАМу другой команды: руководителю Роману она больше не видна.
+    stranger = AppUser(email="stranger@example.com", full_name="Чужой КАМ", role="kam")
+    session.add(stranger)
+    await session.flush()
+    record = await session.get(Interaction, matched.interaction_id)
+    assert record is not None
+    record.owner_user_id = stranger.id
+    await session.commit()
+    own = await find(client, ANNA_KAM, stage_code="signing")
+
+    listed = await client.get("/api/v1/site-applications", headers=as_user(ROMAN_MANAGER))
+    taken = await client.post(
+        f"/api/v1/site-applications/{matched.id}/match",
+        json={"interaction_id": own["id"]},
+        headers=as_user(ROMAN_MANAGER),
+    )
+
+    # ФИО заявителя из чужой записи не показывается, а заявку нельзя увести к себе.
+    assert "site-1" not in {item["external_id"] for item in listed.json()}
+    assert "site-2" in {item["external_id"] for item in listed.json()}
+    assert taken.status_code == 404
+
+
+async def test_new_university_goes_to_the_team_that_works_with_universities(
+    session: AsyncSession,
+) -> None:
+    source = await source_of(session, SITE_NAME)
+    # Руководитель частных лиц без записей вузов: заявка вуза ему не достаётся.
+    other = AppUser(email="b2c.boss@example.com", full_name="Руководитель B2C", role="manager")
+    session.add(other)
+    await session.flush()
+    session.add(Team(name="Частные лица", manager_user_id=other.id))
+    session.add(University(name="Новый университет", short_name="НУ", region="Москва"))
+    # Строка Романа переезжает в конец таблицы: без ORDER BY первым нашёлся бы другой.
+    await session.execute(
+        update(AppUser).where(AppUser.email == ROMAN_MANAGER).values(full_name=AppUser.full_name)
+    )
+    await session.commit()
+    record = ApplicationRecord(
+        "site-nu", "Новый университет", "Веб-разработка", "Декан", None, datetime.now(UTC)
+    )
+
+    await sync_source(session, source, FakeSite([record]))
+
+    application = await session.scalar(
+        select(SiteApplication).where(SiteApplication.external_id == "site-nu")
+    )
+    assert application is not None
+    created = await session.get(Interaction, application.interaction_id)
+    assert created is not None
+    owner = await session.get(AppUser, created.owner_user_id)
+    assert owner is not None
+    assert owner.email == ROMAN_MANAGER

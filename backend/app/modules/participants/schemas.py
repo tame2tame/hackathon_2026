@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 ParticipantRole = Literal["student", "teacher"]
 # Рабочая почта: проверяем форму, а не существование ящика — отдельная библиотека для этого лишняя.
@@ -33,6 +33,9 @@ class ParticipantContactOut(BaseModel):
 
 
 class ParticipantCreate(BaseModel):
+    # Строка из одних пробелов не проходит min_length: сначала обрезаем.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     role: ParticipantRole = "student"
     full_name: str = Field(min_length=3, max_length=300)
     email: str | None = Field(default=None, max_length=254, pattern=EMAIL_PATTERN)

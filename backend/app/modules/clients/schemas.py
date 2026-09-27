@@ -31,6 +31,9 @@ class ClientOut(ClientListItem):
 
 
 class ClientCreate(BaseModel):
+    # Строка из одних пробелов не проходит min_length: сначала обрезаем.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     kind: ClientKind
     name: str = Field(min_length=2, max_length=300)
     inn: str | None = Field(

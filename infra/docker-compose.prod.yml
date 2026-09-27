@@ -1,11 +1,13 @@
 # Профиль стенда. Значений по умолчанию нет намеренно: `${VAR:?}` не даст запустить
 # окружение с забытым паролем. Все переменные — в .env рядом с этим файлом (см. env.prod.example).
 # Запуск: docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+# Образы закреплены по digest: тег можно перезаписать, а стенд должен подниматься тем же, что
+# проверяли. Тег оставлен для читаемости; обновление — новый digest в этом файле.
 name: radar-vuzov-prod
 
 services:
   web:
-    image: nginx:alpine
+    image: nginx:alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
     ports:
       - "80:80"
       - "443:443"
@@ -100,7 +102,7 @@ services:
 
   # Файлы вложений и отчётов. Отдельное хранилище от базы, как советует жюри; наружу не публикуется.
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: ["server", "/data"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?логин MinIO}
@@ -132,13 +134,13 @@ services:
     restart: unless-stopped
 
   mailpit:
-    image: axllent/mailpit:v1.27
+    image: axllent/mailpit:v1.27@sha256:e22dce5b36f93c77082e204a3942fb6b283b7896e057458400a4c88344c3df68
     ports:
       - "127.0.0.1:8025:8025"
     restart: unless-stopped
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.3
+    image: quay.io/keycloak/keycloak:26.3@sha256:357829ec7c4693397533035092ad13b0644bcc95ded311f33a3738c4d9e9bdba
     command: ["start", "--import-realm", "--http-enabled=true"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:?логин администратора Keycloak}
@@ -164,7 +166,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: postgres:16
+    image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
     environment:
       POSTGRES_DB: radar
       POSTGRES_USER: radar
@@ -183,7 +185,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -193,7 +195,7 @@ services:
 
   # Файлы копируются отдельно от базы: тем же образом MinIO, в котором есть mc.
   backup-files:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     entrypoint: ["sh", "-c", "while true; do sh /scripts/files.sh || echo 'копия файлов не удалась'; sleep 86400; done"]
     environment:
       S3_ENDPOINT: http://minio:9000
@@ -215,7 +217,7 @@ services:
     restart: unless-stopped
 
   backup:
-    image: postgres:16
+    image: postgres:16@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
     environment:
       PGHOST: postgres
       PGUSER: radar

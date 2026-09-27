@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Query
@@ -15,6 +15,12 @@ from app.modules.exchange.schemas import InteractionDocument
 from app.modules.interactions.models import Interaction
 
 router = APIRouter(prefix="/api/v1", tags=["exchange"])
+
+# `updated_at` — время начала транзакции, а не её фиксации: запись, зафиксированная сразу после
+# опроса, может получить время раньше него и выпасть из следующего. Поэтому окно перекрывается:
+# повтор последних минут безвреден (документ идемпотентен по id), а пропуск — нет. Транзакции
+# запросов короче минуты, пять минут — с запасом.
+EXCHANGE_OVERLAP = timedelta(minutes=5)
 
 
 @router.get(
@@ -40,7 +46,9 @@ async def read_interaction_document(
     description=(
         "Документы `radar-vuzov/interaction@1` в области видимости пользователя. `updated_since` "
         "отдаёт только изменённые с этого момента — так внешняя система забирает изменения "
-        "по расписанию, не перечитывая всё."
+        "по расписанию, не перечитывая всё. Окно перекрывается на пять минут назад: запись, "
+        "зафиксированная во время прошлого опроса, придёт в следующем. Повтор документа "
+        "обрабатывается по `record.id` и `record.updated_at`."
     ),
     responses=error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.VALIDATION_ERROR),
 )
@@ -55,7 +63,7 @@ async def read_exchange(
 ) -> Page[InteractionDocument]:
     stmt = apply_interaction_scope(select(Interaction.id), user)
     if updated_since is not None:
-        stmt = stmt.where(Interaction.updated_at >= updated_since)
+        stmt = stmt.where(Interaction.updated_at >= updated_since - EXCHANGE_OVERLAP)
     if group_id:
         stmt = stmt.where(Interaction.group_id.in_(group_id))
     total = await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0

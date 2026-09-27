@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.catalogs.schemas import UserRef
 
@@ -28,6 +28,9 @@ class MessageOut(BaseModel):
 
 
 class MessageCreate(BaseModel):
+    # Строка из одних пробелов не проходит min_length: сначала обрезаем.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     recipient_id: uuid.UUID
     body: str = Field(min_length=1, max_length=2000)
     interaction_id: uuid.UUID | None = Field(

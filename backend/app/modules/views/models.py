@@ -21,9 +21,7 @@ class SavedView(UUIDPrimaryKey, Timestamps, Base):
         UniqueConstraint("user_id", "page", "name"),
     )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("app_user.id", ondelete="CASCADE"), index=True
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
     page: Mapped[str] = mapped_column(String(20))
     name: Mapped[str] = mapped_column(String(100))
     # Фильтры и колонки хранятся как есть: их смысл знает страница, а не сервер.

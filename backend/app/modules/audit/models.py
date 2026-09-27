@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, Identity, String, func
+from sqlalchemy import BigInteger, DateTime, Identity, Index, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,6 +13,11 @@ from app.core.db import Base
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
+    # Журнал в админке фильтруют по действию или виду объекта и читают с конца.
+    __table_args__ = (
+        Index("ix_audit_log_action_occurred_at", "action", "occurred_at"),
+        Index("ix_audit_log_entity_kind_occurred_at", "entity_kind", "occurred_at"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     occurred_at: Mapped[datetime] = mapped_column(

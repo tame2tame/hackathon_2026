@@ -50,7 +50,7 @@ class WorkflowVersion(UUIDPrimaryKey, Timestamps, Base):
     )
 
     template_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("workflow_template.id", ondelete="RESTRICT"), index=True
+        ForeignKey("workflow_template.id", ondelete="RESTRICT")
     )
     version_no: Mapped[int]
     status: Mapped[str] = mapped_column(String(16), default="draft")
@@ -69,7 +69,7 @@ class Stage(UUIDPrimaryKey, Timestamps, Base):
     )
 
     version_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("workflow_version.id", ondelete="RESTRICT"), index=True
+        ForeignKey("workflow_version.id", ondelete="RESTRICT")
     )
     code: Mapped[str] = mapped_column(String(60))
     name: Mapped[str] = mapped_column(String(200))

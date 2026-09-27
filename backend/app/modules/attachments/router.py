@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.db import SessionDep
 from app.core.errors import ErrorCode, error_responses
-from app.core.http_cache import IMMUTABLE, NOT_MODIFIED, NOT_MODIFIED_RESPONSE, fresh_for_client
+from app.core.http_cache import NOT_MODIFIED, NOT_MODIFIED_RESPONSE, REVALIDATE, fresh_for_client
 from app.core.security import CurrentUserDep
 from app.modules.attachments.schemas import AttachmentOut
 from app.modules.attachments.service import (
@@ -85,7 +85,8 @@ async def read_attachment_file(
     attachment = await find_attachment(session, user, attachment_id)
     # Файл вложения не меняется: его хэш и есть ETag, а повторное скачивание ни к чему.
     etag = f'"{attachment.sha256}"'
-    headers = {"ETag": etag, "Cache-Control": IMMUTABLE}
+    # Файл не меняется, но доступ к нему может пропасть: браузер спрашивает сервер каждый раз.
+    headers = {"ETag": etag, "Cache-Control": REVALIDATE}
     if fresh_for_client(request, etag):
         return Response(status_code=NOT_MODIFIED, headers=headers)
     # filename* — чтобы кириллические имена доходили без искажений.

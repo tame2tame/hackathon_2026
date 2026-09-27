@@ -130,3 +130,14 @@ async def test_rename_race_ends_with_validation_error(
 
     assert renamed.status_code == 422
     assert renamed.json()["errors"] == [{"field": "name", "message": "Название занято"}]
+
+
+async def test_blank_name_is_refused(client: AsyncClient) -> None:
+    created = await client.post(VIEWS, json={**OVERDUE, "name": "   "}, headers=as_user(ANNA_KAM))
+    other = await client.post(VIEWS, json=OVERDUE, headers=as_user(ANNA_KAM))
+    renamed = await client.patch(
+        f"{VIEWS}/{other.json()['id']}", json={"name": " "}, headers=as_user(ANNA_KAM)
+    )
+
+    assert created.status_code == 422
+    assert renamed.status_code == 422

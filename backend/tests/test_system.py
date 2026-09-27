@@ -1,7 +1,8 @@
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
+from app import main
 from app.core.config import Settings
 from tests.users import ANNA_KAM, as_user
 
@@ -73,3 +74,30 @@ def test_production_settings_accept_real_secrets() -> None:
 def test_production_refuses_unsafe_settings(override: dict[str, str], message: str) -> None:
     with pytest.raises(ValidationError, match=message):
         Settings(**{**PRODUCTION, **override})
+
+
+async def test_frontend_on_another_address_passes_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        main,
+        "get_settings",
+        lambda: Settings(app_env="test", auth_mode="dev", cors_origins="https://radar.example.ru"),
+    )
+    app = main.create_app()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://api") as api:
+        preflight = await api.options(
+            "/api/v1/interactions/x/status",
+            headers={
+                "Origin": "https://radar.example.ru",
+                "Access-Control-Request-Method": "PUT",
+                "Access-Control-Request-Headers": "last-event-id, if-none-match",
+            },
+        )
+
+    assert preflight.status_code == 200
+    assert "PUT" in preflight.headers["access-control-allow-methods"]
+    allowed = preflight.headers["access-control-allow-headers"].lower()
+    assert "last-event-id" in allowed
+    assert "if-none-match" in allowed

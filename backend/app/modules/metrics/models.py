@@ -24,7 +24,7 @@ class ProgramMetric(UUIDPrimaryKey, Timestamps, Base):
     )
 
     university_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("university.id", ondelete="RESTRICT"), index=True
+        ForeignKey("university.id", ondelete="RESTRICT")
     )
     program_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("program.id", ondelete="RESTRICT"), index=True

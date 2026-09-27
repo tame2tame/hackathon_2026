@@ -145,7 +145,8 @@ async def test_file_is_downloaded_once(client: AsyncClient) -> None:
     again = await client.get(url, headers=with_etag(ANNA_KAM, first.headers["etag"]))
 
     assert first.headers["etag"] == f'"{uploaded["sha256"]}"'
-    assert first.headers["cache-control"] == "private, max-age=86400, immutable"
+    # Не immutable: после потери доступа браузер обязан спросить сервер и получить 404.
+    assert first.headers["cache-control"] == "private, no-cache"
     assert (again.status_code, again.content) == (304, b"")
 
 
@@ -157,6 +158,7 @@ async def test_ready_report_is_downloaded_once(client: AsyncClient) -> None:
     again = await client.get(url, headers=with_etag(ANNA_KAM, first.headers["etag"]))
 
     assert first.status_code == 200, first.text
+    assert first.headers["cache-control"] == "private, no-cache"
     assert (again.status_code, again.content) == (304, b"")
 
 
