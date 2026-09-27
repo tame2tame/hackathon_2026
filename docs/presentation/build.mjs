@@ -1,6 +1,7 @@
 import pptxgen from "pptxgenjs";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 
 // Корень репозитория — от расположения скрипта, а не с машины автора.
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
@@ -16,11 +17,26 @@ const plural = (n, one, few, many) => {
   if (n % 10 >= 2 && n % 10 <= 4) return `${n} ${few}`;
   return `${n} ${many}`;
 };
-// Тесты — функции test_* бэкенда; параметризованные варианты pytest считает отдельно, их больше.
-const TESTS = readdirSync(`${ROOT}/backend/tests`)
-  .filter((name) => name.startsWith("test_") && name.endsWith(".py"))
-  .map((name) => readFileSync(`${ROOT}/backend/tests/${name}`, "utf8"))
-  .reduce((total, text) => total + (text.match(/^(async )?def test_/gm) ?? []).length, 0);
+// Тесты — столько, сколько собирает pytest (с параметризованными вариантами). Без окружения
+// бэкенда — число функций test_*, оно чуть меньше.
+function countTests() {
+  try {
+    const out = execFileSync(`${ROOT}/backend/.venv/bin/pytest`, ["--collect-only", "-q"], {
+      cwd: `${ROOT}/backend`,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const collected = out.match(/(\d+) tests? collected/);
+    if (collected) return Number(collected[1]);
+  } catch {
+    // Нет виртуального окружения — считаем по исходникам.
+  }
+  return readdirSync(`${ROOT}/backend/tests`)
+    .filter((name) => name.startsWith("test_") && name.endsWith(".py"))
+    .map((name) => readFileSync(`${ROOT}/backend/tests/${name}`, "utf8"))
+    .reduce((total, text) => total + (text.match(/^(async )?def test_/gm) ?? []).length, 0);
+}
+const TESTS = countTests();
 const SHOT = (name) => `${ROOT}/backend/app/help/images/${name}.png`;
 const DIAGRAM = (n) => `${ROOT}/docs/architecture/images/diagram-${n}.png`;
 
