@@ -6,6 +6,7 @@
 (`POST /api/crm/interactions`) — наш, пока заказчик не дал свой: меняется только адаптер.
 """
 
+import os
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any, Protocol, runtime_checkable
@@ -96,12 +97,14 @@ async def _post(
     path: str,
     payload: dict[str, Any],
     transport: httpx.AsyncBaseTransport | None = None,
+    token: str | None = None,
 ) -> Any:
+    headers = {"Authorization": f"Bearer {token}"} if token else None
     try:
         async with httpx.AsyncClient(
             base_url=base_url, timeout=TIMEOUT_SECONDS, transport=transport
         ) as client:
-            response = await client.post(path, json=payload)
+            response = await client.post(path, json=payload, headers=headers)
             response.raise_for_status()
             return response.json()
     except (httpx.HTTPError, ValueError) as error:
@@ -123,9 +126,10 @@ async def push_documents(
     base_url: str,
     documents: list[dict[str, Any]],
     transport: httpx.AsyncBaseTransport | None = None,
+    token: str | None = None,
 ) -> PushResult:
     """Пакет документов одним запросом: обмен по расписанию, а не по вебхуку на каждое изменение."""
-    return _push_result(await _post(base_url, PUSH_PATH, {"items": documents}, transport))
+    return _push_result(await _post(base_url, PUSH_PATH, {"items": documents}, transport, token))
 
 
 class MoodleLmsClient:
@@ -171,7 +175,7 @@ class MoodleLmsClient:
         return metrics
 
     async def push_interactions(self, documents: list[dict[str, Any]]) -> PushResult:
-        return await push_documents(self._base_url, documents, self._transport)
+        return await push_documents(self._base_url, documents, self._transport, self._token)
 
 
 class HttpSiteClient:
@@ -213,4 +217,13 @@ class HttpSiteClient:
         return records
 
     async def push_interactions(self, documents: list[dict[str, Any]]) -> PushResult:
-        return await push_documents(self._base_url, documents, self._transport)
+        return await push_documents(self._base_url, documents, self._transport, self._token)
+
+
+def source_token(secret_ref: str | None) -> str | None:
+    """Секрет источника берётся из окружения по имени; в базе хранится только имя.
+
+    Имя задаёт сам код при заведении источника, а не администратор через API, поэтому
+    увести через него чужую переменную нельзя.
+    """
+    return os.environ.get(secret_ref) if secret_ref else None

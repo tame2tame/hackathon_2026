@@ -27,6 +27,7 @@ from app.modules.integrations.clients import (
     MoodleLmsClient,
     SiteClient,
     SourceUnavailableError,
+    source_token,
 )
 from app.modules.integrations.models import IntegrationSource, SiteApplication, SyncRun
 from app.modules.integrations.outbox import mark_changed
@@ -93,9 +94,10 @@ async def list_runs(session: AsyncSession, source_id: uuid.UUID) -> list[SyncRun
 
 
 def _client_for(source: IntegrationSource) -> LmsClient | SiteClient:
+    token = source_token(source.secret_ref)
     if source.kind == "lms":
-        return MoodleLmsClient(source.base_url)
-    return HttpSiteClient(source.base_url)
+        return MoodleLmsClient(source.base_url, token)
+    return HttpSiteClient(source.base_url, token)
 
 
 async def _catalog_ids(session: AsyncSession) -> tuple[dict[str, University], dict[str, Program]]:
@@ -385,8 +387,12 @@ async def sync_source(
 
 
 async def sync_all(session: AsyncSession, now: datetime | None = None) -> list[SyncRun]:
-    """Синхронизирует все источники: отказ одного не мешает остальным."""
-    runs = [await sync_source(session, source, now=now) for source in await list_sources(session)]
+    """Синхронизирует все включённые источники: отказ одного не мешает остальным."""
+    runs = [
+        await sync_source(session, source, now=now)
+        for source in await list_sources(session)
+        if source.pull_enabled
+    ]
     await session.commit()
     # Витрина метрик обновилась: сбрасываем кэш рейтинга уже после фиксации, иначе параллельный
     # запрос успел бы посчитать рейтинг по старым данным и положить его в новое поколение.

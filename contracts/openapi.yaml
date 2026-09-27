@@ -4980,10 +4980,9 @@ paths:
       tags:
       - help
       summary: Картинка из справки
-      description: Скриншоты экранов, на которые ссылаются разделы руководства.
+      description: 'Скриншоты экранов, на которые ссылаются разделы руководства. Отдаются без входа: на
+        них только синтетические демо-данные, а `<img>` не умеет слать токен.'
       operationId: read_image_api_v1_help_images__name__get
-      security:
-      - HTTPBearer: []
       parameters:
       - name: name
         in: path
@@ -4996,12 +4995,6 @@ paths:
           description: Изображение
           content:
             image/png: {}
-        '401':
-          description: AUTH_REQUIRED
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/Problem'
         '404':
           description: NOT_FOUND
           content:
@@ -7647,12 +7640,17 @@ components:
           - type: string
           - type: 'null'
           title: Schedule Cron
+          description: 'Справочно: входящая синхронизация идёт в воркере раз в час для всех включённых'
         last_sync_at:
           anyOf:
           - type: string
             format: date-time
           - type: 'null'
           title: Last Sync At
+        pull_enabled:
+          type: boolean
+          title: Pull Enabled
+          description: Забирать ли данные из системы по расписанию
         push_enabled:
           type: boolean
           title: Push Enabled
@@ -7672,6 +7670,7 @@ components:
       - is_mock
       - schedule_cron
       - last_sync_at
+      - pull_enabled
       - push_enabled
       - last_push_at
       title: IntegrationSourceOut
@@ -9388,12 +9387,18 @@ components:
     SourceUpdate:
       properties:
         push_enabled:
-          type: boolean
+          anyOf:
+          - type: boolean
+          - type: 'null'
           title: Push Enabled
           description: Отправлять ли системе изменения записей
+        pull_enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Pull Enabled
+          description: Забирать ли из системы данные по расписанию
       type: object
-      required:
-      - push_enabled
       title: SourceUpdate
     StageDraft:
       properties:

@@ -27,12 +27,14 @@ from app.modules.integrations.clients import (
     InteractionReceiver,
     MoodleLmsClient,
     SourceUnavailableError,
+    source_token,
 )
 from app.modules.integrations.models import IntegrationOutbox, IntegrationSource, SyncRun
 from app.modules.interactions.models import Interaction
 
 PUSH_BATCH = 100
-MAX_PUSH_ATTEMPTS = 8
+# Недоступный получатель — дело временное: повторяем без предела, но не чаще раза в час.
+# Сдаётся очередь только на отказе по содержанию — его повтор не лечит.
 BACKOFF_MINUTES = (1, 5, 15, 60)
 LEASE = timedelta(minutes=5)
 
@@ -89,9 +91,10 @@ async def mark_changed(
 
 
 def receiver_for(source: IntegrationSource) -> InteractionReceiver:
+    token = source_token(source.secret_ref)
     if source.kind == "lms":
-        return MoodleLmsClient(source.base_url)
-    return HttpSiteClient(source.base_url)
+        return MoodleLmsClient(source.base_url, token)
+    return HttpSiteClient(source.base_url, token)
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,7 +150,6 @@ async def _settle(session: AsyncSession, claim: _Claim, values: dict[str, Any]) 
 
 async def _retry(session: AsyncSession, claim: _Claim, error: str, now: datetime) -> str:
     attempts = claim.attempts + 1
-    give_up = attempts >= MAX_PUSH_ATTEMPTS
     pause = BACKOFF_MINUTES[min(attempts, len(BACKOFF_MINUTES)) - 1]
     await session.execute(
         update(IntegrationOutbox)
@@ -157,10 +159,9 @@ async def _retry(session: AsyncSession, claim: _Claim, error: str, now: datetime
             last_error=error[:300],
             locked_until=None,
             next_attempt_at=now + timedelta(minutes=pause),
-            status="failed" if give_up else "pending",
         )
     )
-    return "failed" if give_up else "retried"
+    return "retried"
 
 
 async def push_source(

@@ -291,3 +291,23 @@ async def test_change_during_push_is_sent_again(client: AsyncClient, session: As
     assert after_first == ("pending", 1)
     assert later.stats == {"sent": 1}
     assert [item.status for item in await outbox(session, source_id=site.id)] == ["sent"]
+
+
+async def test_long_outage_does_not_drop_the_change(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    site = (await sources(session))["site"]
+    await move_kfu(client)
+    broken = HttpSiteClient(
+        "http://mock-site", transport=httpx.MockTransport(lambda request: httpx.Response(503))
+    )
+
+    moment = datetime.now(UTC)
+    for _ in range(20):
+        moment += timedelta(hours=2)
+        await push_source(session, site, client=broken, now=moment)
+    [entry] = await outbox(session, source_id=site.id)
+
+    # Раньше после восьми неудач изменение помечалось failed и больше не уходило никогда.
+    assert (entry.status, entry.attempts) == ("pending", 20)
+    assert entry.next_attempt_at - moment <= timedelta(minutes=60)

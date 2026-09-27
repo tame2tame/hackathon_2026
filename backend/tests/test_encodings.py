@@ -201,3 +201,12 @@ async def test_formula_like_names_do_not_become_formulas(
     assert "'=HYPERLINK" in csv_file.decode("utf-8-sig")
     # JSON — данные, а не таблица для Excel: значение отдаётся как есть.
     assert {"Вуз": '=HYPERLINK("http://example.com","МГТУ")'} in json.loads(raw)
+
+
+def test_too_long_file_is_refused_not_cut() -> None:
+    lines = ["ФИО;Email"] + [f"Иванов {index};i{index}@example.com" for index in range(6000)]
+    content = ("\r\n".join(lines) + "\r\n").encode()
+
+    # Раньше читались первые 5000 строк, а остальные молча пропадали.
+    with pytest.raises(SheetError, match="больше 5000 строк"):
+        read("список.csv", content)

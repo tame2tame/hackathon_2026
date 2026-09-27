@@ -75,9 +75,12 @@ def _sheet_from_rows(
             continue
         if not any(raw):
             continue
-        rows.append({header: value for header, value in zip(headers, raw, strict=False) if header})
         if len(rows) >= MAX_ROWS:
-            break
+            # Молча обрезать нельзя: пользователь решил бы, что загрузил весь файл.
+            raise SheetError(
+                f"В файле больше {MAX_ROWS} строк. Разбейте его на части и загрузите по очереди."
+            )
+        rows.append({header: value for header, value in zip(headers, raw, strict=False) if header})
     if not headers:
         raise SheetError("В файле не нашлась строка заголовков.")
     return Sheet(

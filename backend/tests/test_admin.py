@@ -3,11 +3,14 @@
 import uuid
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalogs.models import ContactPerson, University
+from app.core.config import get_settings
+from app.core.security import _user_from_claims
+from app.modules.catalogs.models import AppUser, ContactPerson, University
 from tests.api import find, user_id
 from tests.users import ALINA_ADMIN, ANNA_KAM, MIKHAIL_KAM, ROMAN_MANAGER, as_user
 
@@ -313,3 +316,55 @@ async def test_archived_contact_leaves_the_list_without_its_data(
     assert "Ольга Смирнова" not in [item["full_name"] for item in listed.json()]
     assert stored is not None
     assert (stored.email_enc, stored.phone_enc) == (None, None)
+
+
+async def test_admin_cannot_lock_everyone_out(client: AsyncClient, session: AsyncSession) -> None:
+    alina = await user_id(session, ALINA_ADMIN)
+
+    myself = await client.patch(
+        f"{ADMIN}/users/{alina}", json={"is_active": False}, headers=as_user(ALINA_ADMIN)
+    )
+    demoted = await client.patch(
+        f"{ADMIN}/users/{alina}", json={"role": "manager"}, headers=as_user(ALINA_ADMIN)
+    )
+    still_in = await client.get("/api/v1/me", headers=as_user(ALINA_ADMIN))
+
+    # Раньше единственный администратор отключал себя, и вернуть доступ можно было только в базе.
+    assert myself.status_code == 422
+    assert demoted.status_code == 422
+    assert "последний администратор" in demoted.json()["detail"].lower()
+    assert still_in.status_code == 200
+
+
+async def test_role_lives_in_keycloak_when_it_is_the_source(
+    client: AsyncClient, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mikhail = await user_id(session, "mikhail.volkov@example.com")
+    keycloak_mode = get_settings().model_copy(update={"auth_mode": "keycloak"})
+    monkeypatch.setattr("app.modules.admin.service.get_settings", lambda: keycloak_mode)
+
+    changed = await client.patch(
+        f"{ADMIN}/users/{mikhail}", json={"role": "manager"}, headers=as_user(ALINA_ADMIN)
+    )
+
+    # Роль из токена перезаписала бы правку при следующем входе, а аудит соврал бы.
+    assert changed.status_code == 422
+    assert changed.json()["errors"][0]["field"] == "role"
+
+
+async def test_first_login_twice_gives_one_employee(session: AsyncSession) -> None:
+    claims = {
+        "sub": "new-sub-42",
+        "email": "novikov@example.com",
+        "name": "Новиков Новик Новикович",
+        "realm_access": {"roles": ["kam"]},
+    }
+
+    first = await _user_from_claims(claims, session)
+    second = await _user_from_claims(claims, session)
+    count = await session.scalar(
+        select(func.count()).select_from(AppUser).where(AppUser.keycloak_sub == "new-sub-42")
+    )
+
+    assert first.id == second.id
+    assert count == 1

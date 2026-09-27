@@ -80,6 +80,13 @@ def parse_json(content: bytes) -> list[dict[str, Any]]:
             "В JSON нужен массив объектов или объект с полем items.",
             errors=[FieldError(field="file", message="Нет списка записей")],
         )
+    if len(items) > reader.MAX_ROWS:
+        # Тот же предел, что у таблиц: каждая строка — отдельная точка сохранения в одном запросе.
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            f"В файле больше {reader.MAX_ROWS} записей. Разбейте его на части.",
+            errors=[FieldError(field="file", message="Слишком много записей")],
+        )
     return items
 
 

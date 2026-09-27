@@ -32,6 +32,8 @@ class IntegrationSource(UUIDPrimaryKey, Timestamps, Base):
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Система принимает изменения записей CRM: обмен двусторонний.
     push_enabled: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    # Выключенный источник не синхронизируется по расписанию; вручную — можно.
+    pull_enabled: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     last_push_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 

@@ -75,8 +75,11 @@ async def patch_source(
     admin: AdminDep,
 ) -> IntegrationSourceOut:
     source = await get_source(session, source_id)
-    before = {"push_enabled": source.push_enabled}
-    source.push_enabled = payload.push_enabled
+    before = {"push_enabled": source.push_enabled, "pull_enabled": source.pull_enabled}
+    if payload.push_enabled is not None:
+        source.push_enabled = payload.push_enabled
+    if payload.pull_enabled is not None:
+        source.pull_enabled = payload.pull_enabled
     session.add(
         AuditLog(
             actor_user_id=admin.id,
@@ -84,7 +87,7 @@ async def patch_source(
             entity_kind="integration_source",
             entity_id=source.id,
             before=before,
-            after={"push_enabled": source.push_enabled},
+            after={"push_enabled": source.push_enabled, "pull_enabled": source.pull_enabled},
             trace_id=trace_id,
         )
     )

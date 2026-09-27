@@ -70,7 +70,8 @@ async def test_screenshots_are_served_from_the_help(client: AsyncClient) -> None
     assert picture.content.startswith(b"\x89PNG")
     assert unknown.status_code == 404
     assert traversal.status_code == 404
-    assert without_login.status_code == 401
+    # <img> в интерфейсе заголовок с токеном не шлёт: снимки справки открыты без входа.
+    assert without_login.status_code == 200
 
 
 def test_guide_shows_the_same_screenshots() -> None:

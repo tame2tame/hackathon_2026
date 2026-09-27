@@ -25,15 +25,20 @@ async def read_topics(user: CurrentUserDep) -> list[HelpTopicRef]:
 @router.get(
     "/images/{name}",
     summary="Картинка из справки",
-    description="Скриншоты экранов, на которые ссылаются разделы руководства.",
+    description=(
+        "Скриншоты экранов, на которые ссылаются разделы руководства. Отдаются без входа: "
+        "на них только синтетические демо-данные, а `<img>` не умеет слать токен."
+    ),
     response_class=Response,
     responses={
         200: {"content": {"image/png": {}}, "description": "Изображение"},
-        **error_responses(ErrorCode.AUTH_REQUIRED, ErrorCode.NOT_FOUND),
+        **error_responses(ErrorCode.NOT_FOUND),
     },
 )
-async def read_image(name: str, _user: CurrentUserDep) -> Response:
-    # Картинка справки не меняется без нового имени файла: её можно держать в кэше сутки.
+async def read_image(name: str) -> Response:
+    # Вход не нужен: это снимки экранов на синтетических данных, а тег <img>, в который
+    # превращается Markdown справки, заголовок Authorization не отправляет.
+    # Картинка не меняется без нового имени файла: её можно держать в кэше сутки.
     return Response(
         image_path(name).read_bytes(),
         media_type="image/png",

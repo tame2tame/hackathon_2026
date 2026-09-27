@@ -10,7 +10,9 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import cache, crypto
+from app.core.config import get_settings
 from app.core.errors import AppError, ErrorCode, FieldError
+from app.core.roles import Role
 from app.core.security import CurrentUser
 from app.modules.admin.models import AppSetting, DataAccessRule
 from app.modules.admin.schemas import (
@@ -92,6 +94,40 @@ async def update_user(
         "team_id": str(user.team_id) if user.team_id else None,
         "is_active": user.is_active,
     }
+    role_changes = payload.role is not None and payload.role.value != user.role
+    if role_changes and get_settings().auth_mode == "keycloak":
+        # Роль приходит из токена при каждом входе: правка здесь откатилась бы сама,
+        # а аудит записал бы изменение, которого нет.
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Роль сотрудника задаётся в Keycloak: измените её там.",
+            errors=[FieldError(field="role", message="Роль ведётся в Keycloak")],
+        )
+    losing_admin = user.role == Role.ADMIN.value and (
+        payload.is_active is False or (payload.role is not None and payload.role is not Role.ADMIN)
+    )
+    if payload.is_active is False and user.id == admin.id:
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR,
+            "Себя отключить нельзя: попросите другого администратора.",
+            errors=[FieldError(field="is_active", message="Нельзя отключить себя")],
+        )
+    if losing_admin and user.is_active:
+        others = await session.scalar(
+            select(func.count())
+            .select_from(AppUser)
+            .where(
+                AppUser.role == Role.ADMIN.value,
+                AppUser.is_active.is_(True),
+                AppUser.id != user.id,
+            )
+        )
+        if not others:
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR,
+                "Это последний администратор: без него вернуть доступ можно только правкой базы.",
+                errors=[FieldError(field="is_active", message="Последний администратор")],
+            )
     if payload.role is not None:
         user.role = payload.role.value
     if payload.team_id is not None:

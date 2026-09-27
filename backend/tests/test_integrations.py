@@ -4,6 +4,7 @@ from collections import Counter
 from datetime import UTC, datetime, timedelta
 
 import httpx
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from app.modules.integrations.clients import (
     HttpSiteClient,
     MoodleLmsClient,
     SourceUnavailableError,
+    source_token,
 )
 from app.modules.integrations.models import IntegrationSource, SiteApplication
 from app.modules.integrations.service import (
@@ -26,7 +28,7 @@ from app.modules.integrations.service import (
 from app.modules.interactions.models import Interaction
 from app.modules.metrics.models import ProgramMetric
 from tests.api import find
-from tests.users import ANNA_KAM, ROMAN_MANAGER, as_user
+from tests.users import ALINA_ADMIN, ANNA_KAM, ROMAN_MANAGER, as_user
 
 MONTH = datetime.now(UTC).date().replace(day=1)
 
@@ -267,3 +269,41 @@ async def test_applications_metric_counts_by_month(session: AsyncSession) -> Non
     )
     assert metric is not None
     assert metric.value == 3
+
+
+async def test_disabled_source_is_skipped_by_the_schedule(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    sources = {source.kind: source for source in await ensure_sources(session)}
+    turned_off = await client.patch(
+        f"/api/v1/integrations/{sources['lms'].id}",
+        json={"pull_enabled": False},
+        headers=as_user(ALINA_ADMIN),
+    )
+
+    # Выключили через API, то есть другой сессией: воркер, как и здесь, читает свежее состояние.
+    session.expire_all()
+    runs = await sync_all(session, datetime.now(UTC))
+
+    assert turned_off.status_code == 200, turned_off.text
+    assert turned_off.json()["pull_enabled"] is False
+    # Раньше входящую синхронизацию выключить было нельзя, хотя документы это обещали.
+    assert [run.source_id for run in runs] == [sources["site"].id]
+
+
+async def test_source_token_travels_with_the_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str | None] = []
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        return httpx.Response(200, json={"accepted": [], "rejected": {}})
+
+    monkeypatch.setenv("SITE_TOKEN", "secret-from-env")
+    client = HttpSiteClient(
+        "http://site", token=source_token("SITE_TOKEN"), transport=httpx.MockTransport(capture)
+    )
+
+    await client.push_interactions([])
+
+    # Секрет берётся из окружения по имени, в базе лежит только имя переменной.
+    assert seen == ["Bearer secret-from-env"]

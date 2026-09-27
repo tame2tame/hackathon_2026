@@ -15,8 +15,11 @@ class IntegrationSourceOut(BaseModel):
     name: str
     base_url: str
     is_mock: bool
-    schedule_cron: str | None
+    schedule_cron: str | None = Field(
+        description="Справочно: входящая синхронизация идёт в воркере раз в час для всех включённых"
+    )
     last_sync_at: datetime | None
+    pull_enabled: bool = Field(description="Забирать ли данные из системы по расписанию")
     push_enabled: bool = Field(description="Система принимает изменения записей CRM")
     last_push_at: datetime | None
 
@@ -53,7 +56,12 @@ class ApplicationMatch(BaseModel):
 
 
 class SourceUpdate(BaseModel):
-    push_enabled: bool = Field(description="Отправлять ли системе изменения записей")
+    push_enabled: bool | None = Field(
+        default=None, description="Отправлять ли системе изменения записей"
+    )
+    pull_enabled: bool | None = Field(
+        default=None, description="Забирать ли из системы данные по расписанию"
+    )
 
 
 class OutboxEntryOut(BaseModel):
