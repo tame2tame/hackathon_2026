@@ -3896,8 +3896,9 @@ paths:
       tags:
       - admin
       summary: Журнал аудита
-      description: Значения до и после изменения; просмотр персональных данных тоже записывается. Страницами,
-        новые сверху; фильтры по действию, виду и id объекта, сотруднику и периоду `[occurred_from, occurred_to)`.
+      description: 'Значения до и после изменения; просмотр персональных данных тоже записывается. Новые
+        сверху, пачками: `limit` записей со сдвигом `offset`. Фильтры по действию, виду и id объекта,
+        сотруднику и периоду `[occurred_from, occurred_to)`.'
       operationId: read_audit_api_v1_admin_audit_get
       security:
       - HTTPBearer: []
@@ -3964,34 +3965,35 @@ paths:
           description: Раньше, ISO 8601
           title: Occurred To
         description: Раньше, ISO 8601
-      - name: page
+      - name: limit
         in: query
         required: false
         schema:
           type: integer
+          maximum: 500
           minimum: 1
-          description: Номер страницы, с 1
-          default: 1
-          title: Page
-        description: Номер страницы, с 1
-      - name: page_size
+          default: 100
+          title: Limit
+      - name: offset
         in: query
         required: false
         schema:
           type: integer
-          maximum: 200
-          minimum: 1
-          description: Размер страницы
-          default: 50
-          title: Page Size
-        description: Размер страницы
+          minimum: 0
+          description: Сколько записей пропустить
+          default: 0
+          title: Offset
+        description: Сколько записей пропустить
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Page_AuditEntryOut_'
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEntryOut'
+                title: Response Read Audit Api V1 Admin Audit Get
         '401':
           description: AUTH_REQUIRED
           content:
@@ -8367,29 +8369,6 @@ components:
       - owner_id
       - expected_version
       title: OwnerChange
-    Page_AuditEntryOut_:
-      properties:
-        items:
-          items:
-            $ref: '#/components/schemas/AuditEntryOut'
-          type: array
-          title: Items
-        total:
-          type: integer
-          title: Total
-        page:
-          type: integer
-          title: Page
-        page_size:
-          type: integer
-          title: Page Size
-      type: object
-      required:
-      - items
-      - total
-      - page
-      - page_size
-      title: Page[AuditEntryOut]
     Page_ClientListItem_:
       properties:
         items:

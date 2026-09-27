@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import cache, crypto
 from app.core.config import get_settings
 from app.core.errors import AppError, ErrorCode, FieldError
-from app.core.pagination import Page, PageParams
 from app.core.roles import Role
 from app.core.security import CurrentUser
 from app.modules.admin.models import AppSetting, DataAccessRule
@@ -361,10 +360,11 @@ class AuditFilter:
 
 
 async def list_audit(
-    session: AsyncSession, filters: AuditFilter, page: PageParams
-) -> Page[AuditEntryOut]:
-    """Журнал целиком, страницами: раньше показывались только последние 500 записей и
-    нельзя было найти, что делал конкретный сотрудник или что было в конкретный день."""
+    session: AsyncSession, filters: AuditFilter, limit: int = 100, offset: int = 0
+) -> list[AuditEntryOut]:
+    """Журнал с конца, пачками по `limit` со сдвигом `offset`: раньше дальше последних 500
+    записей заглянуть было нельзя, и не было фильтра по сотруднику, объекту и дате.
+    Массив, а не конверт: экран журнала уже подключён к этому формату (ADR-008)."""
     stmt: Select[Any] = select(AuditLog)
     if filters.action:
         stmt = stmt.where(AuditLog.action == filters.action)
@@ -378,18 +378,10 @@ async def list_audit(
         stmt = stmt.where(AuditLog.occurred_at >= filters.occurred_from)
     if filters.occurred_to:
         stmt = stmt.where(AuditLog.occurred_at < filters.occurred_to)
-    total = await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     entries = await session.scalars(
-        stmt.order_by(AuditLog.occurred_at.desc(), AuditLog.id.desc())
-        .offset(page.offset)
-        .limit(page.page_size)
+        stmt.order_by(AuditLog.occurred_at.desc(), AuditLog.id.desc()).offset(offset).limit(limit)
     )
-    return Page(
-        items=[AuditEntryOut.model_validate(entry) for entry in entries],
-        total=total,
-        page=page.page,
-        page_size=page.page_size,
-    )
+    return [AuditEntryOut.model_validate(entry) for entry in entries]
 
 
 def _contact_out(contact: ContactPerson) -> ContactOut:

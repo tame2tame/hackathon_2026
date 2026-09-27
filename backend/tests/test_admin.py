@@ -138,7 +138,7 @@ async def test_viewing_contacts_is_written_to_the_audit(
     )
 
     assert audit.status_code == 200
-    entries = audit.json()["items"]
+    entries = audit.json()
     assert entries
     assert entries[0]["entity_id"] == str(mgtu.id)
 
@@ -157,7 +157,7 @@ async def test_user_change_keeps_before_and_after(
 
     assert response.status_code == 200
     assert response.json()["is_active"] is False
-    entry = audit.json()["items"][0]
+    entry = audit.json()[0]
     assert entry["before"]["is_active"] is True
     assert entry["after"]["is_active"] is False
 
@@ -208,7 +208,7 @@ async def test_setting_is_saved_with_audit(client: AsyncClient) -> None:
         "inactivity_medium_days": 28,
     }
     assert body["is_default"] is False
-    [entry] = audit.json()["items"]
+    [entry] = audit.json()
     # По записи видно, какую именно настройку поменяли: у настройки нет id.
     assert entry["after"]["key"] == "radar_thresholds"
     assert entry["after"]["value"]["inactivity_low_days"] == 10
@@ -225,21 +225,16 @@ async def test_audit_is_paged_and_filtered_by_person_and_date(
         )
     alina = str(await user_id(session, ALINA_ADMIN))
     roman = str(await user_id(session, ROMAN_MANAGER))
+    mine = {"actor_user_id": alina, "action": "admin.setting_changed"}
+
+    def days(response: Any) -> list[int]:
+        return [item["after"]["value"]["inactivity_low_days"] for item in response.json()]
 
     first = await client.get(
-        f"{ADMIN}/audit",
-        params={"actor_user_id": alina, "action": "admin.setting_changed", "page_size": 2},
-        headers=as_user(ALINA_ADMIN),
+        f"{ADMIN}/audit", params={**mine, "limit": 2}, headers=as_user(ALINA_ADMIN)
     )
-    second = await client.get(
-        f"{ADMIN}/audit",
-        params={
-            "actor_user_id": alina,
-            "action": "admin.setting_changed",
-            "page_size": 2,
-            "page": 2,
-        },
-        headers=as_user(ALINA_ADMIN),
+    further = await client.get(
+        f"{ADMIN}/audit", params={**mine, "limit": 2, "offset": 2}, headers=as_user(ALINA_ADMIN)
     )
     by_roman = await client.get(
         f"{ADMIN}/audit",
@@ -252,13 +247,11 @@ async def test_audit_is_paged_and_filtered_by_person_and_date(
         headers=as_user(ALINA_ADMIN),
     )
 
-    assert first.json()["total"] == 3
-    # Новые сверху: последняя правка — первой.
-    values = [item["after"]["value"]["inactivity_low_days"] for item in first.json()["items"]]
-    assert values == [12, 11]
-    assert [i["after"]["value"]["inactivity_low_days"] for i in second.json()["items"]] == [10]
-    assert by_roman.json()["total"] == 0
-    assert in_the_past.json()["total"] == 0
+    # Новые сверху, а сдвиг открывает то, что раньше было за пределом выдачи.
+    assert days(first) == [12, 11]
+    assert days(further) == [10]
+    assert by_roman.json() == []
+    assert in_the_past.json() == []
 
 
 async def test_invalid_setting_is_refused(client: AsyncClient) -> None:
