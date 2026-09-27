@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     notify_allowed_hosts: str = (
         "api.telegram.org,botapi.max.ru,127.0.0.1,localhost,mock-messengers,mailpit"
     )
+    # Сколько дней после завершения или отмены записи хранятся ФИО и почта её участников.
+    participant_retention_days: int = 180
     # Ключ Fernet для email и телефонов контактов вуза; пустой означает «шифрование не настроено».
     pd_encryption_key: str = ""
     # Хранилище файлов: local — каталог upload_dir, s3 — MinIO или другое S3-совместимое хранилище.

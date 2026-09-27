@@ -1,5 +1,7 @@
 """Списки обучающихся и преподавателей: ведение, файл, персональные данные и аудит."""
 
+import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from httpx import AsyncClient
@@ -7,7 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.audit.models import AuditLog
+from app.modules.interactions.models import Interaction
 from app.modules.participants.models import Participant
+from app.modules.participants.service import erase_expired
 from tests.api import find
 from tests.users import ALINA_ADMIN, ANNA_KAM, MIKHAIL_KAM, ROMAN_MANAGER, as_user
 
@@ -150,8 +154,9 @@ async def test_leaving_student_takes_their_address_with_them(
     assert gone.status_code == 404
     row = await session.get(Participant, student["id"])
     assert row is not None
-    # Строка осталась для истории, но персональных данных в ней больше нет.
+    # Строка осталась для истории, но персональных данных в ней больше нет — ни почты, ни ФИО.
     assert (row.email_enc, row.email_fp) == (None, None)
+    assert row.full_name == "Участник удалён"
 
 
 async def test_the_same_file_loaded_twice_does_not_double_the_group(client: AsyncClient) -> None:
@@ -311,3 +316,39 @@ async def test_namesake_without_an_address_is_added_once(client: AsyncClient) ->
     assert again.json()["errors"][0]["field"] == "full_name"
     # Тот же человек в другой роли — это другая строка списка.
     assert as_teacher.status_code == 201
+
+
+async def test_participants_of_a_long_closed_record_are_erased(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    itmo = await classes(client)
+    record = await session.get(Interaction, uuid.UUID(itmo["id"]))
+    assert record is not None
+    record.status = "completed"
+    record.last_activity_at = datetime.now(UTC) - timedelta(days=200)
+    await session.commit()
+
+    erased = await erase_expired(session, datetime.now(UTC), days=180)
+    rows = list(
+        await session.scalars(select(Participant).where(Participant.interaction_id == record.id))
+    )
+
+    # Обучение давно закончилось: ФИО и почта больше не нужны, строки остались для счёта.
+    assert erased == 4
+    assert {row.full_name for row in rows} == {"Участник удалён"}
+    assert all(row.email_enc is None for row in rows)
+    # Повторный запуск ничего не трогает.
+    assert await erase_expired(session, datetime.now(UTC), days=180) == 0
+
+
+async def test_recently_closed_record_keeps_its_list(
+    client: AsyncClient, session: AsyncSession
+) -> None:
+    itmo = await classes(client)
+    record = await session.get(Interaction, uuid.UUID(itmo["id"]))
+    assert record is not None
+    record.status = "completed"
+    await session.commit()
+
+    # Запись закрыли только что: её могут переоткрыть, а по обучению ещё выдают документы.
+    assert await erase_expired(session, datetime.now(UTC), days=180) == 0

@@ -45,7 +45,11 @@ typecheck:
 test:
 	$(BIN)/pytest
 
-check: lint typecheck test
+migrations-check:
+	$(BIN)/alembic upgrade head
+	$(BIN)/alembic check
+
+check: lint typecheck migrations-check test
 
 openapi:
 	$(BIN)/python -m scripts.export_openapi

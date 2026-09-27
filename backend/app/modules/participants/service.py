@@ -8,7 +8,7 @@
 import json
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
 from fastapi import UploadFile
@@ -25,6 +25,7 @@ from app.modules.audit.models import AuditLog
 from app.modules.imports import files
 from app.modules.imports.files import EXPORT_TYPES, FieldSpec, ImportOutcome, RowError, RowResult
 from app.modules.imports.mapping import normalize
+from app.modules.interactions.models import Interaction
 from app.modules.participants.models import Participant
 from app.modules.participants.schemas import (
     EMAIL_PATTERN,
@@ -228,9 +229,7 @@ async def remove_participant(
 ) -> None:
     """Человек ушёл с обучения: строка со списка снимается, персональные данные стираются."""
     participant = await _find(session, user, participant_id)
-    participant.archived_at = datetime.now(UTC)
-    participant.email_enc = None
-    participant.email_fp = None
+    _erase(participant, datetime.now(UTC))
     session.add(
         AuditLog(
             actor_user_id=user.id,
@@ -242,6 +241,53 @@ async def remove_participant(
         )
     )
     await session.commit()
+
+
+ERASED_NAME = "Участник удалён"
+
+
+def _erase(participant: Participant, now: datetime) -> None:
+    """Строка остаётся для истории и счёта, но человека по ней больше не узнать."""
+    participant.archived_at = participant.archived_at or now
+    participant.full_name = ERASED_NAME
+    participant.email_enc = None
+    participant.email_fp = None
+    participant.external_ref = None
+
+
+async def erase_expired(
+    session: AsyncSession, now: datetime | None = None, days: int | None = None
+) -> int:
+    """Списки записей, завершённых или отменённых дольше срока, обезличиваются.
+
+    Обучение закончилось — ФИО и почта больше не нужны для работы. Срок, а не мгновенное
+    стирание: запись могут переоткрыть, а по завершённому обучению ещё выдают документы.
+    """
+    now = now or datetime.now(UTC)
+    days = get_settings().participant_retention_days if days is None else days
+    closed = select(Interaction.id).where(
+        Interaction.status.in_(("completed", "cancelled")),
+        Interaction.last_activity_at < now - timedelta(days=days),
+    )
+    participants = list(
+        await session.scalars(
+            select(Participant).where(
+                Participant.interaction_id.in_(closed), Participant.full_name != ERASED_NAME
+            )
+        )
+    )
+    for participant in participants:
+        _erase(participant, now)
+    if participants:
+        session.add(
+            AuditLog(
+                action="participant.erased_by_retention",
+                entity_kind="participant",
+                after={"count": len(participants), "days": days},
+            )
+        )
+    await session.commit()
+    return len(participants)
 
 
 def _role_of(value: str, default: ParticipantRole) -> str:

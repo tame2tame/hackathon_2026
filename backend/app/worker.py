@@ -22,6 +22,7 @@ from app.modules.integrations.service import ensure_sources, sync_all
 from app.modules.interactions.models import Interaction
 from app.modules.notifications.escalation import escalate_stalled
 from app.modules.notifications.service import deliver_pending
+from app.modules.participants.service import erase_expired
 from app.modules.radar.service import recompute_signals
 from app.modules.reports.service import run_job
 from app.modules.workflow.service import refresh_suggestions
@@ -29,6 +30,7 @@ from app.modules.workflow.service import refresh_suggestions
 RADAR_HOUR_UTC = 0
 ESCALATION_MINUTE = 10
 SUGGESTIONS_MINUTE = 20
+RETENTION_MINUTE = 30
 
 
 async def recompute_radar(ctx: dict[str, Any]) -> int:
@@ -90,6 +92,12 @@ async def refresh_norm_suggestions(ctx: dict[str, Any]) -> int:
         return updated
 
 
+async def erase_expired_participants(ctx: dict[str, Any]) -> int:
+    """Обезличивает списки участников записей, закрытых дольше срока хранения."""
+    async with get_sessionmaker()() as session:
+        return await erase_expired(session, datetime.now(UTC))
+
+
 class WorkerSettings:
     functions: ClassVar[list[Any]] = [
         recompute_radar,
@@ -99,11 +107,13 @@ class WorkerSettings:
         sync_integrations,
         push_integrations,
         deliver_notifications,
+        erase_expired_participants,
     ]
     cron_jobs: ClassVar[list[Any]] = [
         cron(recompute_radar, hour=RADAR_HOUR_UTC, minute=0),
         cron(escalate_stalled_interactions, hour=RADAR_HOUR_UTC, minute=ESCALATION_MINUTE),
         cron(refresh_norm_suggestions, hour=RADAR_HOUR_UTC, minute=SUGGESTIONS_MINUTE),
+        cron(erase_expired_participants, hour=RADAR_HOUR_UTC, minute=RETENTION_MINUTE),
         # Раз в минуту: уведомления не требуют мгновенности, но и не копятся часами.
         cron(deliver_notifications, second=30),
         # Раз в минуту: изменения записей уходят в LMS и CMS пакетом, онлайн жюри не требует.

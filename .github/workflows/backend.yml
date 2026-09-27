@@ -45,8 +45,19 @@ jobs:
         run: python -m scripts.export_openapi --check
       - name: Руководство совпадает со встроенной справкой
         run: python -m scripts.export_help --check
-      - name: Тесты — миграции вниз и вверх, API, правила радара
+      - name: Тесты — миграции вниз и вверх, API, правила радара, схема как в моделях
         run: pytest
+      - name: Миграции на данных — alembic check и откат последних пяти на полном стенде
+        env:
+          DATABASE_URL: postgresql+asyncpg://radar:radar@127.0.0.1:5432/radar_test
+        run: |
+          export PD_ENCRYPTION_KEY="$(python -c 'from app.core.crypto import generate_key; print(generate_key())')"
+          alembic upgrade head
+          alembic check
+          python -m scripts.seed --full
+          alembic downgrade -5
+          alembic upgrade head
+          alembic check
       - name: Перечень библиотек
         run: |
           pip freeze --exclude-editable > ../docs/dependencies.txt
