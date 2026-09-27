@@ -4,9 +4,13 @@
 изменятся цифры или скриншоты.
 
 ```sh
-npm install pptxgenjs          # в любом каталоге вне репозитория
-node docs/presentation/build.mjs
+cd docs/presentation
+npm ci                         # pptxgenjs той версии, что в package-lock.json
+npm run build
 ```
+
+Числа на слайдах — операции и пути API, тесты — скрипт считает сам по `contracts/openapi.yaml`
+и `backend/tests`, поэтому они не устаревают вместе с кодом.
 
 Скрипт кладёт `docs/РадарВузов-презентация.pptx`. Он берёт скриншоты из
 `backend/app/help/images/` — те же, что показывает встроенная справка, — поэтому после

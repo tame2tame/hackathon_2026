@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Annotated, Literal
 from urllib.parse import quote
 
@@ -7,6 +8,7 @@ from fastapi.responses import Response
 
 from app.core.db import SessionDep
 from app.core.errors import ErrorCode, TraceIdDep, error_responses
+from app.core.pagination import Page, PageQuery
 from app.core.roles import Role
 from app.core.security import CurrentUser, CurrentUserDep, require_roles
 from app.modules.admin import catalog_io, service
@@ -145,18 +147,33 @@ async def put_setting(
 @router.get(
     "/audit",
     summary="Журнал аудита",
-    description="Значения до и после изменения; просмотр персональных данных тоже записывается.",
+    description=(
+        "Значения до и после изменения; просмотр персональных данных тоже записывается. "
+        "Страницами, новые сверху; фильтры по действию, виду и id объекта, сотруднику и "
+        "периоду `[occurred_from, occurred_to)`."
+    ),
     responses=error_responses(*ADMIN_ERRORS),
 )
 async def read_audit(
     session: SessionDep,
     _admin: AdminDep,
+    page: PageQuery,
     action: Annotated[str | None, Query(max_length=60)] = None,
     entity_kind: Annotated[str | None, Query(max_length=60)] = None,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
-) -> list[AuditEntryOut]:
-    entries = await service.list_audit(session, action, entity_kind, limit)
-    return [AuditEntryOut.model_validate(entry) for entry in entries]
+    entity_id: Annotated[uuid.UUID | None, Query(description="Объект")] = None,
+    actor_user_id: Annotated[uuid.UUID | None, Query(description="Кто сделал")] = None,
+    occurred_from: Annotated[datetime | None, Query(description="Не раньше, ISO 8601")] = None,
+    occurred_to: Annotated[datetime | None, Query(description="Раньше, ISO 8601")] = None,
+) -> Page[AuditEntryOut]:
+    filters = service.AuditFilter(
+        action=action,
+        entity_kind=entity_kind,
+        entity_id=entity_id,
+        actor_user_id=actor_user_id,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
+    )
+    return await service.list_audit(session, filters, page)
 
 
 @router.post(

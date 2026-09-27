@@ -1,7 +1,26 @@
 import pptxgen from "pptxgenjs";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-const ROOT = "/Users/olegbragin/Desktop/hackaton/hackathon_2026";
+// Корень репозитория — от расположения скрипта, а не с машины автора.
+const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
+// Число операций и путей берём из контракта: цифра на слайде не устареет вместе с API.
+const CONTRACT = readFileSync(`${ROOT}/contracts/openapi.yaml`, "utf8");
+const OPERATIONS = (CONTRACT.match(/^\s+operationId:/gm) ?? []).length;
+const PATHS = (CONTRACT.match(/^  \/\S*:$/gm) ?? []).length;
+// «1 тест», «3 теста», «332 теста», «116 операций».
+const plural = (n, one, few, many) => {
+  const tail = n % 100;
+  if (tail >= 11 && tail <= 14) return `${n} ${many}`;
+  if (n % 10 === 1) return `${n} ${one}`;
+  if (n % 10 >= 2 && n % 10 <= 4) return `${n} ${few}`;
+  return `${n} ${many}`;
+};
+// Тесты — функции test_* бэкенда; параметризованные варианты pytest считает отдельно, их больше.
+const TESTS = readdirSync(`${ROOT}/backend/tests`)
+  .filter((name) => name.startsWith("test_") && name.endsWith(".py"))
+  .map((name) => readFileSync(`${ROOT}/backend/tests/${name}`, "utf8"))
+  .reduce((total, text) => total + (text.match(/^(async )?def test_/gm) ?? []).length, 0);
 const SHOT = (name) => `${ROOT}/backend/app/help/images/${name}.png`;
 const DIAGRAM = (n) => `${ROOT}/docs/architecture/images/diagram-${n}.png`;
 
@@ -86,7 +105,7 @@ function picture(slide, path, { x, y, w, h }) {
     x: M, y: 4.45, w: 6, h: 0.5,
     fontFace: BODY, fontSize: 16, color: ORANGE, bold: true, isTextBox: true, margin: 0,
   });
-  slide.addText("Работающий прототип: 100 методов API, 319 тестов, демо-стенд на 351 записи", {
+  slide.addText(`Работающий прототип: ${plural(OPERATIONS, "операция", "операции", "операций")} API, ${plural(TESTS, "тест", "теста", "тестов")}, демо-стенд на 351 записи`, {
     x: M, y: 5.6, w: 9.5, h: 0.5,
     fontFace: BODY, fontSize: 13, color: "8E97B8", italic: true, isTextBox: true, margin: 0,
   });
@@ -413,7 +432,7 @@ function picture(slide, path, { x, y, w, h }) {
   });
   const done = [
     "Процесс, радар, отчёты, рейтинг, интеграции, уведомления",
-    "100 методов API и контракт, 319 тестов, 46 таблиц",
+    `${plural(OPERATIONS, "операция", "операции", "операций")} на ${plural(PATHS, "пути", "путях", "путях")} API, контракт, ${plural(TESTS, "тест", "теста", "тестов")}, 46 таблиц`,
     "Руководства внутри продукта, диаграммы, разбор соответствия ТЗ",
     "Демо-стенд на 351 записи поднимается одной командой",
   ];

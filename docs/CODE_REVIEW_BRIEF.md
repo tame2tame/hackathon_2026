@@ -17,8 +17,8 @@
 - Ветка: **`backend/foundation`**. В `main` не коммитить, PR не создавать.
 - Бэкенд: Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2 (async, asyncpg), Alembic,
   PostgreSQL 16, Redis 7, воркер arq, MinIO (S3), Keycloak.
-- Объём: ~130 файлов и ~17 400 строк в `backend/app`, 21 модуль, 19 миграций, 32 файла тестов
-  (319 тестов), контракт `contracts/openapi.yaml` на 102 пути и 116 операций.
+- Объём: ~130 файлов в `backend/app`, 21 модуль, 25 миграций, больше 380 тестов, контракт
+  `contracts/openapi.yaml` на 102 пути и 116 операций.
 - Фронтенд (`frontend/`) ведёт другой человек — **его код не ревьюим и не трогаем**.
 
 ## Что ревьюим
@@ -47,7 +47,7 @@ cd /Users/olegbragin/Desktop/hackaton/hackathon_2026/backend
 docker compose -f ../infra/docker-compose.yml up -d postgres redis   # нужны для тестов
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/mypy app scripts
-.venv/bin/pytest -q                                   # 319 тестов, ~50 секунд
+.venv/bin/pytest -q                                   # ~380 тестов, около минуты
 .venv/bin/python -m scripts.export_openapi --check    # контракт совпадает со схемой
 .venv/bin/python -m scripts.export_help --check       # руководство совпадает со справкой
 .venv/bin/alembic check                               # модель совпадает со схемой БД
@@ -100,19 +100,17 @@ curl -H 'X-Dev-User: anna.smirnova@example.com' http://127.0.0.1:8000/api/v1/int
 
 ## Что уже проверяли — и что нет
 
-Два пакета проходили независимое ревью, находки исправлены; разбор — в `docs/BACKEND_PLAN.md`,
-разделы «Ревью B-21 — B-27» и «Ревью B-28 — B-35».
+Весь код один раз прошёл независимое ревью 25.09, находки исправлены; разбор — в
+`docs/BACKEND_PLAN.md`, раздел «Ревью всего кода» (там же ранние разделы «Ревью B-21 — B-27»
+и «Ревью B-28 — B-35»). Повторное ревью стоит начать с мест, которые после него переписаны
+заметнее всего:
 
-**Ревью не проходил код последних задач** — на него стоит потратить больше внимания:
-
-- B-36 — диаграммы статистики в PDF: `app/modules/analytics/charts.py`, эндпоинт
-  `/analytics/stats/report`;
-- B-38 — скриншоты во встроенной справке: `app/modules/help/` (особенно отдача картинок
-  и проверка имени файла);
-- B-39, B-40 — сборщики документации и презентации: `scripts/export_docs_pdf.py`,
-  `docs/presentation/build.mjs`;
-- правки по прошлому ревью в `app/modules/participants/`, `app/modules/views/`,
-  `app/modules/messages/`.
+- роли базы и отдельный запуск миграций: `infra/postgres/roles.sql`, миграция `5c0d9e3a7b21`,
+  `infra/docker-compose.prod.yml`, `.github/workflows/deploy.yml`;
+- резервные и внешние копии: `infra/backup/`;
+- поток событий `app/modules/events/router.py` и отдача файлов без удержания соединения;
+- импорт по области видимости `app/modules/imports/service.py`, заявки сайта
+  `app/modules/integrations/service.py`, основная пара программа ↔ продукт.
 
 ## Сознательные решения — не считать их дефектами
 

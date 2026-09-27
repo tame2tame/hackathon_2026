@@ -3896,7 +3896,8 @@ paths:
       tags:
       - admin
       summary: Журнал аудита
-      description: Значения до и после изменения; просмотр персональных данных тоже записывается.
+      description: Значения до и после изменения; просмотр персональных данных тоже записывается. Страницами,
+        новые сверху; фильтры по действию, виду и id объекта, сотруднику и периоду `[occurred_from, occurred_to)`.
       operationId: read_audit_api_v1_admin_audit_get
       security:
       - HTTPBearer: []
@@ -3919,25 +3920,78 @@ paths:
             maxLength: 60
           - type: 'null'
           title: Entity Kind
-      - name: limit
+      - name: entity_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Объект
+          title: Entity Id
+        description: Объект
+      - name: actor_user_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Кто сделал
+          title: Actor User Id
+        description: Кто сделал
+      - name: occurred_from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          description: Не раньше, ISO 8601
+          title: Occurred From
+        description: Не раньше, ISO 8601
+      - name: occurred_to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          description: Раньше, ISO 8601
+          title: Occurred To
+        description: Раньше, ISO 8601
+      - name: page
         in: query
         required: false
         schema:
           type: integer
-          maximum: 500
           minimum: 1
-          default: 100
-          title: Limit
+          description: Номер страницы, с 1
+          default: 1
+          title: Page
+        description: Номер страницы, с 1
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          description: Размер страницы
+          default: 50
+          title: Page Size
+        description: Размер страницы
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/AuditEntryOut'
-                title: Response Read Audit Api V1 Admin Audit Get
+                $ref: '#/components/schemas/Page_AuditEntryOut_'
         '401':
           description: AUTH_REQUIRED
           content:
@@ -7378,6 +7432,7 @@ components:
       - AUTH_REQUIRED
       - AUTH_FORBIDDEN
       - NOT_FOUND
+      - METHOD_NOT_ALLOWED
       - INTERACTION_VERSION_CONFLICT
       - INTERACTION_DUPLICATE
       - WF_TRANSITION_NOT_ALLOWED
@@ -8312,6 +8367,29 @@ components:
       - owner_id
       - expected_version
       title: OwnerChange
+    Page_AuditEntryOut_:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AuditEntryOut'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      title: Page[AuditEntryOut]
     Page_ClientListItem_:
       properties:
         items:

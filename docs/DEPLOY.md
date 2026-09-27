@@ -10,7 +10,11 @@ compose не запустится, пока переменная не задан
 - Каталог `/srv/radar/hackathon_2026` с клоном репозитория.
 - Сертификаты TLS (например, Let's Encrypt) — в каталоге, который указан в `CERTS_DIR`;
   внутри ожидаются `fullchain.pem` и `privkey.pem`.
-- Сборка фронтенда (`npm run build`) — в каталоге из `SPA_DIR`.
+- Сборка фронтенда (`npm run build`) — в каталоге из `SPA_DIR`. Keycloak на стенде живёт за nginx
+  по пути `/auth`, поэтому сборке нужны `VITE_AUTH_MODE=keycloak` и
+  `VITE_KEYCLOAK_URL=https://<домен>/auth`; без них интерфейс пойдёт за входом на `127.0.0.1:8080`
+  из примера (`frontend/.env.example`). `VITE_API_BASE_URL` остаётся пустым: API на том же
+  адресе, что и интерфейс.
 
 ## Первый запуск
 

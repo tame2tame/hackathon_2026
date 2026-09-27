@@ -34,7 +34,7 @@
 |---|---|---|---|
 | NFR-01 | да | Индексы под фильтры списков, кэш тяжёлых ответов, тяжёлое — в воркер | k6 на данных v1: p95 **386,59 мс** при 50 пользователях, ноль ошибок ([`LOAD_TEST.md`](LOAD_TEST.md)) |
 | NFR-02 | да | Поток событий SSE `GET /api/v1/events` с `Last-Event-ID`: переходы, сигналы, отчёты, уведомления, сообщения | `tests/test_events.py`: событие приходит только тому, кому запись видна |
-| NFR-03 | да | Каталог из 21 кода ошибки, ответы `application/problem+json` с `trace_id` — `app/core/errors.py`, каталог в [`ARCHITECTURE.md`](../ARCHITECTURE.md) | `tests/test_system.py` и тесты каждого модуля проверяют коды |
+| NFR-03 | да | Каталог из 18 кодов ошибок (17 возвращаются по HTTP, `INTEGRATION_UNAVAILABLE` — в журнале запусков обмена), ответы `application/problem+json` с `trace_id` — `app/core/errors.py`, каталог в [`ARCHITECTURE.md`](../ARCHITECTURE.md) | `tests/test_system.py` и тесты каждого модуля проверяют коды |
 | NFR-04 | фронтенд | Интерфейс и его удобство — поток фронтенда | — |
 | NFR-05 | да | Руководство пользователя встроено в продукт: разделы по ролям `GET /api/v1/help`, скриншоты работающих экранов — `GET /api/v1/help/images/{name}`; тот же текст со снимками собирается в [`USER_GUIDE.md`](USER_GUIDE.md) и в общий PDF (ADR-025); руководство администратора — [`ADMIN_GUIDE.md`](ADMIN_GUIDE.md) | `tests/test_help.py`: картинка отдаётся, чужое имя и попытка выйти из каталога — 404, без входа — 401; документ и справка показывают одни и те же снимки |
 | NFR-06 | да | 50 параллельных пользователей | k6: 21 048 запросов, ноль ошибок, p95 386,59 мс |
@@ -47,7 +47,7 @@
 | SOL-01 | да | Python 3.12 + FastAPI, React 19, PostgreSQL 16 | `backend/pyproject.toml`, `frontend/package.json` |
 | SOL-02 | да | Swagger UI `/api/docs` для всех методов, контракт `contracts/openapi.yaml` (100 путей), перечень библиотек — [`dependencies.txt`](dependencies.txt) | `tests/test_contract.py`: контракт совпадает со схемой приложения, расхождение ловит CI |
 | SOL-03 | да | Отдельный сервис: API и воркер в своих контейнерах, внешние системы — за интерфейсами клиентов | `infra/docker-compose.yml`, `infra/docker-compose.prod.yml` |
-| SOL-04 | да | JSON во всех ответах и в обмене; Docker-образ бэкенда и профили compose | Образ собирается, тесты идут против контейнеров PostgreSQL, Redis и MinIO |
+| SOL-04 | да | JSON во всех ответах и в обмене; Docker-образ бэкенда и профили compose | Образ собирается с `requirements.lock`; в CI тесты идут против контейнера PostgreSQL, Redis и S3 в них подменены реализациями в памяти (`MemoryCache`, каталог на диске). С Redis и MinIO приложение проверено вручную на локальном compose: поток событий, кэш, вложения, копия файлов |
 | SOL-05 | да | Комментарии объясняют «почему» в неочевидных местах: аренда очередей, отпечаток почты, поколения кэша | Ревью пакетов B-21 — B-27 и B-28 — B-35 отдельно отметило это |
 | SOL-06 | да | Архитектура и решения — [`ARCHITECTURE.md`](../ARCHITECTURE.md), методы обработки — [`DATA_PROCESSING.md`](DATA_PROCESSING.md), сборка и установка — [`DEPLOY.md`](DEPLOY.md), модель Archi — [`architecture/model.xml`](architecture/model.xml), диаграммы — [`architecture/DIAGRAMS.md`](architecture/DIAGRAMS.md) | XML модели разбирается, висячих ссылок нет; диаграммы отрисованы mermaid без ошибок; **визуальный импорт в Archi не пробовали — программы нет на машине** |
 | SOL-07 | частично | Код открытый и необфусцированный; репозиторий пока приватный | **Публикация ждёт решения команды по лицензии шрифта Basis** (вопрос поднят в передаче от 20.09) |

@@ -23,6 +23,7 @@ class ErrorCode(StrEnum):
     AUTH_REQUIRED = "AUTH_REQUIRED"
     AUTH_FORBIDDEN = "AUTH_FORBIDDEN"
     NOT_FOUND = "NOT_FOUND"
+    METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     INTERACTION_VERSION_CONFLICT = "INTERACTION_VERSION_CONFLICT"
     INTERACTION_DUPLICATE = "INTERACTION_DUPLICATE"
     WF_TRANSITION_NOT_ALLOWED = "WF_TRANSITION_NOT_ALLOWED"
@@ -43,6 +44,7 @@ _CATALOG: dict[ErrorCode, tuple[int, str]] = {
     ErrorCode.AUTH_REQUIRED: (401, "Нужна авторизация"),
     ErrorCode.AUTH_FORBIDDEN: (403, "Недостаточно прав"),
     ErrorCode.NOT_FOUND: (404, "Не найдено"),
+    ErrorCode.METHOD_NOT_ALLOWED: (405, "Метод не поддерживается"),
     ErrorCode.INTERACTION_VERSION_CONFLICT: (409, "Запись уже изменена"),
     ErrorCode.INTERACTION_DUPLICATE: (409, "Такая запись уже ведётся"),
     ErrorCode.WF_TRANSITION_NOT_ALLOWED: (409, "Переход недоступен"),
@@ -54,6 +56,7 @@ _CATALOG: dict[ErrorCode, tuple[int, str]] = {
     ErrorCode.FILE_TOO_LARGE: (413, "Файл слишком большой"),
     ErrorCode.IMPORT_MAPPING_INVALID: (422, "Маппинг колонок неполный"),
     ErrorCode.REPORT_TOO_LARGE: (422, "Отчёт слишком большой"),
+    # По HTTP не возвращается: этим кодом помечается неудачный запуск в `sync_run.error_code`.
     ErrorCode.INTEGRATION_UNAVAILABLE: (502, "Внешняя система недоступна"),
     ErrorCode.INTERNAL_ERROR: (500, "Внутренняя ошибка"),
 }
@@ -164,10 +167,15 @@ def problem_response(
     )
 
 
+# Ошибки уровня HTTP, которые поднимает сам фреймворк. Остальные клиентские статусы (400 при
+# испорченном теле и подобные) — это неверный запрос, поэтому VALIDATION_ERROR с исходным статусом.
 _HTTP_STATUS_CODES = {
+    400: ErrorCode.VALIDATION_ERROR,
     401: ErrorCode.AUTH_REQUIRED,
     403: ErrorCode.AUTH_FORBIDDEN,
     404: ErrorCode.NOT_FOUND,
+    405: ErrorCode.METHOD_NOT_ALLOWED,
+    413: ErrorCode.FILE_TOO_LARGE,
 }
 
 

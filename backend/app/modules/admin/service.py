@@ -12,12 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import cache, crypto
 from app.core.config import get_settings
 from app.core.errors import AppError, ErrorCode, FieldError
+from app.core.pagination import Page, PageParams
 from app.core.roles import Role
 from app.core.security import CurrentUser
 from app.modules.admin.models import AppSetting, DataAccessRule
 from app.modules.admin.schemas import (
     AccessRuleCreate,
     AdminUserUpdate,
+    AuditEntryOut,
     CatalogItemCreate,
     ContactCreate,
     ContactOut,
@@ -327,7 +329,16 @@ async def set_setting(
         setting.value = value
         setting.updated_by = admin.id
     session.add(
-        _audit(admin, "admin.setting_changed", "app_setting", None, before, value, trace_id)
+        # У настройки нет id: без ключа в записи не понять, какую из них поменяли.
+        _audit(
+            admin,
+            "admin.setting_changed",
+            "app_setting",
+            None,
+            {"key": key, "value": before} if before is not None else {"key": key},
+            {"key": key, "value": value},
+            trace_id,
+        )
     )
     await session.flush()
     if key == RADAR_THRESHOLDS_KEY:
@@ -339,18 +350,46 @@ async def set_setting(
     return _setting_out(key, setting)
 
 
+@dataclass(frozen=True, slots=True)
+class AuditFilter:
+    action: str | None = None
+    entity_kind: str | None = None
+    entity_id: uuid.UUID | None = None
+    actor_user_id: uuid.UUID | None = None
+    occurred_from: datetime | None = None
+    occurred_to: datetime | None = None
+
+
 async def list_audit(
-    session: AsyncSession,
-    action: str | None = None,
-    entity_kind: str | None = None,
-    limit: int = 100,
-) -> list[AuditLog]:
-    stmt: Select[Any] = select(AuditLog).order_by(AuditLog.occurred_at.desc()).limit(limit)
-    if action:
-        stmt = stmt.where(AuditLog.action == action)
-    if entity_kind:
-        stmt = stmt.where(AuditLog.entity_kind == entity_kind)
-    return list(await session.scalars(stmt))
+    session: AsyncSession, filters: AuditFilter, page: PageParams
+) -> Page[AuditEntryOut]:
+    """Журнал целиком, страницами: раньше показывались только последние 500 записей и
+    нельзя было найти, что делал конкретный сотрудник или что было в конкретный день."""
+    stmt: Select[Any] = select(AuditLog)
+    if filters.action:
+        stmt = stmt.where(AuditLog.action == filters.action)
+    if filters.entity_kind:
+        stmt = stmt.where(AuditLog.entity_kind == filters.entity_kind)
+    if filters.entity_id:
+        stmt = stmt.where(AuditLog.entity_id == filters.entity_id)
+    if filters.actor_user_id:
+        stmt = stmt.where(AuditLog.actor_user_id == filters.actor_user_id)
+    if filters.occurred_from:
+        stmt = stmt.where(AuditLog.occurred_at >= filters.occurred_from)
+    if filters.occurred_to:
+        stmt = stmt.where(AuditLog.occurred_at < filters.occurred_to)
+    total = await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    entries = await session.scalars(
+        stmt.order_by(AuditLog.occurred_at.desc(), AuditLog.id.desc())
+        .offset(page.offset)
+        .limit(page.page_size)
+    )
+    return Page(
+        items=[AuditEntryOut.model_validate(entry) for entry in entries],
+        total=total,
+        page=page.page,
+        page_size=page.page_size,
+    )
 
 
 def _contact_out(contact: ContactPerson) -> ContactOut:

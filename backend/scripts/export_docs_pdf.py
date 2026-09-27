@@ -9,6 +9,7 @@
 """
 
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -44,22 +45,33 @@ DIAGRAM_IMAGES = ROOT / "docs" / "architecture" / "images"
 LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 BOLD = re.compile(r"\*\*([^*]+)\*\*")
 ITALIC = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
-TAG = re.compile(r"<[^>]+>")
+# Только то, что похоже на HTML-тег: «<ревизия>» или «Bearer <токен>» в тексте — не теги.
+TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>")
 CODE = re.compile(r"`([^`]+)`")
+# Разделитель ячеек — «|», но не экранированный «\|» внутри ячейки.
+CELL_SPLIT = re.compile(r"(?<!\\)\|")
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 IMAGE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
 BULLET = re.compile(r"^(\s*)[-*]\s+(.*)$")
 NUMBER = re.compile(r"^(\s*)(\d+)\.\s+(.*)$")
 
 
-def plain(text: str) -> str:
-    """Markdown без разметки: ссылки остаются текстом, выделение снимается."""
+def _markup(text: str) -> str:
     text = LINK.sub(r"\1", text)
     text = BOLD.sub(r"\1", text)
     text = ITALIC.sub(r"\1", text)
     # Якоря оглавления нужны на GitHub, в листе бумаги от них только мусор.
-    text = TAG.sub("", text)
-    return CODE.sub(r"\1", text).replace("&nbsp;", " ")
+    return TAG.sub("", text).replace("&nbsp;", " ")
+
+
+def plain(text: str) -> str:
+    """Markdown без разметки: ссылки остаются текстом, выделение снимается.
+
+    Код в обратных кавычках не трогаем: внутри него `<…>`, звёздочки и скобки — содержимое.
+    """
+    parts = CODE.split(text)
+    # После split нечётные элементы — содержимое код-спанов.
+    return "".join(part if index % 2 else _markup(part) for index, part in enumerate(parts))
 
 
 @dataclass(slots=True)
@@ -69,7 +81,8 @@ class Document:
 
 
 def _cells(row: str) -> list[str]:
-    return [plain(cell.strip()) for cell in row.strip().strip("|").split("|")]
+    inner = row.strip().removeprefix("|").removesuffix("|")
+    return [plain(cell.strip().replace("\\|", "|")) for cell in CELL_SPLIT.split(inner)]
 
 
 def _is_separator(row: str) -> bool:
@@ -77,8 +90,11 @@ def _is_separator(row: str) -> bool:
 
 
 class Builder:
-    def __init__(self) -> None:
+    def __init__(self, built_at: datetime) -> None:
+        self.built_at = built_at
         self.pdf = FPDF(orientation="P", unit="mm", format="A4")
+        # Дата в метаданных — та же, что на обложке: иначе каждая сборка давала новый файл.
+        self.pdf.set_creation_date(built_at)
         self.pdf.set_margin(MARGIN_MM)
         self.pdf.add_font("doc", "", str(find_font()))
         self.pdf.set_auto_page_break(auto=True, margin=MARGIN_MM)
@@ -102,7 +118,7 @@ class Builder:
         pdf.multi_cell(
             0,
             5,
-            f"Собрано {datetime.now(UTC):%d.%m.%Y} командой «make docs-pdf» из документов "
+            f"Собрано {self.built_at:%d.%m.%Y} командой «make docs-pdf» из документов "
             "репозитория: правится исходный Markdown, а не этот файл.\n"
             "Диаграммы связей, программно-аппаратной архитектуры и базы данных — "
             "docs/architecture/DIAGRAMS.md, модель для Archi — docs/architecture/model.xml.",
@@ -170,7 +186,7 @@ class Builder:
         """Диаграмма — отдельная страница на боку: на портретной её подписи не прочесть."""
         path = DIAGRAM_IMAGES / f"diagram-{number}.png"
         if not path.is_file():
-            return
+            raise MissingSource(f"нет картинки диаграммы {path.relative_to(ROOT)}")
         self.pdf.add_page(orientation="L")
         self.pdf.image(str(path), w=self.pdf.w - 2 * MARGIN_MM)
         self.pdf.add_page(orientation="P")
@@ -180,7 +196,7 @@ class Builder:
         name = source.rsplit("/", 1)[-1]
         path = ROOT / "backend" / "app" / "help" / "images" / name
         if not path.is_file():
-            return
+            raise MissingSource(f"нет скриншота {path.relative_to(ROOT)}")
         width = self.pdf.w - 2 * MARGIN_MM
         # Картинка не должна разрываться: не помещается на странице — уходит на следующую.
         if self.pdf.get_y() + width * 0.6 > self.pdf.h - MARGIN_MM:
@@ -252,13 +268,32 @@ class Builder:
             self.code(block)
 
 
+class MissingSource(RuntimeError):
+    """Раньше пропавший файл молча выпадал из сборки, и PDF выходил неполным."""
+
+
+def source_date(paths: list[Path]) -> datetime:
+    """Дата последнего коммита исходников: одна и та же при повторной сборке."""
+    result = subprocess.run(  # noqa: S603 — аргументы наши, без ввода пользователя
+        ["git", "log", "-1", "--format=%cI", "--", *map(str, paths)],  # noqa: S607
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    stamp = result.stdout.strip()
+    return datetime.fromisoformat(stamp).astimezone(UTC) if stamp else datetime.now(UTC)
+
+
 def build() -> bytes:
+    missing = [path for path, _ in DOCUMENTS if not (ROOT / path).is_file()]
+    if missing:
+        raise MissingSource("нет документов: " + ", ".join(missing))
     documents = [
         Document(title, (ROOT / path).read_text(encoding="utf-8").splitlines())
         for path, title in DOCUMENTS
-        if (ROOT / path).exists()
     ]
-    builder = Builder()
+    builder = Builder(source_date([ROOT / path for path, _ in DOCUMENTS]))
     builder.cover(documents)
     for document in documents:
         builder.document(document)

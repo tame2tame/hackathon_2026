@@ -101,3 +101,11 @@ async def test_frontend_on_another_address_passes_preflight(
     allowed = preflight.headers["access-control-allow-headers"].lower()
     assert "last-event-id" in allowed
     assert "if-none-match" in allowed
+
+
+async def test_wrong_method_has_its_own_code(client: AsyncClient) -> None:
+    response = await client.put("/api/health")
+
+    # Раньше неожиданный статус приходил с кодом VALIDATION_ERROR, и фронтенд искал ошибку в полях.
+    assert response.status_code == 405
+    assert response.json()["code"] == "METHOD_NOT_ALLOWED"

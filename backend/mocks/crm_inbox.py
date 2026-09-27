@@ -19,15 +19,18 @@ def crm_inbox() -> APIRouter:
     async def receive(payload: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         accepted: list[str] = []
         rejected: list[dict[str, str]] = []
-        for item in payload.get("items", []):
-            record: dict[str, Any] = item.get("record") or {} if isinstance(item, dict) else {}
-            key = str(record.get("id", ""))
-            if not key or item.get("format") != FORMAT:
+        items = payload.get("items")
+        for item in items if isinstance(items, list) else []:
+            # Мусор в пакете — отказ по этому документу, а не 500 на весь пакет.
+            record = item.get("record") if isinstance(item, dict) else None
+            key = str(record.get("id", "")) if isinstance(record, dict) else ""
+            version = record.get("version") if isinstance(record, dict) else None
+            if not key or item.get("format") != FORMAT or not isinstance(version, int):
                 rejected.append({"id": key, "reason": "Незнакомый формат документа"})
                 continue
             stored = received.get(key)
             # Устаревшая версия не затирает новую: документы могут прийти не по порядку.
-            if stored is None or stored["record"]["version"] <= int(record.get("version", 0)):
+            if stored is None or stored["record"]["version"] <= version:
                 received[key] = item
             accepted.append(key)
         return {"accepted": accepted, "rejected": rejected}

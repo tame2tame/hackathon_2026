@@ -47,6 +47,9 @@
 
 | Выгрузка не превращается в формулы | В xlsx, xls и csv значения с `=`, `+`, `-`, `@` в начале экранируются апострофом (CSV-инъекция) | [`backend/app/modules/reports/renderers.py`](../backend/app/modules/reports/renderers.py) |
 | Файлы отдельно от базы | Вложения в MinIO без публичного доступа; скачивание только через API с проверкой области видимости записи | [`backend/app/core/storage.py`](../backend/app/core/storage.py) |
+| Потерявший доступ не скачает файл из кэша браузера | Вложения и отчёты отдаются с `private, no-cache` и ETag: браузер каждый раз спрашивает сервер, а тот сначала проверяет доступ; `immutable` — только у публичных картинок справки | [`backend/app/core/http_cache.py`](../backend/app/core/http_cache.py) |
+| ФИО заявителя с сайта видит тот, кто видит запись | Очередь несопоставленных заявок — всем руководителям, сопоставленные — в области видимости их записи; чужую заявку не перепривязать | [`backend/app/modules/integrations/service.py`](../backend/app/modules/integrations/service.py) |
+| Персональные данные участников не хранятся вечно | Через 180 дней после завершения записи ФИО и почта участников стираются ночным заданием, в аудит пишется факт | [`backend/app/modules/participants/service.py`](../backend/app/modules/participants/service.py) |
 
 ## Журналирование и целостность
 
@@ -72,10 +75,12 @@
 |---|---|---|
 | TLS и перенаправление с 80 порта | Конфиг nginx стенда | [`infra/nginx/nginx.conf`](../infra/nginx/nginx.conf) |
 | Заголовки безопасности | HSTS, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, CSP с `frame-ancestors 'none'` | там же |
-| CORS только для известных адресов | Список из `CORS_ORIGINS`, по умолчанию пусто | [`backend/app/main.py`](../backend/app/main.py) |
+| CORS только для известных адресов | Список из `CORS_ORIGINS`, по умолчанию пусто; `*` в продакшене запрещён | [`backend/app/main.py`](../backend/app/main.py) |
+| Стенд не стартует с небезопасными настройками | При `APP_ENV=production` приложение отказывается запускаться без ключа шифрования, с неверным ключом, с паролем базы из локального профиля и с `CORS_ORIGINS=*` | [`backend/app/core/config.py`](../backend/app/core/config.py) |
 | Секреты только в окружении | В коде и фикстурах паролей нет; в `.env.example` — заглушки | [`backend/.env.example`](../backend/.env.example) |
 | Секреты не попадают в историю | `gitleaks` в CI по всей истории | [`.github/workflows/backend.yml`](../.github/workflows/backend.yml) |
-| Уязвимые зависимости | `pip-audit --strict` в CI | там же |
+| Уязвимые зависимости | `pip-audit --strict` в CI по `requirements.lock` — ровно те версии, что ставятся в образ | там же |
+| Воспроизводимая сборка | Зависимости по `backend/requirements.lock`, базовый образ и образы стенда закреплены по digest, у рабочих процессов CI только чтение репозитория | [`backend/Dockerfile`](../backend/Dockerfile), [`infra/docker-compose.prod.yml`](../infra/docker-compose.prod.yml) |
 
 ## Резервное копирование
 

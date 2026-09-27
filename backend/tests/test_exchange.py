@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -340,3 +341,23 @@ async def test_long_outage_does_not_drop_the_change(
     # Раньше после восьми неудач изменение помечалось failed и больше не уходило никогда.
     assert (entry.status, entry.attempts) == ("pending", 20)
     assert entry.next_attempt_at - moment <= timedelta(minutes=60)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"items": ["x"]},
+        {"items": 5},
+        {"items": [{"format": "radar-vuzov/interaction@1", "record": "x"}]},
+        {"items": [{"format": "radar-vuzov/interaction@1", "record": {"id": "1", "version": "2"}}]},
+    ],
+)
+async def test_mock_receiver_rejects_garbage_instead_of_failing(payload: dict[str, Any]) -> None:
+    async with AsyncClient(
+        transport=httpx.ASGITransport(app=site_mock.app), base_url="http://m"
+    ) as mock:
+        response = await mock.post("/api/crm/interactions", json=payload)
+
+    # Раньше строка вместо документа роняла заглушку с 500, и отказ получателя не был виден.
+    assert response.status_code == 200
+    assert response.json()["accepted"] == []
