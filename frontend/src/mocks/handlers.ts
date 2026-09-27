@@ -1,3 +1,8 @@
+import {
+  serviceHandlers,
+  unsupportedServiceAction,
+  setServiceRecordsSource,
+} from "./service-handlers";
 import { http, HttpResponse } from "msw";
 import {
   allowedFor,
@@ -9,6 +14,7 @@ import {
 } from "./fixtures";
 import type { Interaction, Schema, Signal, University } from "../api/types";
 let records = createFixtures();
+setServiceRecordsSource(() => records);
 export const resetFixtures = () => {
   records = createFixtures();
 };
@@ -100,6 +106,7 @@ function universityRows(items: Interaction[]): University[] {
   ];
 }
 export const handlers = [
+  ...serviceHandlers,
   http.get("*/api/v1/counterparty-groups", ({ request }) =>
     user(request)
       ? HttpResponse.json(mockGroups)
@@ -283,4 +290,5 @@ export const handlers = [
       return HttpResponse.json({ interaction: i, transition }, { status: 201 });
     },
   ),
+  unsupportedServiceAction,
 ];

@@ -11,6 +11,8 @@ import {
 } from "react-router-dom";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
+  Bell,
+  MessageSquare,
   Radar,
   Layers3,
   Building2,
@@ -126,6 +128,9 @@ export const navigation: {
     roles: ["admin"],
   },
   { path: "/admin/audit", title: "Аудит", icon: History, roles: ["admin"] },
+  { path: "/clients", title: "Клиенты", icon: Users },
+  { path: "/messages", title: "Сообщения", icon: MessageSquare },
+  { path: "/notifications", title: "Уведомления", icon: Bell },
   { path: "/help", title: "Справка", icon: CircleHelp, section: "ПОМОЩЬ" },
 ];
 export const planned: Record<

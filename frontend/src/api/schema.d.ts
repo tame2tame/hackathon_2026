@@ -1112,6 +1112,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/analytics/stats/report": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Статистика диаграммами в PDF
+     * @description Воронка, длительности этапов и распределение по направлениям одним файлом: те же числа, что отдают методы статистики, нарисованы столбиками. Нужно там, где браузера нет — письмо вузу, распечатка на совещание.
+     */
+    get: operations["read_stats_report_api_v1_analytics_stats_report_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/analytics/stats/distribution": {
     parameters: {
       query?: never;
@@ -1660,6 +1680,26 @@ export interface paths {
      * @description Руководство пользователя внутри продукта. Разделы отдаются по роли: то, что настраивает администратор, КАМу не показывается.
      */
     get: operations["read_topics_api_v1_help_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/help/images/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Картинка из справки
+     * @description Скриншоты экранов, на которые ссылаются разделы руководства.
+     */
+    get: operations["read_image_api_v1_help_images__name__get"];
     put?: never;
     post?: never;
     delete?: never;
@@ -8197,6 +8237,56 @@ export interface operations {
       };
     };
   };
+  read_stats_report_api_v1_analytics_stats_report_get: {
+    parameters: {
+      query?: {
+        /** @description Группа контрагентов; по умолчанию — вузы */
+        group_id?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Файл со статистикой */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/pdf": unknown;
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
   read_distribution_api_v1_analytics_stats_distribution_get: {
     parameters: {
       query?: {
@@ -9929,6 +10019,55 @@ export interface operations {
       };
       /** @description AUTH_REQUIRED */
       401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  read_image_api_v1_help_images__name__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Изображение */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/png": unknown;
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
         headers: {
           [name: string]: unknown;
         };

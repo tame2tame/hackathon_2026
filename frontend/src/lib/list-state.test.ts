@@ -66,3 +66,13 @@ describe("Состояние списков", () => {
     expect(pageRange(3, 23)).toBe("0 из 23");
   });
 });
+it("сохраняет фильтр направления из диаграммы и сбрасывает страницу при его смене", () => {
+  const id = "00000000-0000-4000-8000-000000000015";
+  const params = new URLSearchParams("page=3");
+  const updated = updateListState(params, { direction: id });
+  expect(updated.has("page")).toBe(false);
+  expect(readListState(updated).direction).toBe(id);
+  expect(
+    readListState(new URLSearchParams("direction=invalid")).direction,
+  ).toBe("");
+});

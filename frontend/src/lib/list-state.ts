@@ -7,6 +7,7 @@ export const filterKeys = [
   "severity",
   "stage",
   "owner",
+  "direction",
   "page",
 ] as const;
 export type FilterKey = (typeof filterKeys)[number];
@@ -18,6 +19,9 @@ export function readListState(params: URLSearchParams) {
   return {
     search: (params.get("q") || "").slice(0, 100),
     group: uuid.test(params.get("group") || "") ? params.get("group")! : "",
+    direction: uuid.test(params.get("direction") || "")
+      ? params.get("direction")!
+      : "",
     owner: uuid.test(params.get("owner") || "") ? params.get("owner")! : "",
     stage: /^[a-z0-9_-]{1,100}$/i.test(stage) ? stage : "",
     kind: ([
