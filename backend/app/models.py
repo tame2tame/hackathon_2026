@@ -43,8 +43,10 @@ from app.modules.notifications.models import (
     NotificationDelivery,
 )
 from app.modules.participants.models import Participant
+from app.modules.payments.models import Payment
 from app.modules.radar.models import RadarSignal
 from app.modules.reports.models import ReportJob
+from app.modules.vendors.models import VendorContact, vendor_contact_product
 from app.modules.views.models import SavedView
 from app.modules.workflow.models import (
     Stage,
@@ -81,6 +83,7 @@ __all__ = [
     "NotificationChannel",
     "NotificationDelivery",
     "Participant",
+    "Payment",
     "Product",
     "Program",
     "ProgramMetric",
@@ -98,7 +101,9 @@ __all__ = [
     "Transition",
     "University",
     "Vendor",
+    "VendorContact",
     "WorkflowTemplate",
     "WorkflowVersion",
     "product_direction",
+    "vendor_contact_product",
 ]

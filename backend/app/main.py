@@ -37,8 +37,10 @@ from app.modules.messages.router import router as messages_router
 from app.modules.notifications.router import admin_router as notifications_admin_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.participants.router import router as participants_router
+from app.modules.payments.router import router as payments_router
 from app.modules.radar.router import router as radar_router
 from app.modules.reports.router import router as reports_router
+from app.modules.vendors.router import router as vendors_router
 from app.modules.views.router import router as views_router
 from app.modules.workflow.router import editor_router as workflow_editor_router
 from app.modules.workflow.router import router as workflow_router
@@ -136,7 +138,9 @@ def create_app() -> FastAPI:
         help_router,
         messages_router,
         participants_router,
+        payments_router,
         views_router,
+        vendors_router,
         events_router,
     ):
         app.include_router(router)

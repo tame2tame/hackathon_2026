@@ -165,6 +165,7 @@ async def create_client(
         inn=payload.inn,
         city=payload.city,
         email_enc=crypto.encrypt(payload.email),
+        email_fp=crypto.fingerprint(payload.email),
         phone_enc=crypto.encrypt(payload.phone),
         created_by=user.id,
     )

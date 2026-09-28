@@ -37,6 +37,11 @@ function countTests() {
     .reduce((total, text) => total + (text.match(/^(async )?def test_/gm) ?? []).length, 0);
 }
 const TESTS = countTests();
+// Таблицы базы — по моделям SQLAlchemy: классы с __tablename__ и таблицы связей Table(...).
+const TABLES = readdirSync(`${ROOT}/backend/app`, { recursive: true })
+  .filter((name) => String(name).endsWith("models.py"))
+  .map((name) => readFileSync(`${ROOT}/backend/app/${name}`, "utf8"))
+  .reduce((total, text) => total + (text.match(/__tablename__ = |= Table\(/g) ?? []).length, 0);
 const SHOT = (name) => `${ROOT}/backend/app/help/images/${name}.png`;
 const DIAGRAM = (n) => `${ROOT}/docs/architecture/images/diagram-${n}.png`;
 
@@ -448,7 +453,7 @@ function picture(slide, path, { x, y, w, h }) {
   });
   const done = [
     "Процесс, радар, отчёты, рейтинг, интеграции, уведомления",
-    `${plural(OPERATIONS, "операция", "операции", "операций")} на ${plural(PATHS, "пути", "путях", "путях")} API, контракт, ${plural(TESTS, "тест", "теста", "тестов")}, 46 таблиц`,
+    `${plural(OPERATIONS, "операция", "операции", "операций")} на ${plural(PATHS, "пути", "путях", "путях")} API, контракт, ${plural(TESTS, "тест", "теста", "тестов")}, ${plural(TABLES, "таблица", "таблицы", "таблиц")}`,
     "Руководства внутри продукта, диаграммы, разбор соответствия ТЗ",
     "Демо-стенд на 351 записи поднимается одной командой",
   ];

@@ -27,6 +27,8 @@ class Client(UUIDPrimaryKey, Timestamps, Base):
     inn: Mapped[str | None] = mapped_column(String(12))
     city: Mapped[str | None] = mapped_column(String(120))
     email_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
+    # HMAC-отпечаток почты: по нему оплата находит уже известного человека (как у участников).
+    email_fp: Mapped[str | None] = mapped_column(String(64), index=True)
     phone_enc: Mapped[bytes | None] = mapped_column(LargeBinary)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("app_user.id", ondelete="SET NULL"), index=True

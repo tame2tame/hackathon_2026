@@ -22,6 +22,7 @@ from app.core import crypto
 from app.core.roles import Role
 from app.core.storage import Storage, get_storage
 from app.demo import seed_demo
+from app.demo_case import seed_case_catalog
 from app.modules.catalogs.models import (
     AppUser,
     Direction,
@@ -120,7 +121,7 @@ PROGRAMS_V1: tuple[tuple[str, str, str | None, str | None], ...] = (
     ("Веб-разработка", "web", "Акола", "Акола"),
     ("Контейнеризация и оркестрация", "devops", "Ред Софт", "РЕД ОС"),
     ("Инженерия данных", "data_analysis", "Postgres Professional", "Postgres Pro"),
-    ("Управление ИТ-проектами", "project_management", "Ростелеком", "Яга"),
+    ("Управление ИТ-проектами", "project_management", "ООО «РТК ИТ Плюс»", "Яга"),
     ("Машинное обучение", "ai", "Т1", "Сфера"),
     ("Распределённые реестры", "blockchain", "Диасофт", "Digital Q"),
     ("Промышленное проектирование", "web", "Аскон", "Компас-3D"),
@@ -546,6 +547,8 @@ async def seed_full(session: AsyncSession, now: datetime) -> bool:
     process = await group_process(session, group)
     version, stages = process.version, process.stages
     universities, pairs = await _catalogs(session, rng)
+    # Справочник кейсодержателя: вендоры с контактами и курсы из его выгрузки оплат.
+    await seed_case_catalog(session)
     kams, b2c_kams = await _people(session)
     storage = get_storage()
 

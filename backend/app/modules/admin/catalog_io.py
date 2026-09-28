@@ -7,6 +7,7 @@
 """
 
 import json
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -41,6 +42,7 @@ from app.modules.imports.files import (
 )
 from app.modules.imports.mapping import normalize, short_name
 from app.modules.reports import renderers
+from app.modules.vendors import service as vendors_service
 
 TRUE_VALUES = {"да", "true", "1", "yes", "+", "истина"}
 FALSE_VALUES = {"нет", "false", "0", "no", "-", "ложь", ""}
@@ -76,6 +78,15 @@ SPECS: dict[str, tuple[FieldSpec, ...]] = {
         FieldSpec("product", "Продукт", True, aliases=("ПО",)),
         FieldSpec("is_default", "По умолчанию", is_bool=True),
     ),
+    # Колонки — как в таблице кейсодержателя «Вендоры.xlsx».
+    "vendor-contacts": (
+        FieldSpec("vendor", "Компания", True, aliases=("Вендор", "Правообладатель")),
+        FieldSpec("products", "Продукт", True, aliases=("Продукты", "ПО")),
+        FieldSpec("full_name", "ФИО", True, aliases=("Контакт", "Ответственный")),
+        FieldSpec("phone", "Телефон"),
+        FieldSpec("email", "Почта", aliases=("Email", "E-mail")),
+        FieldSpec("channels", "Способ связи"),
+    ),
 }
 
 
@@ -87,6 +98,7 @@ KEY_FIELDS: dict[str, tuple[str, ...]] = {
     "vendors": ("name",),
     "products": ("vendor", "name"),
     "program-products": ("direction_code", "program", "vendor", "product"),
+    "vendor-contacts": ("vendor", "full_name"),
 }
 
 
@@ -325,6 +337,50 @@ async def _program_product(index: _Index, values: dict[str, str]) -> tuple[str, 
     return _outcome(key, changed)
 
 
+EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+async def _vendor_contact(index: _Index, values: dict[str, str]) -> tuple[str, Action, str | None]:
+    key = f"{values['vendor']} / {values['full_name']}"
+    email = values.get("email") or None
+    if email and not EMAIL.match(email):
+        raise RowError(f"Это не почта: «{email}»")
+    names = vendors_service.product_names(values["products"])
+    if not names:
+        raise RowError("Не заполнено: Продукт")
+    channels = vendors_service.channels_of(values.get("channels", ""))
+    added: list[str] = []
+    vendor = index.vendors.get(normalize(values["vendor"]))
+    if vendor is None:
+        vendor = Vendor(name=values["vendor"][:200])
+        index.session.add(vendor)
+        await index.session.flush()
+        index.vendors[normalize(vendor.name)] = vendor
+        added.append(f"вендор «{vendor.name}»")
+    products: list[Product] = []
+    for name in names:
+        product = index.products.get((vendor.id, normalize(name)))
+        if product is None:
+            product = Product(vendor_id=vendor.id, name=name[:200])
+            index.session.add(product)
+            await index.session.flush()
+            index.products[(vendor.id, normalize(name))] = product
+            added.append(f"продукт «{name}»")
+        products.append(product)
+    changed = await vendors_service.upsert_contact(
+        index.session,
+        vendor,
+        products,
+        values["full_name"],
+        email,
+        values.get("phone") or None,
+        channels,
+    )
+    if "контакт" in changed:
+        return key, "created", ("добавлены: " + ", ".join(added)) if added else None
+    return key, ("updated" if changed else "unchanged"), ", ".join(changed) or None
+
+
 HANDLERS: dict[str, RowHandler] = {
     "universities": _university,
     "directions": _direction,
@@ -332,6 +388,7 @@ HANDLERS: dict[str, RowHandler] = {
     "vendors": _vendor,
     "products": _product,
     "program-products": _program_product,
+    "vendor-contacts": _vendor_contact,
 }
 
 
@@ -473,6 +530,8 @@ async def _export_rows(
                 {"vendor": vendor.name, "name": product.name}
                 for product, vendor in products.tuples()
             ]
+        case "vendor-contacts":
+            return await vendors_service.export_rows(session)
         case _:
             links = await session.execute(
                 select(ProgramProduct, Program, Direction, Product, Vendor)
@@ -500,10 +559,24 @@ async def export_catalog(
     fmt: Literal["json", "csv", "xlsx"],
     encoding: Literal["utf-8", "windows-1251"] = "utf-8",
     include_archived: bool = False,
+    user: CurrentUser | None = None,
+    trace_id: str | None = None,
 ) -> tuple[bytes, str, str]:
     """Файл справочника в том виде, в каком его принимает загрузка: байты, тип и имя файла."""
     specs = specs_of(kind)
     rows = await _export_rows(session, kind, include_archived)
+    if kind == "vendor-contacts":
+        # В файле почта и телефоны людей: выгрузка — обращение к персональным данным.
+        session.add(
+            AuditLog(
+                actor_user_id=user.id if user else None,
+                action="vendor_contact.exported",
+                entity_kind="vendor_contact",
+                after={"rows": len(rows), "format": fmt},
+                trace_id=trace_id,
+            )
+        )
+        await session.commit()
     stamp = datetime.now(UTC).strftime("%Y-%m-%d")
     file_name = f"{kind}-{stamp}.{fmt}"
     if fmt == "json":

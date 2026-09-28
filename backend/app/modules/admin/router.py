@@ -257,8 +257,9 @@ async def post_catalog_import(
 )
 async def read_catalog_export(
     kind: str,
+    trace_id: TraceIdDep,
     session: SessionDep,
-    _user: ManagerDep,
+    user: ManagerDep,
     file_format: Annotated[
         Literal["json", "csv", "xlsx"], Query(alias="format", description="Формат файла")
     ] = "xlsx",
@@ -268,7 +269,7 @@ async def read_catalog_export(
     include_archived: Annotated[bool, Query(description="Вместе с архивными записями")] = False,
 ) -> Response:
     content, media_type, file_name = await catalog_io.export_catalog(
-        session, kind, file_format, encoding, include_archived
+        session, kind, file_format, encoding, include_archived, user, trace_id
     )
     return Response(
         content,
