@@ -362,7 +362,10 @@ export default function ConnectedApp() {
               />
             ))}
             <Route path="/help/*" element={<HelpPage />} />
-            <Route path="/clients" element={<ClientsPage />} />
+            <Route
+              path="/clients"
+              element={<ClientsPage key={profile.id} me={profile} />}
+            />
             <Route path="/messages" element={<MessagesPage me={profile} />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route

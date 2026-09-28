@@ -668,7 +668,7 @@ export interface paths {
     };
     /**
      * Выгрузка записей в JSON
-     * @description Документы `radar-vuzov/interaction@1` в области видимости пользователя. `updated_since` отдаёт только изменённые с этого момента — так внешняя система забирает изменения по расписанию, не перечитывая всё.
+     * @description Документы `radar-vuzov/interaction@1` в области видимости пользователя. `updated_since` отдаёт только изменённые с этого момента — так внешняя система забирает изменения по расписанию, не перечитывая всё. Окно перекрывается на пять минут назад: запись, зафиксированная во время прошлого опроса, придёт в следующем. Повтор документа обрабатывается по `record.id` и `record.updated_at`.
      */
     get: operations["read_exchange_api_v1_exchange_interactions_get"];
     put?: never;
@@ -914,7 +914,7 @@ export interface paths {
     };
     /**
      * Заявки с сайта
-     * @description Без фильтра — все заявки; `match_status=unmatched` — очередь на разбор.
+     * @description Очередь несопоставленных (`match_status=unmatched`) видна всем руководителям. Сопоставленные — только те, чьё взаимодействие входит в область видимости.
      */
     get: operations["read_applications_api_v1_site_applications_get"];
     put?: never;
@@ -1288,7 +1288,7 @@ export interface paths {
     };
     /**
      * Журнал аудита
-     * @description Значения до и после изменения; просмотр персональных данных тоже записывается.
+     * @description Значения до и после изменения; просмотр персональных данных тоже записывается. Новые сверху, пачками: `limit` записей со сдвигом `offset`. Фильтры по действию, виду и id объекта, сотруднику и периоду `[occurred_from, occurred_to)`.
      */
     get: operations["read_audit_api_v1_admin_audit_get"];
     put?: never;
@@ -1330,7 +1330,7 @@ export interface paths {
     put?: never;
     /**
      * Загрузить справочник файлом
-     * @description JSON (массив объектов или `{items}`), CSV, XLSX или XLS. Справочники: universities, directions, programs, vendors, products, program-products. Колонки называются как в выгрузке или по именам полей. Записи находятся по естественному ключу: повторная загрузка не создаёт дублей, пустая ячейка не стирает поле, архивная запись возвращается. По умолчанию — предпросмотр (`dry_run=true`): итог по каждой строке без изменений в базе.
+     * @description JSON (массив объектов или `{items}`), CSV, XLSX или XLS. Справочники: universities, directions, programs, vendors, products, program-products, vendor-contacts. Колонки называются как в выгрузке или по именам полей. Записи находятся по естественному ключу: повторная загрузка не создаёт дублей, пустая ячейка не стирает поле, архивная запись возвращается. По умолчанию — предпросмотр (`dry_run=true`): итог по каждой строке без изменений в базе.
      */
     post: operations["post_catalog_import_api_v1_admin_catalogs__kind__import_post"];
     delete?: never;
@@ -1697,7 +1697,7 @@ export interface paths {
     };
     /**
      * Картинка из справки
-     * @description Скриншоты экранов, на которые ссылаются разделы руководства.
+     * @description Скриншоты экранов, на которые ссылаются разделы руководства. Отдаются без входа: на них только синтетические демо-данные, а `<img>` не умеет слать токен.
      */
     get: operations["read_image_api_v1_help_images__name__get"];
     put?: never;
@@ -1890,6 +1890,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/payments/import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Загрузить оплаты из платёжной системы
+     * @description JSON платёжной системы (массив записей с полями «Номер заявки», «Курс», «Фамилия», «Имя», «Отчество», «Телефон», «Email», «Номер потока»), а также CSV, XLSX или XLS с теми же колонками. Человек находится по почте или заводится карточкой клиента, его запись B2C по курсу находится или заводится и переходит на «Зачисление в LMS». Номер заявки уникален: повторная загрузка ничего не дублирует. По умолчанию — предпросмотр (`dry_run=true`).
+     */
+    post: operations["post_payments_import_api_v1_payments_import_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/payments/lms-users": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Файл «Загрузка пользователей» для LMS
+     * @description XLSX по шаблону LMS: частные лица на этапе «Зачисление в LMS» в области видимости, по курсу и потоку. Заполнены ФИО, телефон и почта; паспорт, СНИЛС и диплом CRM не хранит. В файле персональные данные — выгрузка пишется в журнал аудита.
+     */
+    get: operations["read_lms_users_api_v1_payments_lms_users_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/saved-views": {
     parameters: {
       query?: never;
@@ -1930,6 +1970,67 @@ export interface paths {
      * @description Название, фильтры или колонки. Пропущенное поле остаётся как было.
      */
     patch: operations["patch_view_api_v1_saved_views__view_id__patch"];
+    trace?: never;
+  };
+  "/api/v1/vendors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Вендоры с продуктами
+     * @description Справочник вендоров с id, продуктами и числом контактов.
+     */
+    get: operations["read_vendors_api_v1_vendors_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/vendors/{vendor_id}/contacts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Контакты вендора
+     * @description Кто отвечает за продукты вендора и как с ним связаться. Почта и телефон — персональные данные: просмотр пишется в журнал аудита.
+     */
+    get: operations["read_vendor_contacts_api_v1_vendors__vendor_id__contacts_get"];
+    put?: never;
+    /** Добавить контакт вендора */
+    post: operations["post_vendor_contact_api_v1_vendors__vendor_id__contacts_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/vendor-contacts/{contact_id}/archive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Убрать контакт вендора в архив
+     * @description Почта и телефон стираются: хранить их больше незачем.
+     */
+    post: operations["post_vendor_contact_archive_api_v1_vendor_contacts__contact_id__archive_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/api/v1/events": {
@@ -2235,6 +2336,26 @@ export interface components {
        * @enum {string}
        */
       role: "student" | "teacher";
+      /**
+       * Encoding
+       * @description Кодировка CSV, если определилась неверно
+       */
+      encoding?:
+        ("utf-8" | "windows-1251" | "koi8-r" | "cp866" | "utf-16") | null;
+    };
+    /** Body_post_payments_import_api_v1_payments_import_post */
+    Body_post_payments_import_api_v1_payments_import_post: {
+      /**
+       * File
+       * @description Выгрузка оплат
+       */
+      file: string;
+      /**
+       * Dry Run
+       * @description Только показать, что будет
+       * @default true
+       */
+      dry_run: boolean;
       /**
        * Encoding
        * @description Кодировка CSV, если определилась неверно
@@ -3023,6 +3144,7 @@ export interface components {
       | "AUTH_REQUIRED"
       | "AUTH_FORBIDDEN"
       | "NOT_FOUND"
+      | "METHOD_NOT_ALLOWED"
       | "INTERACTION_VERSION_CONFLICT"
       | "INTERACTION_DUPLICATE"
       | "WF_TRANSITION_NOT_ALLOWED"
@@ -3212,10 +3334,18 @@ export interface components {
       base_url: string;
       /** Is Mock */
       is_mock: boolean;
-      /** Schedule Cron */
+      /**
+       * Schedule Cron
+       * @description Справочно: входящая синхронизация идёт в воркере раз в час для всех включённых
+       */
       schedule_cron: string | null;
       /** Last Sync At */
       last_sync_at: string | null;
+      /**
+       * Pull Enabled
+       * @description Забирать ли данные из системы по расписанию
+       */
+      pull_enabled: boolean;
       /**
        * Push Enabled
        * @description Система принимает изменения записей CRM
@@ -3791,6 +3921,50 @@ export interface components {
       /** Items */
       items: components["schemas"]["ParticipantOut"][];
     };
+    /** PaymentImportOut */
+    PaymentImportOut: {
+      /** Dry Run */
+      dry_run: boolean;
+      /**
+       * Created
+       * @description Новые записи B2C
+       */
+      created: number;
+      /**
+       * Updated
+       * @description Известные записи, к которым добавилась оплата
+       */
+      updated: number;
+      /**
+       * Unchanged
+       * @description Оплата уже была загружена раньше
+       */
+      unchanged: number;
+      /** Errors */
+      errors: number;
+      /** Rows */
+      rows: components["schemas"]["PaymentRowOut"][];
+    };
+    /** PaymentRowOut */
+    PaymentRowOut: {
+      /**
+       * Row No
+       * @description Номер записи в файле, с 1
+       */
+      row_no: number;
+      /**
+       * Key
+       * @description Номер заявки
+       */
+      key: string;
+      /**
+       * Action
+       * @enum {string}
+       */
+      action: "created" | "updated" | "unchanged" | "error";
+      /** Detail */
+      detail: string | null;
+    };
     /** PriorityUpdate */
     PriorityUpdate: {
       /**
@@ -4274,7 +4448,12 @@ export interface components {
        * Push Enabled
        * @description Отправлять ли системе изменения записей
        */
-      push_enabled: boolean;
+      push_enabled?: boolean | null;
+      /**
+       * Pull Enabled
+       * @description Забирать ли из системы данные по расписанию
+       */
+      pull_enabled?: boolean | null;
     };
     /**
      * StageDraft
@@ -4656,6 +4835,88 @@ export interface components {
       input?: unknown;
       /** Context */
       ctx?: Record<string, never>;
+    };
+    /** VendorContactCreate */
+    VendorContactCreate: {
+      /** Full Name */
+      full_name: string;
+      /** Email */
+      email?: string | null;
+      /** Phone */
+      phone?: string | null;
+      /** Channels */
+      channels?: ("email" | "telegram" | "phone")[];
+      /**
+       * Product Ids
+       * @description Продукты этого же вендора
+       */
+      product_ids?: string[];
+    };
+    /**
+     * VendorContactOut
+     * @description Контакт вендора. Почта и телефон расшифровываются только для того, кто их запросил.
+     */
+    VendorContactOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Vendor Id
+       * Format: uuid
+       */
+      vendor_id: string;
+      /** Full Name */
+      full_name: string;
+      /** Email */
+      email: string | null;
+      /** Phone */
+      phone: string | null;
+      /**
+       * Channels
+       * @description Как удобнее связаться: почта, Telegram, звонок
+       */
+      channels: ("email" | "telegram" | "phone")[];
+      /**
+       * Products
+       * @description За какие продукты отвечает
+       */
+      products: components["schemas"]["VendorProductOut"][];
+      /** Archived At */
+      archived_at: string | null;
+    };
+    /**
+     * VendorOut
+     * @description Вендор со своими продуктами: у справочника вендоров наконец есть id для выбора.
+     */
+    VendorOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
+      /** Products */
+      products: components["schemas"]["VendorProductOut"][];
+      /**
+       * Contacts
+       * @description Сколько действующих контактов у вендора
+       */
+      contacts: number;
+      /** Archived At */
+      archived_at: string | null;
+    };
+    /** VendorProductOut */
+    VendorProductOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
     };
     /** VendorRef */
     VendorRef: {
@@ -8857,7 +9118,17 @@ export interface operations {
       query?: {
         action?: string | null;
         entity_kind?: string | null;
+        /** @description Объект */
+        entity_id?: string | null;
+        /** @description Кто сделал */
+        actor_user_id?: string | null;
+        /** @description Не раньше, ISO 8601 */
+        occurred_from?: string | null;
+        /** @description Раньше, ISO 8601 */
+        occurred_to?: string | null;
         limit?: number;
+        /** @description Сколько записей пропустить */
+        offset?: number;
       };
       header?: never;
       path?: never;
@@ -10048,15 +10319,6 @@ export interface operations {
           "image/png": unknown;
         };
       };
-      /** @description AUTH_REQUIRED */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/problem+json": components["schemas"]["Problem"];
-        };
-      };
       /** @description NOT_FOUND */
       404: {
         headers: {
@@ -10626,6 +10888,120 @@ export interface operations {
       };
     };
   };
+  post_payments_import_api_v1_payments_import_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["Body_post_payments_import_api_v1_payments_import_post"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaymentImportOut"];
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description AUTH_FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description FILE_TOO_LARGE */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description VALIDATION_ERROR · IMPORT_MAPPING_INVALID */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  read_lms_users_api_v1_payments_lms_users_get: {
+    parameters: {
+      query?: {
+        /** @description Этап записей */
+        stage_code?: string;
+        /** @description Курс */
+        program_id?: string | null;
+        /** @description Номер потока из оплаты */
+        stream?: number | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Файл для загрузки в LMS */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description VALIDATION_ERROR */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
   read_views_api_v1_saved_views_get: {
     parameters: {
       query?: {
@@ -10800,6 +11176,216 @@ export interface operations {
         };
       };
       /** @description VALIDATION_ERROR */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  read_vendors_api_v1_vendors_get: {
+    parameters: {
+      query?: {
+        /** @description Вместе с архивными */
+        include_archived?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VendorOut"][];
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  read_vendor_contacts_api_v1_vendors__vendor_id__contacts_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        vendor_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VendorContactOut"][];
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  post_vendor_contact_api_v1_vendors__vendor_id__contacts_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        vendor_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["VendorContactCreate"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VendorContactOut"];
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description AUTH_FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description VALIDATION_ERROR */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+    };
+  };
+  post_vendor_contact_archive_api_v1_vendor_contacts__contact_id__archive_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contact_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VendorContactOut"];
+        };
+      };
+      /** @description AUTH_REQUIRED */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description AUTH_FORBIDDEN */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description NOT_FOUND */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/problem+json": components["schemas"]["Problem"];
+        };
+      };
+      /** @description Validation Error */
       422: {
         headers: {
           [name: string]: unknown;

@@ -1,3 +1,4 @@
+import { VendorRow } from "./Vendors";
 import { Groups } from "./Groups";
 import { useState } from "react";
 import { Heading } from "../App";
@@ -22,6 +23,7 @@ const catalogs: Record<string, string> = {
   directions: "Направления",
   programs: "Программы",
   vendors: "Вендоры",
+  "vendor-contacts": "Контакты вендоров (файл)",
   products: "Продукты",
   "program-products": "Программы и продукты",
 };
@@ -61,33 +63,36 @@ function Catalog({ kind, me }: { kind: string; me: Me }) {
   const [preview, setPreview] = useState<Schema["CatalogImportOut"] | null>(
     null,
   );
+  const [encoding, setEncoding] = useState("");
   const [archived, setArchived] = useState(false);
   const q = useResource<
     | Schema["Page_UniversityOut_"]
     | Schema["ProgramRef"][]
     | Schema["DirectionRef"][]
     | Schema["ProductRef"][]
+    | Schema["VendorOut"][]
   >(
-    kind === "vendors" || kind === "program-products"
+    kind === "vendor-contacts" || kind === "program-products"
       ? "/products"
       : "/" + kind,
-    { page, page_size: 20, search: search || undefined },
+    {
+      page,
+      page_size: 20,
+      search: search || undefined,
+      ...(kind === "vendors" ? { include_archived: archived } : {}),
+    },
   );
   const directions = useResource<Schema["DirectionRef"][]>(
     "/directions",
     {},
     kind === "programs",
   );
-  const products = useResource<Schema["ProductRef"][]>(
-    "/products",
+  const vendors = useResource<Schema["VendorOut"][]>(
+    "/vendors",
     {},
-    kind === "products" || kind === "vendors",
+    kind === "products",
   );
-  const vendors = Array.from(
-    new Map(products.data?.map((p) => [p.vendor.id, p.vendor]) || []).values(),
-  );
-  let rows = q.data ? (Array.isArray(q.data) ? q.data : q.data.items) : [];
-  if (kind === "vendors") rows = vendors as typeof rows;
+  const rows = q.data ? (Array.isArray(q.data) ? q.data : q.data.items) : [];
   const create = useAction(async () => {
     const r = await api.send(`/admin/catalogs/${kind}`, form);
     setForm({ name: "" });
@@ -100,6 +105,8 @@ function Catalog({ kind, me }: { kind: string; me: Me }) {
     const body = new FormData();
     body.append("file", file!);
     body.append("dry_run", String(dry));
+    if (encoding) body.append("encoding", encoding);
+    setPreview(null);
     const r = await api.upload<Schema["CatalogImportOut"]>(
       `/api/v1/admin/catalogs/${kind}/import`,
       body,
@@ -134,7 +141,13 @@ function Catalog({ kind, me }: { kind: string; me: Me }) {
           </Field>
         )}
         <State query={q}>
-          {kind === "program-products" ? (
+          {kind === "vendor-contacts" ? (
+            <p>
+              Загрузите таблицу контактов вендоров или выгрузите её как шаблон.
+              Просмотр и добавление отдельных контактов доступны на вкладке
+              «Вендоры».
+            </p>
+          ) : kind === "program-products" ? (
             <p>
               Связи программ и продуктов загружаются и выгружаются таблицей.
               Используйте выгрузку как шаблон для изменения связей.
@@ -146,24 +159,32 @@ function Catalog({ kind, me }: { kind: string; me: Me }) {
                   kind === "universities" ||
                   r.name.toLowerCase().includes(search.toLowerCase()),
               )
-              .map((r) => (
-                <div className="service-row" key={r.id}>
-                  <div className="grow">
-                    <h3>{r.name}</h3>
-                    {"direction" in r && <small>{r.direction.name}</small>}
-                    {"region" in r && <small>{String(r.region || "")}</small>}
+              .map((r) =>
+                kind === "vendors" ? (
+                  <VendorRow
+                    key={r.id}
+                    vendor={r as Schema["VendorOut"]}
+                    me={me}
+                  />
+                ) : (
+                  <div className="service-row" key={r.id}>
+                    <div className="grow">
+                      <h3>{r.name}</h3>
+                      {"direction" in r && <small>{r.direction.name}</small>}
+                      {"region" in r && <small>{String(r.region || "")}</small>}
+                    </div>
+                    {me.role === "admin" && (
+                      <Button
+                        variant="ghost"
+                        disabled={archive.isPending}
+                        onClick={() => archive.mutate(r.id)}
+                      >
+                        В архив
+                      </Button>
+                    )}
                   </div>
-                  {me.role === "admin" && (
-                    <Button
-                      variant="ghost"
-                      disabled={archive.isPending}
-                      onClick={() => archive.mutate(r.id)}
-                    >
-                      В архив
-                    </Button>
-                  )}
-                </div>
-              ))
+                ),
+              )
           )}
           {q.data && !Array.isArray(q.data) && (
             <Pager page={page} total={q.data.total} onPage={setPage} />
@@ -173,7 +194,7 @@ function Catalog({ kind, me }: { kind: string; me: Me }) {
       </Panel>
       {me.role === "admin" && (
         <>
-          {kind !== "program-products" && (
+          {kind !== "program-products" && kind !== "vendor-contacts" && (
             <Panel title="Добавить запись">
               <form
                 onSubmit={(e) => {
@@ -242,7 +263,7 @@ function Catalog({ kind, me }: { kind: string; me: Me }) {
                         }
                       >
                         <option value="">Выберите вендора</option>
-                        {vendors.map((v) => (
+                        {vendors.data?.map((v) => (
                           <option key={v.id} value={v.id}>
                             {v.name}
                           </option>
@@ -260,6 +281,7 @@ function Catalog({ kind, me }: { kind: string; me: Me }) {
             <p>Сначала проверяем строки, затем применяем изменения.</p>
             <Field label="Файл XLSX, XLS или CSV">
               <input
+                disabled={upload.isPending}
                 type="file"
                 accept=".xlsx,.xls,.csv"
                 onChange={(e) => {
@@ -267,6 +289,25 @@ function Catalog({ kind, me }: { kind: string; me: Me }) {
                   setPreview(null);
                 }}
               />
+            </Field>
+            <Field label="Кодировка CSV">
+              <Select
+                value={encoding}
+                disabled={upload.isPending}
+                onChange={(e) => {
+                  setEncoding(e.target.value);
+                  setPreview(null);
+                }}
+              >
+                <option value="">Определить автоматически</option>
+                {["utf-8", "windows-1251", "koi8-r", "cp866", "utf-16"].map(
+                  (v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ),
+                )}
+              </Select>
             </Field>
             <label>
               <input

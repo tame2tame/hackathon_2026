@@ -34,6 +34,14 @@ const lists: Record<string, unknown> = {
   "/directions": directions,
   "/programs": programs,
   "/products": products,
+  "/vendors": unique(products.map((p) => p.vendor)).map((v) => ({
+    ...v,
+    products: products
+      .filter((p) => p.vendor.id === v.id)
+      .map((p) => ({ id: p.id, name: p.name })),
+    contacts: 0,
+    archived_at: null,
+  })),
   "/workflows": [
     {
       id: mockWorkflow.template_id,

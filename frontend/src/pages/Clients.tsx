@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Heading } from "../App";
 import { api } from "../api/runtime";
-import type { Schema } from "../api/types";
+import { Payments } from "./Payments";
+import type { Me, Schema } from "../api/types";
 import { Button } from "../components/ui/button";
 import { Select } from "../components/ui/select";
 import {
@@ -14,7 +15,7 @@ import {
   useAction,
   useResource,
 } from "./shared";
-export function ClientsPage() {
+export function ClientsPage({ me }: { me: Me }) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<Schema["ClientCreate"]>({
@@ -38,6 +39,7 @@ export function ClientsPage() {
         title="Клиенты"
         text="Физические лица и организации, которые обучаются в ИТ Школе."
       />
+      <Payments me={me} />
       <Panel title="Клиенты">
         <Field label="Поиск по имени или организации">
           <input
