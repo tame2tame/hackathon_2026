@@ -1,0 +1,66 @@
+# Стенд в Yandex Cloud: дополнение к docker-compose.prod.yml, а не отдельный профиль.
+# Файлы лежат в Yandex Object Storage, а не в своём MinIO: образ MinIO больше не скачивается
+# из реестров, а бакет в облаке сам хранит данные надёжно и не занимает диск сервера.
+#
+# Запуск (см. docs/DEPLOY_YANDEX.md):
+#   docker compose -f docker-compose.prod.yml -f docker-compose.yandex.yml --env-file .env up -d
+name: radar-vuzov-prod
+
+x-object-storage: &object-storage
+  STORAGE_BACKEND: s3
+  S3_ENDPOINT: storage.yandexcloud.net
+  S3_SECURE: "true"
+  S3_REGION: ru-central1
+  S3_ACCESS_KEY: ${YC_S3_ACCESS_KEY:?ключ сервисного аккаунта Object Storage}
+  S3_SECRET_KEY: ${YC_S3_SECRET_KEY:?секрет сервисного аккаунта Object Storage}
+  S3_BUCKET: ${YC_S3_BUCKET:?бакет для вложений и отчётов}
+
+services:
+  api:
+    environment: *object-storage
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    environment: *object-storage
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # Свой MinIO и его копирование здесь не нужны: сервисы уходят в профиль, который не включают.
+  minio:
+    profiles: ["minio"]
+
+  backup-files:
+    profiles: ["minio"]
+
+  # Зашифрованные дампы (их готовит backup.sh при заданном BACKUP_GPG_PUBLIC_KEY) раз в сутки
+  # уезжают в отдельный бакет: копия на том же сервере не спасёт от потери сервера.
+  # Включается профилем: docker compose ... --profile offsite up -d
+  backup-offsite:
+    image: rclone/rclone:1.71@sha256:3103526c506266a9ecdf064efe99bf3677d92ef6407af124d8c56b4f49cbaa51
+    profiles: ["offsite"]
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        while true; do
+        rclone copy /backups/offsite "yc:$${OFFSITE_BUCKET}" --exclude '*.partial' --s3-no-check-bucket
+        && echo "Внешняя копия обновлена" || echo "Внешняя копия не удалась";
+        sleep 86400; done
+    environment:
+      OFFSITE_BUCKET: ${YC_OFFSITE_BUCKET:?бакет для внешних копий}
+      # Настройки rclone — переменными окружения: ключи не попадают в аргументы процесса.
+      RCLONE_CONFIG_YC_TYPE: s3
+      RCLONE_CONFIG_YC_PROVIDER: Other
+      RCLONE_CONFIG_YC_ENDPOINT: https://storage.yandexcloud.net
+      RCLONE_CONFIG_YC_REGION: ru-central1
+      RCLONE_CONFIG_YC_ACCESS_KEY_ID: ${YC_S3_ACCESS_KEY:?ключ сервисного аккаунта Object Storage}
+      RCLONE_CONFIG_YC_SECRET_ACCESS_KEY: ${YC_S3_SECRET_KEY:?секрет сервисного аккаунта Object Storage}
+    volumes:
+      - backups:/backups:ro
+    restart: unless-stopped

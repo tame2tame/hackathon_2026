@@ -1,5 +1,7 @@
 # Стенд: развёртывание и обновление
 
+Пошагово для Yandex Cloud (файлы в Object Storage, адрес sslip.io) — [`DEPLOY_YANDEX.md`](DEPLOY_YANDEX.md).
+
 Профиль стенда — [`infra/docker-compose.prod.yml`](../infra/docker-compose.prod.yml): nginx с TLS,
 API, воркер, Keycloak, PostgreSQL, Redis и ежедневный бэкап. Значений по умолчанию у секретов нет:
 compose не запустится, пока переменная не задана.
