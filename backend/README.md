@@ -1,6 +1,6 @@
 # Бэкенд «Радар вузов»
 
-API на FastAPI. Архитектура — [`ARCHITECTURE.md`](../ARCHITECTURE.md), правила потока — [`AGENTS.md`](AGENTS.md), план — [`docs/PLAN.md`](../docs/PLAN.md).
+API на FastAPI. Архитектура и решения — [`ARCHITECTURE.md`](../ARCHITECTURE.md), соответствие ТЗ — [`docs/COMPLIANCE.md`](../docs/COMPLIANCE.md).
 
 ## Запуск
 
