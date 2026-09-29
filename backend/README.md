@@ -38,7 +38,7 @@ curl -H "X-Dev-User: anna.smirnova@example.com" http://127.0.0.1:8000/api/v1/sig
 
 Полное окружение с Keycloak: `docker compose -f ../infra/docker-compose.yml up`. Демо-входы: `kam.demo`, `manager.demo`, `admin.demo`. Пароли в `infra/keycloak/realm-radar-vuzov.json` — только для локальной разработки.
 
-## Для фронтенда
+## Подключение интерфейса
 
 - API: `http://127.0.0.1:8000`; CORS разрешён для `http://127.0.0.1:5173` и `http://localhost:5173`.
 - Keycloak: `http://127.0.0.1:8080`, realm `radar-vuzov`, клиент `radar-web` (публичный, PKCE S256), redirect `http://127.0.0.1:5173/*`, роли в claim `realm_access.roles`.
@@ -47,4 +47,4 @@ curl -H "X-Dev-User: anna.smirnova@example.com" http://127.0.0.1:8000/api/v1/sig
 
 ## Проверки
 
-`make check` — ruff, mypy и pytest. Для тестов нужен PostgreSQL из `make db-up` или адрес в `TEST_DATABASE_URL`. После изменения API — `make openapi` и коммит обновлённого контракта.
+`make check` — ruff, mypy, проверка миграций и pytest. Для тестов нужен PostgreSQL из `make db-up` или адрес в `TEST_DATABASE_URL`. После изменения API — `make openapi` и коммит обновлённого контракта.

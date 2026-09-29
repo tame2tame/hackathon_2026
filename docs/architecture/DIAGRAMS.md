@@ -175,6 +175,12 @@ erDiagram
     APP_USER ||--o{ NOTIFICATION : "лента уведомлений"
     APP_USER ||--o{ AUDIT_LOG : "кто что сделал"
 
+    VENDOR ||--o{ PRODUCT : "выпускает"
+    VENDOR ||--o{ VENDOR_CONTACT : "контакты"
+    VENDOR_CONTACT }o--o{ PRODUCT : "отвечает за продукты"
+    INTERACTION ||--o{ PAYMENT : "оплаты частных лиц"
+    CLIENT ||--o{ PAYMENT : "кто оплатил"
+
     INTERACTION {
         uuid id PK
         uuid group_id FK
