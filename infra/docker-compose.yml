@@ -53,6 +53,7 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.3
+    entrypoint: ["bash", "/opt/keycloak/radar/start-with-theme.sh"]
     command: ["start-dev", "--import-realm"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -66,7 +67,16 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
+      - ./keycloak/themes/radar:/opt/keycloak/themes/radar:ro
+      - ./keycloak/apply-theme.sh:/opt/keycloak/radar/apply-theme.sh:ro
+      - ./keycloak/start-with-theme.sh:/opt/keycloak/radar/start-with-theme.sh:ro
       - ./keycloak/realm-radar-vuzov.json:/opt/keycloak/data/import/realm-radar-vuzov.json:ro
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/radar-theme-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy

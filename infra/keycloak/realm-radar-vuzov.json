@@ -1,6 +1,7 @@
 {
   "realm": "radar-vuzov",
   "displayName": "Радар вузов",
+  "loginTheme": "radar",
   "internationalizationEnabled": true,
   "supportedLocales": ["ru"],
   "defaultLocale": "ru",
