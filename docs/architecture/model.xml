@@ -131,8 +131,8 @@
       <name xml:lang="ru">Сайт ИТ Школы</name>
     </element>
     <element identifier="node-minio" xsi:type="Node">
-      <name xml:lang="ru">MinIO (S3)</name>
-      <documentation xml:lang="ru">Файлы отдельно от базы; на стенде — том minio-data, копия раз в сутки.</documentation>
+      <name xml:lang="ru">S3-хранилище</name>
+      <documentation xml:lang="ru">Файлы отдельно от базы. На стенде — бакет Yandex Object Storage с версионированием; в закрытом контуре и локально — MinIO.</documentation>
     </element>
     <element identifier="node-messengers" xsi:type="Node">
       <name xml:lang="ru">Telegram, Max, SMTP</name>

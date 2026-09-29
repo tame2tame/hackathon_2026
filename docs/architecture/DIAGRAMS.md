@@ -29,7 +29,7 @@ flowchart LR
         worker["Воркер<br/>arq"]
         db[("PostgreSQL<br/>данные и история")]
         cache[("Redis<br/>очередь, кэш, события")]
-        files[("MinIO<br/>вложения и отчёты")]
+        files[("S3-хранилище<br/>вложения и отчёты")]
     end
 
     keycloak["Keycloak<br/>вход и роли"]
@@ -68,42 +68,49 @@ flowchart LR
 
 ## 2. Программно-аппаратная архитектура
 
-Один сервер, всё поднимается `docker compose` из [`infra/docker-compose.prod.yml`](../../infra/docker-compose.prod.yml).
-Наружу открыты только 80 и 443.
+Стенд — одна виртуальная машина в Yandex Cloud: всё поднимается `docker compose` из
+[`infra/docker-compose.prod.yml`](../../infra/docker-compose.prod.yml) с дополнением
+[`docker-compose.yandex.yml`](../../infra/docker-compose.yandex.yml). Файлы лежат не на машине,
+а в Yandex Object Storage — облачном S3-хранилище. Наружу открыты только 80 и 443 (и 22 для
+администратора). В закрытом контуре заказчика вместо Object Storage ставится MinIO или другое
+S3-хранилище — код тот же, меняются адрес и ключи.
 
 ```mermaid
 flowchart TB
     browser["Браузер сотрудника<br/>HTTPS"]
 
-    subgraph server["Сервер стенда — Ubuntu, Docker"]
-        nginx["nginx<br/>:80, :443 → TLS, статика SPA"]
+    subgraph cloud["Yandex Cloud"]
+        subgraph server["ВМ radar — Ubuntu 24.04, Docker, 2 vCPU, 8 ГБ"]
+            nginx["nginx<br/>:80, :443 → TLS Let's Encrypt, статика SPA"]
 
-        subgraph app["Приложение"]
-            api["api — uvicorn :8000<br/>образ backend"]
-            worker["worker — arq<br/>тот же образ"]
+            subgraph app["Приложение"]
+                api["api — uvicorn :8000<br/>образ backend"]
+                worker["worker — arq<br/>тот же образ"]
+            end
+
+            subgraph state["Состояние"]
+                pg["postgres:16 :5432<br/>том postgres-data"]
+                redis["redis:7 :6379"]
+            end
+
+            subgraph auth["Вход"]
+                kc["Keycloak 26 :8080<br/>realm radar-vuzov"]
+            end
+
+            subgraph backup["Резервные копии — том backups"]
+                dump["backup — pg_dump раз в сутки"]
+                offsite["backup-offsite — rclone, зашифрованные копии"]
+            end
+
+            subgraph mocks["Заглушки внешних систем"]
+                mocklms["mock-lms :8100"]
+                mocksite["mock-site :8101"]
+                mockmsg["mock-messengers :8102"]
+                mailpit["mailpit :1025, :8025"]
+            end
         end
 
-        subgraph state["Состояние"]
-            pg["postgres:16 :5432<br/>том postgres-data"]
-            redis["redis:7 :6379"]
-            minio["MinIO :9000, консоль :9001<br/>том minio-data"]
-        end
-
-        subgraph auth["Вход"]
-            kc["Keycloak 26 :8080<br/>realm radar-vuzov"]
-        end
-
-        subgraph backup["Резервные копии — том backups"]
-            dump["backup — pg_dump раз в сутки"]
-            mirror["backup-files — mc mirror раз в сутки"]
-        end
-
-        subgraph mocks["Заглушки внешних систем"]
-            mocklms["mock-lms :8100"]
-            mocksite["mock-site :8101"]
-            mockmsg["mock-messengers :8102"]
-            mailpit["mailpit :1025, :8025"]
-        end
+        files[("Yandex Object Storage — S3<br/>бакет файлов: вложения и отчёты, версионирование<br/>бакет копий: зашифрованные дампы")]
     end
 
     browser -->|":443"| nginx
@@ -111,16 +118,16 @@ flowchart TB
     nginx -->|"/auth"| kc
     api --> pg
     api --> redis
-    api --> minio
+    api -->|"S3"| files
     worker --> pg
     worker --> redis
-    worker --> minio
+    worker -->|"S3"| files
     worker --> mocklms
     worker --> mocksite
     worker --> mockmsg
     worker --> mailpit
     dump --> pg
-    mirror --> minio
+    offsite -->|"S3, бакет копий"| files
 ```
 
 **Масштабирование.** Узкое место — API: он без состояния, поэтому добавляется копиями за тем же

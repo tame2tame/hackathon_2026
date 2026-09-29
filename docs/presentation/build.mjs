@@ -355,12 +355,12 @@ function picture(slide, path, { x, y, w, h }) {
 // 9. Архитектура
 {
   const slide = pres.addSlide();
-  titled(slide, "Из чего это собрано", "Один сервер, docker compose, наружу только 80 и 443");
+  titled(slide, "Из чего это собрано", "Сервер в Yandex Cloud, docker compose, файлы в Object Storage; наружу только 80 и 443");
 
   const layers = [
     ["Вход", ["nginx — TLS, статика", "Keycloak 26 — вход и роли"], VIOLET],
     ["Приложение", ["api — FastAPI, uvicorn", "worker — arq, тот же образ"], ORANGE],
-    ["Состояние", ["PostgreSQL 16", "Redis 7", "MinIO (S3)"], NAVY],
+    ["Состояние", ["PostgreSQL 16", "Redis 7", "S3: Object Storage / MinIO"], NAVY],
   ];
   layers.forEach(([name, items, color], index) => {
     const x = M + index * 4.05;
@@ -381,7 +381,7 @@ function picture(slide, path, { x, y, w, h }) {
   });
 
   card(slide, { x: M, y: 4.8, w: 11.9, h: 0.95, fill: LIGHT });
-  slide.addText("Резервные копии раз в сутки: дамп базы и зеркало файлов из MinIO — в один том, с проверкой восстановления", {
+  slide.addText("Копии раз в сутки: дамп базы с проверкой восстановления; файлы — в S3 с версионированием, копии шифруются во внешний бакет", {
     x: M + 0.35, y: 5.0, w: 11.2, h: 0.55,
     fontFace: BODY, fontSize: 13, color: INK, isTextBox: true, margin: 0,
   });
