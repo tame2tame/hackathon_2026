@@ -141,6 +141,7 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.3@sha256:357829ec7c4693397533035092ad13b0644bcc95ded311f33a3738c4d9e9bdba
+    entrypoint: ["bash", "/opt/keycloak/radar/start-with-theme.sh"]
     command: ["start", "--import-realm", "--http-enabled=true"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:?логин администратора Keycloak}
@@ -159,7 +160,16 @@ services:
       # За nginx: Keycloak должен верить заголовкам X-Forwarded-*.
       KC_PROXY_HEADERS: xforwarded
     volumes:
+      - ./keycloak/themes/radar:/opt/keycloak/themes/radar:ro
+      - ./keycloak/apply-theme.sh:/opt/keycloak/radar/apply-theme.sh:ro
+      - ./keycloak/start-with-theme.sh:/opt/keycloak/radar/start-with-theme.sh:ro
       - ./keycloak/realm-radar-vuzov.json:/opt/keycloak/data/import/realm-radar-vuzov.json:ro
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/radar-theme-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
