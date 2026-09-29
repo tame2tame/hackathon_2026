@@ -63,12 +63,12 @@ jobs:
           alembic check
       - name: Перечень библиотек
         run: |
-          pip freeze --exclude-editable > ../docs/dependencies.txt
-          echo "Библиотек: $(wc -l < ../docs/dependencies.txt)"
+          pip freeze --exclude-editable > dependencies.txt
+          echo "Библиотек: $(wc -l < dependencies.txt)"
       - uses: actions/upload-artifact@v4
         with:
           name: dependencies
-          path: docs/dependencies.txt
+          path: backend/dependencies.txt
 
   image:
     runs-on: ubuntu-latest

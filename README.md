@@ -55,7 +55,5 @@ VITE_AUTH_MODE=dev npm run dev                # интерфейс на http://1
 - [Руководство пользователя](docs/USER_GUIDE.md) и [администратора](docs/ADMIN_GUIDE.md)
 - [Методы обработки данных](docs/DATA_PROCESSING.md) — радар, нормы, рейтинг, импорт, оплаты
 - [Меры защиты](docs/SECURITY.md) — 152-ФЗ, приказ ФСТЭК №117
-- [Развёртывание](docs/DEPLOY.md) и [стенд в Yandex Cloud](docs/DEPLOY_YANDEX.md)
+- [Развёртывание](docs/DEPLOY.md), в том числе стенд в Yandex Cloud
 - [Нагрузочный тест](docs/LOAD_TEST.md) и [диаграммы](docs/architecture/DIAGRAMS.md)
-- [Сценарий показа](docs/DEMO_SCRIPT.md), [уточнения жюри](docs/JURY_QA.md)
-- [Визуальная система](docs/DESIGN.md) и [формат страниц](docs/FRONTEND_PAGES.md)

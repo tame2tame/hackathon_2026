@@ -2,7 +2,7 @@
 # Файлы лежат в Yandex Object Storage, а не в своём MinIO: образ MinIO больше не скачивается
 # из реестров, а бакет в облаке сам хранит данные надёжно и не занимает диск сервера.
 #
-# Запуск (см. docs/DEPLOY_YANDEX.md):
+# Запуск (см. docs/DEPLOY.md, раздел «Стенд в Yandex Cloud»):
 #   docker compose -f docker-compose.prod.yml -f docker-compose.yandex.yml --env-file .env up -d
 name: radar-vuzov-prod
 

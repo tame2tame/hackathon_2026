@@ -49,7 +49,7 @@ MINIO_ROOT_PASSWORD=unused-minio
 
 CERTS_DIR=/srv/radar/certs
 SPA_DIR=/srv/radar/spa
-# Открытый ключ для шифрования внешних копий: infra/backup-keys/backup.asc (см. DEPLOY_YANDEX.md).
+# Открытый ключ для шифрования внешних копий: infra/backup-keys/backup.asc (см. docs/DEPLOY.md).
 BACKUP_GPG_PUBLIC_KEY=
 EOF
 echo "Готово: infra/.env для https://$HOST"
