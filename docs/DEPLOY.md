@@ -89,7 +89,7 @@ MinIO не публикуется. Чтобы перейти на облачно
 - письма — через туннель `ssh -L 8025:127.0.0.1:8025 <сервер>` и `http://127.0.0.1:8025`;
 - сообщения мессенджеров — `docker compose exec api python -c "import httpx; print(httpx.get('http://mock-messengers:8102/sent').text)"`.
 
-Когда заказчик даст настоящие адреса, меняются переменные `LMS_BASE_URL`, `SITE_BASE_URL`,
+Для настоящих систем меняются переменные `LMS_BASE_URL`, `SITE_BASE_URL`,
 `TELEGRAM_API_URL`, `MAX_API_URL`, `SMTP_HOST`, `SMTP_PORT` и секреты `NOTIFY_*`; код не меняется.
 
 ## Контроль
