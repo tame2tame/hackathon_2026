@@ -1,0 +1,39 @@
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+     execution: local
+        script: k6-main.js
+        output: -
+     scenarios: (100.00%) 1 scenario, 50 max VUs, 3m30s max duration (incl. graceful stop):
+              * default: Up to 50 looping VUs for 3m0s over 3 stages (gracefulRampDown: 30s, gracefulStop: 30s)
+  █ THRESHOLDS 
+    http_req_duration
+    ✓ 'p(95)<1000' p(95)=836.99ms
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+  █ TOTAL RESULTS 
+    checks_total.......: 13374   74.276969/s
+    checks_succeeded...: 100.00% 13374 out of 13374
+    checks_failed......: 0.00%   0 out of 13374
+    ✓ сигналы отданы
+    ✓ матрица отдана
+    ✓ список отдан
+    ✓ карточка отдана
+    ✓ заметка сохранена
+    ✓ рейтинг посчитан
+    HTTP
+    http_req_duration..............: avg=397.91ms min=4.24ms med=354.09ms max=5.68s p(90)=721.39ms p(95)=836.99ms
+      { expected_response:true }...: avg=397.91ms min=4.24ms med=354.09ms max=5.68s p(90)=721.39ms p(95)=836.99ms
+    http_req_failed................: 0.00%  0 out of 13374
+    http_reqs......................: 13374  74.276969/s
+    EXECUTION
+    iteration_duration.............: avg=3.39s    min=1.07s  med=3.47s    max=8.64s p(90)=4.38s    p(95)=4.8s    
+    iterations.....................: 2229   12.379495/s
+    vus............................: 1      min=1          max=50
+    vus_max........................: 50     min=50         max=50
+    NETWORK
+    data_received..................: 160 MB 887 kB/s
+    data_sent......................: 2.6 MB 14 kB/s
+default ✓ [ 100% ] 00/50 VUs  3m0s

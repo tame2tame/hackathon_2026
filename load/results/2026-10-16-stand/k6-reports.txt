@@ -1,0 +1,36 @@
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+     execution: local
+        script: k6-reports.js
+        output: -
+     scenarios: (100.00%) 1 scenario, 10 max VUs, 5m30s max duration (incl. graceful stop):
+              * reports: 1 iterations for each of 10 VUs (maxDuration: 5m0s, gracefulStop: 30s)
+  █ THRESHOLDS 
+    http_req_duration{name:report}
+    ✓ 'p(95)<30000' p(95)=148.49ms
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+  █ TOTAL RESULTS 
+    checks_total.......: 20      2.138245/s
+    checks_succeeded...: 100.00% 20 out of 20
+    checks_failed......: 0.00%   0 out of 20
+    ✓ задание принято
+    ✓ отчёт дошёл до done
+    HTTP
+    http_req_duration..............: avg=36.29ms  min=4.77ms   med=15.87ms  max=151.9ms p(90)=116.05ms p(95)=132.31ms
+      { expected_response:true }...: avg=36.29ms  min=4.77ms   med=15.87ms  max=151.9ms p(90)=116.05ms p(95)=132.31ms
+      { name:report }..............: avg=128.77ms min=107.66ms med=129.27ms max=151.9ms p(90)=145.09ms p(95)=148.49ms
+    http_req_failed................: 0.00% 0 out of 73
+    http_reqs......................: 73    7.804594/s
+    EXECUTION
+    iteration_duration.............: avg=5.57s    min=3.19s    med=3.78s    max=9.34s   p(90)=9.28s    p(95)=9.31s   
+    iterations.....................: 10    1.069122/s
+    vus............................: 3     min=3       max=10
+    vus_max........................: 10    min=10      max=10
+    NETWORK
+    data_received..................: 27 kB 2.8 kB/s
+    data_sent......................: 14 kB 1.5 kB/s
+reports ✓ [ 100% ] 10 VUs  0m09.4s/5m0s  10/10 iters, 1 per VU
