@@ -27,9 +27,11 @@ fi
 
 install_certs() {
     mkdir -p "$CERTS_DIR"
-    cp -L "$LE_DIR/live/$HOST/fullchain.pem" "$CERTS_DIR/fullchain.pem"
-    cp -L "$LE_DIR/live/$HOST/privkey.pem" "$CERTS_DIR/privkey.pem"
-    chmod 600 "$CERTS_DIR/privkey.pem"
+    # Каталог live/ certbot создаёт под root с правами 700, поэтому копирует тот же контейнер,
+    # а владельцем файлов становится пользователь, запустивший скрипт (в том числе из cron).
+    docker run --rm --entrypoint sh -v "$LE_DIR:/etc/letsencrypt:ro" -v "$CERTS_DIR:/out" \
+        "$CERTBOT" -c "cp -L /etc/letsencrypt/live/$HOST/fullchain.pem /etc/letsencrypt/live/$HOST/privkey.pem /out/ \
+            && chmod 600 /out/privkey.pem && chown $(id -u):$(id -g) /out/fullchain.pem /out/privkey.pem"
     echo "Сертификат для $HOST лежит в $CERTS_DIR"
 }
 
